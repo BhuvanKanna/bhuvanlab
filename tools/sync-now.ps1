@@ -79,12 +79,33 @@ if ($null -eq $GitCmd) {
     exit 1
 }
 
-# Invoke git in the repo, returning stdout lines. Never throws on non-zero.
+# Invoke git in the repo, returning its output lines. Never throws.
+#
+# Windows PowerShell 5.1 wraps a native command's stderr into ErrorRecord
+# objects when you use 2>&1, and under $ErrorActionPreference='Stop' that
+# THROWS -- even when git exited 0. git writes normal progress ("remote: ...",
+# "To https://...") to stderr, so a perfectly good `git push` would otherwise
+# blow up the script. Force Continue for the duration of the call and flatten
+# any ErrorRecords to plain strings; git's real status is $LASTEXITCODE.
 function Invoke-Git {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$GitArgs)
-    $out = & $GitCmd -C $RepoRoot @GitArgs 2>&1
-    $script:GitExit = $LASTEXITCODE
-    return $out
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $raw = & $GitCmd -C $RepoRoot @GitArgs 2>&1
+        $script:GitExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
+    $lines = @()
+    foreach ($item in @($raw)) {
+        if ($item -is [System.Management.Automation.ErrorRecord]) {
+            $lines += $item.ToString()
+        } else {
+            $lines += [string]$item
+        }
+    }
+    return $lines
 }
 
 # ---------------------------------------------------------------------------
