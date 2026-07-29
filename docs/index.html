@@ -1,0 +1,1119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Truncation Browser — GTEx v11 expression distribution shape</title>
+<meta name="description" content="Browse 4-parameter Gaussian fits and truncation indices for 74,628 genes across 50 GTEx v11 human tissues.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ==========================================================================
+   Tokens. Vermilion (--ceiling) is reserved for one thing only: the
+   truncation ceiling x_max. It never appears as decoration.
+   ========================================================================== */
+:root {
+  --ink:      #0f1419;
+  --paper:    #eaeef1;
+  --surface:  #ffffff;
+  --sunken:   #f4f6f8;
+  --rule:     #d2d9df;
+  --rule-soft:#e4e9ed;
+  --muted:    #5c6873;
+  --accent:   #12657f;
+  --accent-ink:#ffffff;
+  --accent-wash:#e3eef2;
+  --ceiling:  #c0402b;
+  --curve:    #12657f;
+  --ok:       #2f6f4f;
+
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  --r: 3px;
+  --shadow: 0 1px 2px rgba(15,20,25,.06), 0 6px 20px -12px rgba(15,20,25,.18);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink:#e6ebef; --paper:#0d1216; --surface:#151b21; --sunken:#11171c;
+    --rule:#28323b; --rule-soft:#1e262d; --muted:#8d9aa6;
+    --accent:#4fb3d0; --accent-ink:#08141a; --accent-wash:#16303a;
+    --ceiling:#ef6a4f; --curve:#5cbcd8; --ok:#5aa87d;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px -12px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"] {
+  --ink:#e6ebef; --paper:#0d1216; --surface:#151b21; --sunken:#11171c;
+  --rule:#28323b; --rule-soft:#1e262d; --muted:#8d9aa6;
+  --accent:#4fb3d0; --accent-ink:#08141a; --accent-wash:#16303a;
+  --ceiling:#ef6a4f; --curve:#5cbcd8; --ok:#5aa87d;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px -12px rgba(0,0,0,.6);
+}
+:root[data-theme="light"] {
+  --ink:#0f1419; --paper:#eaeef1; --surface:#ffffff; --sunken:#f4f6f8;
+  --rule:#d2d9df; --rule-soft:#e4e9ed; --muted:#5c6873;
+  --accent:#12657f; --accent-ink:#ffffff; --accent-wash:#e3eef2;
+  --ceiling:#c0402b; --curve:#12657f; --ok:#2f6f4f;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+/* ---------- masthead ----------
+   The masthead ground is dark in BOTH themes, so its foreground colours are
+   fixed literals. Using --paper here would invert them to dark-on-dark. */
+.masthead {
+  background: #0c1116;
+  color: #e8edf1;
+  border-bottom: 1px solid #1d262e;
+}
+
+.mast-inner {
+  max-width: 1440px; margin: 0 auto; padding: 26px 22px 22px;
+  display: flex; flex-wrap: wrap; gap: 20px 32px; align-items: flex-end;
+}
+.mast-title { flex: 1 1 380px; min-width: 0; }
+.mast-title h1 {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: clamp(1.4rem, 3.4vw, 2.1rem);
+  letter-spacing: -.035em;
+  margin: 0 0 6px;
+  line-height: 1.05;
+}
+.mast-title h1 .dim { opacity: .38; }
+.tagline {
+  margin: 0; font-size: .875rem; line-height: 1.45;
+  color: rgba(232,237,241,.68); max-width: 56ch;
+}
+
+.mast-stats { display: flex; gap: 26px; margin: 0; flex-wrap: wrap; }
+.mast-stats dt {
+  font-family: var(--mono); font-size: .62rem; letter-spacing: .13em;
+  text-transform: uppercase; color: rgba(232,237,241,.5); margin: 0 0 2px;
+}
+.mast-stats dd {
+  margin: 0; font-family: var(--mono); font-size: 1.05rem; font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- shell ---------- */
+main { max-width: 1440px; margin: 0 auto; padding: 20px 22px 64px; }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+}
+
+/* ---------- controls ---------- */
+.controls { padding: 18px; margin-bottom: 16px; }
+.control-grid {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(260px, auto);
+  gap: 16px 22px;
+  align-items: start;
+}
+@media (max-width: 780px) { .control-grid { grid-template-columns: 1fr; } }
+
+.field { min-width: 0; }
+.field > label, .field-label {
+  display: block;
+  font-family: var(--mono); font-size: .64rem; font-weight: 500;
+  letter-spacing: .13em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 6px;
+}
+select {
+  width: 100%; font-family: var(--sans); font-size: .9rem; color: var(--ink);
+  background: var(--sunken); border: 1px solid var(--rule);
+  border-radius: var(--r); padding: 9px 11px; appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+                    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 17px) 55%, calc(100% - 12px) 55%;
+  background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+  padding-right: 32px; cursor: pointer;
+}
+select:hover { border-color: var(--accent); }
+
+/* segmented control for raw / excluded */
+.segmented { display: inline-flex; border: 1px solid var(--rule); border-radius: var(--r); overflow: hidden; background: var(--sunken); }
+.segmented button {
+  font-family: var(--sans); font-size: .84rem; color: var(--muted);
+  background: transparent; border: 0; padding: 9px 14px; cursor: pointer;
+  white-space: nowrap; border-right: 1px solid var(--rule);
+}
+.segmented button:last-child { border-right: 0; }
+.segmented button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 500; }
+.segmented button:not([aria-pressed="true"]):hover { color: var(--ink); background: var(--accent-wash); }
+
+/* ---------- gene token input ---------- */
+.gene-field { grid-column: 1 / -1; position: relative; }
+.tokenbox {
+  display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+  min-height: 42px; padding: 6px 7px;
+  background: var(--sunken); border: 1px solid var(--rule); border-radius: var(--r);
+  cursor: text;
+}
+.tokenbox:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: .78rem; font-weight: 500;
+  background: var(--accent-wash); color: var(--accent);
+  border: 1px solid transparent; border-radius: 2px; padding: 3px 4px 3px 8px;
+  max-width: 100%;
+}
+.chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip button {
+  border: 0; background: transparent; color: inherit; cursor: pointer;
+  font: inherit; line-height: 1; padding: 2px 4px; opacity: .65; border-radius: 2px;
+}
+.chip button:hover { opacity: 1; background: rgba(0,0,0,.08); }
+#geneInput {
+  flex: 1 1 150px; min-width: 130px; border: 0; background: transparent;
+  font-family: var(--sans); font-size: .9rem; color: var(--ink);
+  padding: 6px 4px; outline: 0;
+}
+#geneInput::placeholder { color: var(--muted); }
+
+.suggest {
+  position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
+  background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r);
+  box-shadow: var(--shadow); max-height: 300px; overflow-y: auto; padding: 4px;
+}
+.suggest[hidden] { display: none; }
+.suggest li {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 7px 9px; cursor: pointer; border-radius: 2px; list-style: none;
+}
+.suggest ul { margin: 0; padding: 0; }
+.suggest li[aria-selected="true"] { background: var(--accent-wash); }
+.suggest .s-sym { font-family: var(--mono); font-weight: 600; font-size: .84rem; min-width: 96px; }
+.suggest .s-id  { font-family: var(--mono); font-size: .74rem; color: var(--muted); }
+.suggest .s-hit { color: var(--accent); }
+.suggest .s-none { padding: 12px; color: var(--muted); font-size: .86rem; }
+
+.quick { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 9px; align-items: center; }
+.linkbtn {
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+  font-family: var(--sans); font-size: .82rem; color: var(--accent);
+  text-decoration: underline; text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.linkbtn:hover { text-decoration-thickness: 2px; }
+.linkbtn:disabled { color: var(--muted); cursor: default; text-decoration: none; }
+.quick .sep { color: var(--rule); }
+
+/* ---------- status ---------- */
+.statusbar {
+  display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center;
+  padding: 11px 16px; border-bottom: 1px solid var(--rule-soft);
+}
+.status-text { font-family: var(--mono); font-size: .78rem; color: var(--muted); }
+.status-text strong { color: var(--ink); font-weight: 600; }
+.statusbar .spacer { flex: 1 1 auto; }
+
+.progress { height: 2px; background: var(--rule-soft); overflow: hidden; }
+.progress[hidden] { display: none; }
+.progress i {
+  display: block; height: 100%; width: 34%; background: var(--accent);
+  animation: slide 1.05s ease-in-out infinite;
+}
+@keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(392%); } }
+@media (prefers-reduced-motion: reduce) { .progress i { animation: none; width: 100%; opacity: .5; } }
+
+.btn {
+  font-family: var(--sans); font-size: .82rem; font-weight: 500;
+  color: var(--ink); background: var(--sunken);
+  border: 1px solid var(--rule); border-radius: var(--r);
+  padding: 6px 11px; cursor: pointer; white-space: nowrap;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: default; }
+
+/* ---------- table ----------
+   The wrapper is its own scroll container on BOTH axes. That is what makes
+   `thead` sticky actually work: sticky resolves against the nearest scrolling
+   ancestor, so with only overflow-x the header pins to a box that never
+   scrolls vertically and slides away with the page. */
+.tablewrap { overflow: auto; max-height: min(72vh, 760px); overscroll-behavior: contain; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-variant-numeric: tabular-nums; }
+thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface);
+  font-family: var(--mono); font-size: .64rem; font-weight: 600;
+  letter-spacing: .07em; text-transform: uppercase; color: var(--muted);
+  text-align: right; padding: 10px 11px; white-space: nowrap;
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer; user-select: none;
+}
+thead th:first-child, thead th.tl { text-align: left; }
+thead th.nosort { cursor: default; }
+thead th:hover:not(.nosort) { color: var(--accent); }
+thead th .arrow { opacity: .5; font-size: .7em; margin-left: 3px; }
+
+tbody td {
+  padding: 8px 11px; text-align: right; white-space: nowrap;
+  border-bottom: 1px solid var(--rule-soft);
+  font-family: var(--mono); font-size: .8rem;
+  background: var(--surface);
+}
+tbody td.tl { text-align: left; }
+tbody tr:hover td { background: var(--sunken); }
+
+/* Keep the gene identity visible while scrolling right through 20 columns. */
+thead th:first-child { z-index: 4; }
+tbody td:first-child { position: sticky; left: 0; z-index: 1; }
+thead th:first-child { position: sticky; left: 0; }
+tbody td:first-child::after, thead th:first-child::after {
+  content: ""; position: absolute; top: 0; right: 0; bottom: -1px; width: 1px;
+  background: var(--rule-soft);
+}
+@media (max-width: 620px) {
+  /* Sticky column costs too much width on a phone. */
+  tbody td:first-child, thead th:first-child { position: static; }
+}
+.c-sym { font-weight: 600; font-size: .84rem; }
+.c-id { color: var(--muted); font-size: .74rem; }
+.c-shape { padding: 4px 11px !important; }
+.badge-fail {
+  font-family: var(--mono); font-size: .66rem; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--ceiling);
+  border: 1px solid currentColor; border-radius: 2px; padding: 1px 5px;
+}
+.nil { color: var(--muted); opacity: .55; }
+
+/* the signature: per-gene truncated-Gaussian miniature */
+.spark { display: block; width: 116px; height: 34px; overflow: visible; }
+.spark .curve-live { fill: none; stroke: var(--curve); stroke-width: 1.4; }
+.spark .curve-censored { fill: none; stroke: var(--curve); stroke-width: 1.4; stroke-dasharray: 2 2.5; opacity: .32; }
+.spark .fill-live { fill: var(--curve); opacity: .13; }
+.spark .ceiling { stroke: var(--ceiling); stroke-width: 1.4; }
+.spark .base { stroke: var(--rule); stroke-width: 1; }
+
+/* ---------- empty / error ---------- */
+.note { padding: 46px 22px; text-align: center; color: var(--muted); }
+.note h2 {
+  font-family: var(--mono); font-size: .95rem; font-weight: 600;
+  color: var(--ink); margin: 0 0 7px; letter-spacing: -.01em;
+}
+.note p { margin: 0 auto; max-width: 46ch; font-size: .88rem; }
+.note.error h2 { color: var(--ceiling); }
+.note .btn { margin-top: 14px; }
+
+/* ---------- legend + footer ---------- */
+.legend {
+  display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
+  padding: 11px 16px; border-top: 1px solid var(--rule-soft);
+  font-size: .76rem; color: var(--muted);
+}
+.legend .key { display: inline-flex; align-items: center; gap: 7px; }
+.legend .swatch { width: 15px; height: 2px; background: var(--curve); }
+.legend .swatch.v { background: var(--ceiling); width: 2px; height: 13px; }
+.legend .swatch.d { background: none; border-top: 2px dashed var(--curve); opacity: .5; height: 0; }
+
+footer {
+  max-width: 1440px; margin: 0 auto; padding: 0 22px 44px;
+  font-size: .8rem; color: var(--muted);
+}
+footer a { color: var(--accent); }
+.foot-rule { border: 0; border-top: 1px solid var(--rule); margin: 0 0 14px; }
+footer p { margin: 0 0 7px; max-width: 78ch; }
+.themetoggle {
+  float: right; border: 1px solid var(--rule); background: var(--surface);
+  color: var(--muted); border-radius: var(--r); padding: 4px 9px;
+  font-family: var(--mono); font-size: .68rem; cursor: pointer;
+  letter-spacing: .07em; text-transform: uppercase;
+}
+.themetoggle:hover { color: var(--accent); border-color: var(--accent); }
+.sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="mast-inner">
+    <div class="mast-title">
+      <h1>Truncation Browser<span class="dim"> / GTEx v11</span></h1>
+      <p class="tagline">
+        Every gene's expression across a tissue's donors is fit with a 4-parameter
+        Gaussian. The truncation index measures how hard the right tail is capped —
+        a candidate signal for genes whose over-expression is not tolerated.
+      </p>
+    </div>
+    <dl class="mast-stats">
+      <div><dt>Genes</dt><dd id="statGenes">—</dd></div>
+      <div><dt>Tissues</dt><dd id="statTissues">—</dd></div>
+      <div><dt>Tables</dt><dd id="statTables">—</dd></div>
+    </dl>
+  </div>
+</header>
+
+<main>
+  <section class="panel controls" aria-label="Query">
+    <div class="control-grid">
+      <div class="field">
+        <label for="tissue">Tissue</label>
+        <select id="tissue"></select>
+      </div>
+
+      <div class="field">
+        <span class="field-label" id="valuesLabel">Values included</span>
+        <div class="segmented" role="group" aria-labelledby="valuesLabel" id="kindGroup"></div>
+      </div>
+
+      <div class="field gene-field">
+        <span class="field-label" id="genesLabel">Genes</span>
+        <div class="tokenbox" id="tokenbox">
+          <input id="geneInput" type="text" autocomplete="off" spellcheck="false"
+                 role="combobox" aria-expanded="false" aria-autocomplete="list"
+                 aria-controls="suggest" aria-labelledby="genesLabel"
+                 placeholder="Type a symbol or ENSG id — ALDH2, APP, ENSG00000111275…">
+        </div>
+        <div class="suggest" id="suggest" hidden role="listbox" aria-label="Gene matches"></div>
+        <div class="quick">
+          <button class="linkbtn" id="loadExample" type="button">Load the ADH / ALDH set</button>
+          <span class="sep">·</span>
+          <button class="linkbtn" id="clearGenes" type="button" disabled>Clear genes</button>
+          <span class="sep">·</span>
+          <button class="linkbtn" id="copyLink" type="button">Copy link to this view</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Results">
+    <div class="statusbar">
+      <span class="status-text" id="status">Loading gene index…</span>
+      <span class="spacer"></span>
+      <button class="btn" id="toggleCols" type="button" aria-pressed="false">All columns</button>
+      <button class="btn" id="download" type="button" disabled>Download CSV</button>
+    </div>
+    <div class="progress" id="progress" hidden><i></i></div>
+    <div id="resultArea"></div>
+    <div class="legend" id="legend" hidden>
+      <span class="key"><span class="swatch"></span> fitted curve, observed range</span>
+      <span class="key"><span class="swatch d"></span> censored tail beyond the ceiling</span>
+      <span class="key"><span class="swatch v"></span> ceiling <code>x_max</code></span>
+      <span class="key">TI = f(x_max)/f(peak), baseline removed</span>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <hr class="foot-rule">
+  <button class="themetoggle" id="themeToggle" type="button">Theme</button>
+  <p id="footNote">
+    Tables are read live from the repository, so this page always reflects what is
+    actually in <code>outputs/</code>. Selecting a tissue downloads that one table
+    (~9&nbsp;MB compressed) and caches it for the session.
+  </p>
+  <p>
+    <a href="https://github.com/BhuvanKanna/bhuvanlab">BhuvanKanna/bhuvanlab</a>
+    · fits by <code>bhuvanfitter.py</code>
+    · <span id="genMeta"></span>
+  </p>
+</footer>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   Config + state
+   ===================================================================== */
+const MANIFEST_URL = "manifest.json";
+const GENES_URL    = "genes.tsv";
+const MAX_CACHED_TABLES = 4;      // ~21 MB of text each
+const MAX_SUGGESTIONS   = 40;
+
+// Compact column set shown by default; the rest appear under "All columns".
+const COMPACT_COLS = [
+  "truncationindex", "ti_fourparam_sigma_dist", "n_obs",
+  "x0", "w", "mean", "std", "right"
+];
+
+const SHORT_LABEL = {
+  truncationindex: "TI",
+  ti_fourparam_sigma_dist: "σ-dist",
+  sumsquarevalue: "SSR",
+  n_obs: "n",
+  fit_success: "fit"
+};
+
+// Columns where more decimal places actually matter.
+const DECIMALS = { n_obs: 0 };
+
+let manifest = null;
+let GID = [], SYM = [], SYMU = [], NOVER = [], NOVERU = [];
+let geneIndexByNover = new Map();
+
+let selected = [];                 // array of gene-index integers
+let currentKind = "raw";
+let showAllCols = false;
+let sortCol = null, sortDir = 1;
+let lastRows = [];                 // rows currently rendered (for CSV)
+let activeSuggestion = -1, suggestions = [];
+let loadToken = 0;                 // guards against out-of-order table loads
+
+const tableCache = new Map();      // "tissue|kind" -> {header, map, colIdx}
+
+const $ = (id) => document.getElementById(id);
+
+/* =====================================================================
+   Utilities
+   ===================================================================== */
+function stripVersion(id) {
+  const dot = id.lastIndexOf(".");
+  return dot === -1 ? id : id.slice(0, dot);
+}
+
+function fmt(value, col) {
+  if (value === undefined || value === null || value === "") return null;
+  if (col === "fit_success") return value;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  if (DECIMALS[col] === 0) return String(Math.round(n));
+  const a = Math.abs(n);
+  if (n === 0) return "0";
+  if (a >= 1e6 || a < 1e-4) return n.toExponential(2);
+  if (a >= 1000) return n.toFixed(1);
+  if (a >= 10) return n.toFixed(3);
+  return n.toFixed(4);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function setStatus(html) { $("status").innerHTML = html; }
+
+/* =====================================================================
+   Streaming fetch with byte progress
+   ===================================================================== */
+async function fetchTextWithProgress(url, onBytes) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  if (!res.body || !res.body.getReader) return res.text();
+
+  const reader = res.body.getReader();
+  const chunks = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    if (onBytes) onBytes(received);
+  }
+  const all = new Uint8Array(received);
+  let off = 0;
+  for (const c of chunks) { all.set(c, off); off += c.length; }
+  return new TextDecoder("utf-8").decode(all);
+}
+
+/* =====================================================================
+   Gene index (shared by all 100 tables — the gene set is identical)
+   ===================================================================== */
+async function loadGeneIndex() {
+  const text = await fetchTextWithProgress(GENES_URL, (b) =>
+    setStatus(`Loading gene index… <strong>${(b / 1048576).toFixed(1)} MB</strong>`));
+
+  const lines = text.split("\n");
+  for (const line of lines) {
+    if (!line) continue;
+    const tab = line.indexOf("\t");
+    if (tab === -1) continue;
+    const id = line.slice(0, tab);
+    const sym = line.slice(tab + 1).trim();
+    const nover = stripVersion(id);
+    geneIndexByNover.set(nover, GID.length);
+    GID.push(id); SYM.push(sym);
+    SYMU.push(sym.toUpperCase());
+    NOVER.push(nover); NOVERU.push(nover.toUpperCase());
+  }
+}
+
+/* Ranked search: exact symbol, symbol prefix, ENSG prefix, symbol substring. */
+function searchGenes(query) {
+  const q = query.trim().toUpperCase();
+  if (!q) return [];
+  const chosen = new Set(selected);
+  const exact = [], symPrefix = [], idPrefix = [], symIn = [];
+
+  for (let i = 0; i < SYMU.length; i++) {
+    if (chosen.has(i)) continue;
+    const s = SYMU[i];
+    if (s === q) { exact.push(i); continue; }
+    if (s.startsWith(q)) { if (symPrefix.length < 120) symPrefix.push(i); continue; }
+    if (NOVERU[i].startsWith(q)) { if (idPrefix.length < 120) idPrefix.push(i); continue; }
+    if (q.length >= 3 && s.includes(q)) { if (symIn.length < 120) symIn.push(i); }
+  }
+  const byLen = (a, b) => SYMU[a].length - SYMU[b].length || (SYMU[a] < SYMU[b] ? -1 : 1);
+  symPrefix.sort(byLen); symIn.sort(byLen);
+  return exact.concat(symPrefix, idPrefix, symIn).slice(0, MAX_SUGGESTIONS);
+}
+
+/* =====================================================================
+   Table loading + indexing
+   ===================================================================== */
+function tableUrl(tissue, kind) {
+  const spec = manifest.table_kinds.find((k) => k.id === kind);
+  return `${manifest.data_base_url}/${manifest.file_prefix}${tissue}${spec.suffix}`;
+}
+
+/* Index by unversioned id -> raw line. Rows are parsed lazily: only the
+   handful the user selected ever get split, so a 21 MB table costs one big
+   string plus 74,628 map entries instead of 1.5M substrings. */
+function indexTable(text) {
+  const nl = text.indexOf("\n");
+  const header = text.slice(0, nl).replace(/\r$/, "").split(",");
+  const map = new Map();
+  const len = text.length;
+  let pos = nl + 1;
+  while (pos < len) {
+    let end = text.indexOf("\n", pos);
+    if (end === -1) end = len;
+    if (end > pos) {
+      const comma = text.indexOf(",", pos);
+      if (comma !== -1 && comma < end) {
+        map.set(stripVersion(text.slice(pos, comma)), text.slice(pos, end));
+      }
+    }
+    pos = end + 1;
+  }
+  const colIdx = {};
+  header.forEach((h, i) => { colIdx[h.trim()] = i; });
+  return { header: header.map((h) => h.trim()), map, colIdx };
+}
+
+async function getTable(tissue, kind) {
+  const key = `${tissue}|${kind}`;
+  if (tableCache.has(key)) return tableCache.get(key);
+
+  const label = manifest.table_kinds.find((k) => k.id === kind).label;
+  $("progress").hidden = false;
+  setStatus(`Fetching <strong>${escapeHtml(tissue)}</strong> · ${escapeHtml(label)}…`);
+
+  try {
+    const text = await fetchTextWithProgress(tableUrl(tissue, kind), (b) => {
+      setStatus(`Fetching <strong>${escapeHtml(tissue)}</strong> · ` +
+                `${escapeHtml(label)} — <strong>${(b / 1048576).toFixed(1)} MB</strong>`);
+    });
+    const indexed = indexTable(text);
+    tableCache.set(key, indexed);
+    while (tableCache.size > MAX_CACHED_TABLES) {
+      tableCache.delete(tableCache.keys().next().value);
+    }
+    return indexed;
+  } finally {
+    $("progress").hidden = true;
+  }
+}
+
+/* =====================================================================
+   The signature: a truncated-Gaussian miniature drawn from this row's fit
+   ===================================================================== */
+function sparkline(row, colIdx) {
+  const num = (c) => {
+    const v = Number(row[colIdx[c]]);
+    return Number.isFinite(v) ? v : NaN;
+  };
+  const y0 = num("y0"), A = num("A"), x0 = num("x0"), w = num("w");
+  const right = num("right"), lo = num("min");
+  if (![y0, A, x0, w, right].every(Number.isFinite) || w <= 0) return "";
+
+  const sigma = w / Math.SQRT2;
+  // Domain: the peak's own +/-3.4 sigma, widened to include the data range.
+  let a = Math.min(x0 - 3.4 * sigma, Number.isFinite(lo) ? lo : Infinity);
+  let b = Math.max(x0 + 3.4 * sigma, right);
+  if (!(b > a)) return "";
+  const pad = (b - a) * 0.04; a -= pad; b += pad;
+
+  const W = 116, H = 34, N = 72;
+  const f = (x) => y0 + A * Math.exp(-Math.pow((x - x0) / w, 2));
+
+  // Scale to the curve's own range over the window.
+  let fmin = Infinity, fmax = -Infinity;
+  for (let i = 0; i <= N; i++) {
+    const v = f(a + (b - a) * i / N);
+    if (v < fmin) fmin = v;
+    if (v > fmax) fmax = v;
+  }
+  const span = fmax - fmin || 1;
+  const sx = (x) => ((x - a) / (b - a)) * W;
+  const sy = (v) => H - 1.5 - ((v - fmin) / span) * (H - 4);
+
+  const live = [], censored = [];
+  for (let i = 0; i <= N; i++) {
+    const x = a + (b - a) * i / N;
+    (x <= right ? live : censored).push([sx(x), sy(f(x))]);
+  }
+  // Bridge the gap so the two segments meet exactly at the ceiling.
+  if (live.length && censored.length) {
+    censored.unshift([sx(right), sy(f(right))]);
+    live.push([sx(right), sy(f(right))]);
+  }
+  const d = (pts) => pts.map((p, i) =>
+    `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("");
+
+  const cx = sx(right).toFixed(1);
+  const area = live.length
+    ? `<path class="fill-live" d="${d(live)}L${cx} ${H - 1.5}L${sx(a).toFixed(1)} ${H - 1.5}Z"/>`
+    : "";
+
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-hidden="true" preserveAspectRatio="none">
+    <line class="base" x1="0" y1="${H - 1.5}" x2="${W}" y2="${H - 1.5}"/>
+    ${area}
+    ${censored.length ? `<path class="curve-censored" d="${d(censored)}"/>` : ""}
+    ${live.length ? `<path class="curve-live" d="${d(live)}"/>` : ""}
+    <line class="ceiling" x1="${cx}" y1="1" x2="${cx}" y2="${H - 1.5}"/>
+  </svg>`;
+}
+
+/* =====================================================================
+   Render
+   ===================================================================== */
+function visibleStatCols(header) {
+  const skip = new Set(["gene", "genename"]);
+  const stats = header.filter((c) => !skip.has(c));
+  if (showAllCols) return stats;
+  return COMPACT_COLS.filter((c) => stats.includes(c));
+}
+
+function render() {
+  const area = $("resultArea");
+  $("clearGenes").disabled = selected.length === 0;
+
+  if (selected.length === 0) {
+    lastRows = [];
+    $("download").disabled = true;
+    $("legend").hidden = true;
+    area.innerHTML = `<div class="note">
+      <h2>No genes selected</h2>
+      <p>Search above by symbol (<code>ALDH2</code>) or Ensembl id
+      (<code>ENSG00000111275</code>) and pick as many as you like. Versions are
+      ignored, so an id from an older annotation still resolves.</p>
+      <button class="btn" type="button" id="emptyExample">Load the ADH / ALDH set</button>
+    </div>`;
+    const b = $("emptyExample");
+    if (b) b.addEventListener("click", loadExampleSet);
+    setStatus(`<strong>${GID.length.toLocaleString()}</strong> genes indexed · pick some to begin`);
+    return;
+  }
+
+  const tissue = $("tissue").value;
+  const token = ++loadToken;
+
+  getTable(tissue, currentKind).then((tbl) => {
+    if (token !== loadToken) return;   // a newer request superseded this one
+    drawTable(tbl, tissue);
+  }).catch((err) => {
+    if (token !== loadToken) return;
+    lastRows = [];
+    $("download").disabled = true;
+    $("legend").hidden = true;
+    setStatus(`<strong style="color:var(--ceiling)">Could not load ${escapeHtml(tissue)}</strong>`);
+    area.innerHTML = `<div class="note error">
+      <h2>That table did not load</h2>
+      <p>${escapeHtml(err.message)}. The tables are fetched from
+      raw.githubusercontent.com — check your connection, then try again.</p>
+      <button class="btn" type="button" id="retry">Try again</button>
+    </div>`;
+    const r = $("retry");
+    if (r) r.addEventListener("click", render);
+  });
+}
+
+function drawTable(tbl, tissue) {
+  const cols = visibleStatCols(tbl.header);
+  const rows = [];
+  const missing = [];
+
+  for (const gi of selected) {
+    const line = tbl.map.get(NOVER[gi]);
+    if (!line) { missing.push(SYM[gi] || GID[gi]); continue; }
+    rows.push({ gi, fields: line.split(",") });
+  }
+
+  if (sortCol) {
+    const ci = tbl.colIdx[sortCol];
+    rows.sort((r1, r2) => {
+      let a = r1.fields[ci], b = r2.fields[ci];
+      const na = Number(a), nb = Number(b);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return (na - nb) * sortDir;
+      a = String(a); b = String(b);
+      return a < b ? -sortDir : a > b ? sortDir : 0;
+    });
+  } else {
+    rows.sort((r1, r2) => (SYM[r1.gi] || "").localeCompare(SYM[r2.gi] || ""));
+  }
+
+  const head = ['<th class="tl nosort">Gene</th>', '<th class="tl nosort">Shape</th>']
+    .concat(cols.map((c) => {
+      const arrow = sortCol === c ? `<span class="arrow">${sortDir > 0 ? "▲" : "▼"}</span>` : "";
+      return `<th data-col="${escapeHtml(c)}" title="${escapeHtml(c)}">` +
+             `${escapeHtml(SHORT_LABEL[c] || c)}${arrow}</th>`;
+    })).join("");
+
+  const body = rows.map(({ gi, fields }) => {
+    const ok = String(fields[tbl.colIdx.fit_success]).trim().toLowerCase() === "true";
+    const cells = cols.map((c) => {
+      if (c === "fit_success") {
+        return ok ? '<td><span style="color:var(--ok)">ok</span></td>'
+                  : '<td><span class="badge-fail">no fit</span></td>';
+      }
+      const v = fmt(fields[tbl.colIdx[c]], c);
+      return `<td>${v === null ? '<span class="nil">—</span>' : escapeHtml(v)}</td>`;
+    }).join("");
+
+    return `<tr>
+      <td class="tl">
+        <div class="c-sym">${escapeHtml(SYM[gi] || "—")}</div>
+        <div class="c-id">${escapeHtml(GID[gi])}</div>
+      </td>
+      <td class="c-shape">${ok ? sparkline(fields, tbl.colIdx)
+        : '<span class="nil">no fit</span>'}</td>
+      ${cells}
+    </tr>`;
+  }).join("");
+
+  $("resultArea").innerHTML =
+    `<div class="tablewrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+
+  $("resultArea").querySelectorAll("th[data-col]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const c = th.dataset.col;
+      if (sortCol === c) sortDir = -sortDir; else { sortCol = c; sortDir = 1; }
+      render();
+    });
+  });
+
+  lastRows = { tissue, kind: currentKind, cols, rows, colIdx: tbl.colIdx };
+  $("download").disabled = rows.length === 0;
+  $("legend").hidden = rows.length === 0;
+
+  const kindLabel = manifest.table_kinds.find((k) => k.id === currentKind).label;
+  let msg = `<strong>${rows.length}</strong> gene${rows.length === 1 ? "" : "s"}` +
+            ` · <strong>${escapeHtml(tissue)}</strong> · ${escapeHtml(kindLabel)}`;
+  if (missing.length) {
+    msg += ` · <span style="color:var(--ceiling)">${missing.length} not in this table</span>`;
+  }
+  setStatus(msg);
+}
+
+/* =====================================================================
+   Gene chips
+   ===================================================================== */
+function renderChips() {
+  const box = $("tokenbox");
+  box.querySelectorAll(".chip").forEach((c) => c.remove());
+  const input = $("geneInput");
+  for (const gi of selected) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = `<span>${escapeHtml(SYM[gi] || GID[gi])}</span>`;
+    const x = document.createElement("button");
+    x.type = "button";
+    x.setAttribute("aria-label", `Remove ${SYM[gi] || GID[gi]}`);
+    x.textContent = "×";
+    x.addEventListener("click", (e) => {
+      e.stopPropagation();
+      selected = selected.filter((g) => g !== gi);
+      renderChips(); syncHash(); render();
+    });
+    chip.appendChild(x);
+    box.insertBefore(chip, input);
+  }
+  input.placeholder = selected.length
+    ? "Add another…"
+    : "Type a symbol or ENSG id — ALDH2, APP, ENSG00000111275…";
+}
+
+function addGene(gi) {
+  if (gi == null || gi < 0 || selected.includes(gi)) return;
+  selected.push(gi);
+  renderChips(); syncHash(); render();
+}
+
+function showSuggestions(list) {
+  suggestions = list;
+  activeSuggestion = list.length ? 0 : -1;
+  const box = $("suggest");
+  const q = $("geneInput").value.trim().toUpperCase();
+
+  if (!q) { box.hidden = true; $("geneInput").setAttribute("aria-expanded", "false"); return; }
+
+  if (!list.length) {
+    box.innerHTML = `<div class="s-none">No gene matches “${escapeHtml($("geneInput").value.trim())}”.</div>`;
+    box.hidden = false;
+    $("geneInput").setAttribute("aria-expanded", "true");
+    return;
+  }
+
+  const mark = (text) => {
+    const i = text.toUpperCase().indexOf(q);
+    if (i === -1) return escapeHtml(text);
+    return escapeHtml(text.slice(0, i)) +
+           '<span class="s-hit">' + escapeHtml(text.slice(i, i + q.length)) + "</span>" +
+           escapeHtml(text.slice(i + q.length));
+  };
+
+  box.innerHTML = "<ul>" + list.map((gi, n) =>
+    `<li role="option" data-gi="${gi}" aria-selected="${n === activeSuggestion}">
+       <span class="s-sym">${mark(SYM[gi] || "—")}</span>
+       <span class="s-id">${mark(GID[gi])}</span>
+     </li>`).join("") + "</ul>";
+  box.hidden = false;
+  $("geneInput").setAttribute("aria-expanded", "true");
+
+  box.querySelectorAll("li[data-gi]").forEach((li) => {
+    li.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      addGene(Number(li.dataset.gi));
+      $("geneInput").value = "";
+      showSuggestions([]);
+    });
+  });
+}
+
+function moveSuggestion(delta) {
+  if (!suggestions.length) return;
+  activeSuggestion = (activeSuggestion + delta + suggestions.length) % suggestions.length;
+  const box = $("suggest");
+  box.querySelectorAll("li").forEach((li, n) => {
+    const on = n === activeSuggestion;
+    li.setAttribute("aria-selected", on);
+    if (on) li.scrollIntoView({ block: "nearest" });
+  });
+}
+
+/* =====================================================================
+   Example set: the requested genes, resolved from the index at runtime
+   ===================================================================== */
+function loadExampleSet() {
+  const wanted = ["APP", "SNCA", "PCSK9", "SOX9", "SERPINA1",
+                  "ADH1A", "ADH1B", "ADH1C", "ADH4", "ADH5", "ADH6"];
+  const picks = [];
+  for (const sym of wanted) {
+    const i = SYMU.indexOf(sym);
+    if (i !== -1) picks.push(i);
+  }
+  for (let i = 0; i < SYMU.length; i++) {
+    if (SYMU[i].startsWith("ALDH")) picks.push(i);
+  }
+  selected = Array.from(new Set(picks));
+  renderChips(); syncHash(); render();
+}
+
+/* =====================================================================
+   CSV download
+   ===================================================================== */
+function downloadCsv() {
+  if (!lastRows || !lastRows.rows || !lastRows.rows.length) return;
+  const { tissue, kind, cols, rows, colIdx } = lastRows;
+  const head = ["tissue", "table", "gene", "genename"].concat(cols);
+  const lines = [head.join(",")];
+  for (const { gi, fields } of rows) {
+    const rec = [tissue, kind, GID[gi], SYM[gi]]
+      .concat(cols.map((c) => fields[colIdx[c]] ?? ""));
+    lines.push(rec.map((v) => {
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    }).join(","));
+  }
+  const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `fourparam_${tissue}_${kind}_${rows.length}genes.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* =====================================================================
+   Shareable URL state
+   ===================================================================== */
+let lastWrittenHash = "";
+
+function syncHash() {
+  const parts = [
+    `tissue=${encodeURIComponent($("tissue").value)}`,
+    `table=${encodeURIComponent(currentKind)}`
+  ];
+  if (selected.length) parts.push(`genes=${selected.map((i) => NOVER[i]).join(",")}`);
+  lastWrittenHash = "#" + parts.join("&");
+  history.replaceState(null, "", lastWrittenHash);
+}
+
+function readHash() {
+  const h = location.hash.replace(/^#/, "");
+  if (!h) return;
+  const p = new URLSearchParams(h);
+
+  const t = p.get("tissue");
+  if (t && manifest.tissues.includes(t)) $("tissue").value = t;
+
+  const k = p.get("table");
+  if (k && manifest.table_kinds.some((x) => x.id === k)) currentKind = k;
+
+  const g = p.get("genes");
+  if (g) {
+    selected = g.split(",").map((id) => geneIndexByNover.get(stripVersion(id.trim())))
+                .filter((i) => i !== undefined);
+  }
+}
+
+/* =====================================================================
+   Boot
+   ===================================================================== */
+function buildKindGroup() {
+  const group = $("kindGroup");
+  group.innerHTML = "";
+  for (const spec of manifest.table_kinds) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = spec.id === "raw" ? "Raw" : "Excluded ≤ −1";
+    b.title = spec.label;
+    b.setAttribute("aria-pressed", spec.id === currentKind);
+    b.addEventListener("click", () => {
+      if (currentKind === spec.id) return;
+      currentKind = spec.id;
+      buildKindGroup(); syncHash(); render();
+    });
+    group.appendChild(b);
+  }
+}
+
+async function boot() {
+  // Theme toggle, remembered per browser.
+  const saved = localStorage.getItem("tb-theme");
+  if (saved) document.documentElement.dataset.theme = saved;
+  $("themeToggle").addEventListener("click", () => {
+    const cur = document.documentElement.dataset.theme;
+    const isDark = cur ? cur === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
+    const next = isDark ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("tb-theme", next);
+  });
+
+  try {
+    manifest = await (await fetch(MANIFEST_URL)).json();
+  } catch (err) {
+    setStatus('<strong style="color:var(--ceiling)">Could not load manifest.json</strong>');
+    return;
+  }
+
+  $("statTissues").textContent = manifest.tissues.length;
+  $("statTables").textContent = manifest.tissues.length * manifest.table_kinds.length;
+  $("genMeta").textContent = `tables generated ${manifest.generated_utc.slice(0, 10)}`;
+
+  const sel = $("tissue");
+  sel.innerHTML = manifest.tissues.map((t) =>
+    `<option value="${escapeHtml(t)}">${escapeHtml(t.replace(/_/g, " "))}</option>`).join("");
+  const liver = manifest.tissues.indexOf("liver");
+  sel.selectedIndex = liver === -1 ? 0 : liver;
+
+  try {
+    await loadGeneIndex();
+  } catch (err) {
+    setStatus('<strong style="color:var(--ceiling)">Could not load genes.tsv</strong>');
+    return;
+  }
+  $("statGenes").textContent = GID.length.toLocaleString();
+
+  readHash();
+  buildKindGroup();
+  renderChips();
+
+  // --- wiring ---
+  sel.addEventListener("change", () => { syncHash(); render(); });
+
+  $("tokenbox").addEventListener("click", () => $("geneInput").focus());
+
+  let debounce = null;
+  $("geneInput").addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => showSuggestions(searchGenes($("geneInput").value)), 90);
+  });
+
+  $("geneInput").addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); moveSuggestion(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); moveSuggestion(-1); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      if (activeSuggestion >= 0 && suggestions[activeSuggestion] !== undefined) {
+        addGene(suggestions[activeSuggestion]);
+        $("geneInput").value = "";
+        showSuggestions([]);
+      }
+    } else if (e.key === "Escape") { showSuggestions([]); }
+    else if (e.key === "Backspace" && !$("geneInput").value && selected.length) {
+      selected.pop(); renderChips(); syncHash(); render();
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!$("suggest").contains(e.target) && e.target !== $("geneInput")) {
+      $("suggest").hidden = true;
+      $("geneInput").setAttribute("aria-expanded", "false");
+    }
+  });
+
+  $("clearGenes").addEventListener("click", () => {
+    selected = []; sortCol = null;
+    renderChips(); syncHash(); render();
+  });
+  $("loadExample").addEventListener("click", loadExampleSet);
+  $("download").addEventListener("click", downloadCsv);
+
+  $("toggleCols").addEventListener("click", () => {
+    showAllCols = !showAllCols;
+    $("toggleCols").setAttribute("aria-pressed", showAllCols);
+    $("toggleCols").textContent = showAllCols ? "Fewer columns" : "All columns";
+    render();
+  });
+
+  // A pasted link while the page is already open only changes the hash, which
+  // does not reload the document — pick the new state up explicitly. Hashes we
+  // wrote ourselves are ignored so this never fights with syncHash().
+  window.addEventListener("hashchange", () => {
+    if (location.hash === lastWrittenHash) return;
+    readHash();
+    buildKindGroup();
+    renderChips();
+    render();
+  });
+
+  $("copyLink").addEventListener("click", async () => {
+    syncHash();
+    try {
+      await navigator.clipboard.writeText(location.href);
+      const b = $("copyLink"); const old = b.textContent;
+      b.textContent = "Link copied";
+      setTimeout(() => { b.textContent = old; }, 1600);
+    } catch { /* clipboard blocked; the URL bar already holds the state */ }
+  });
+
+  render();
+}
+
+boot();
+</script>
+</body>
+</html>

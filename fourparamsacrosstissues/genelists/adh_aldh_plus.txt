@@ -1,0 +1,24 @@
+# Requested gene set, 2026-07-29.
+#
+# Ensembl ids are quoted exactly as supplied. Their .NN version suffixes are
+# from an older GTEx annotation and do NOT match these tables (e.g. APP is
+# .20 here but .22 in the data). extract_genes.py ignores versions when
+# matching, so these resolve correctly regardless.
+
+ENSG00000142192.20    # APP
+ENSG00000145335.15    # SNCA
+ENSG00000169174.10    # PCSK9
+ENSG00000125398.5     # SOX9
+ENSG00000197249.13    # SERPINA1
+
+# alcohol dehydrogenases (explicitly requested)
+ENSG00000198099.8     # ADH4
+ENSG00000187758.7     # ADH1A
+ENSG00000197894.10    # ADH5
+ENSG00000172955.17    # ADH6
+ENSG00000196616.13    # ADH1B
+ENSG00000248144.5     # ADH1C
+
+# aldehyde dehydrogenases: ALDH2 explicitly, plus "any other ALDH* gene"
+ENSG00000111275.12    # ALDH2
+ALDH*

@@ -28,12 +28,19 @@ fourparam/                    <- all the code (kept separate from the data)
   run_cluster.py              <- same 100 tables, spread over several machines
   convert_gct_to_log2.py      <- (reference) raw GTEx GCT -> log2(TPM+1)-1 CSV
   download_data.py            <- (reference) how data/ was produced
+  extract_genes.py            <- pull a gene set out of the tables -> one tidy CSV
+  build_gui_data.py           <- regenerate the browser GUI's static inputs
 data/                         <- the 50 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
 outputs/                      <- the generated tables go here (starts empty)
   v11_log2_<tissue>_fourparam.csv                              <- raw
   v11_log2_<tissue>_fourparam_excluded_at_or_below_-1.csv      <- excluded <= -1
+genelists/                    <- reusable gene sets, one token per line
+results/                      <- extracted gene subsets (output of extract_genes.py)
 ```
+
+At the **repo root** (one level up) `docs/` holds the GitHub Pages GUI — see
+"The browser GUI" below.
 
 Requires Python with `numpy`, `pandas`, `scipy` (and `matplotlib`, imported by
 `bhuvanfitter.py`).
@@ -171,6 +178,57 @@ Reflective) minimising the residual sum of squares; the truncation ceiling
 `x_max` defaults to the gene's observed max. The `mean/std/skew/kurt` are plain
 summary statistics of the (post-exclusion) values and are reported regardless of
 whether the fit converged (NaN on a `fit_success=False` row).
+
+## Extracting a gene set (`extract_genes.py`)
+
+Pulls the rows for a gene set out of all 100 tables into one tidy CSV, one row
+per `gene × tissue × table`, carrying every statistic column:
+
+```bash
+cd fourparam
+python extract_genes.py --genes APP SNCA "ALDH*" -o ../results/genes.csv
+python extract_genes.py --genes-file ../genelists/adh_aldh_plus.txt -o ../results/out.csv
+python extract_genes.py --genes "ADH*" --tissues liver,lung --table raw -o out.csv
+```
+
+Tokens may be gene symbols, Ensembl ids, or globs (matched against symbols first,
+then ids). **Ensembl versions are always stripped before matching** — GTEx bumps
+the `.NN` suffix between releases, so an id list written against an older
+annotation (`ENSG00000142192.20`) still resolves against these tables (`.22`).
+Matching the full versioned string would silently return nothing, which is the
+single easiest way to get a wrong answer here.
+
+Each query token is reported as resolved (with what it hit) or `NOT FOUND`, so a
+typo or an absent symbol is loud rather than quietly empty.
+
+## The browser GUI (`docs/`, GitHub Pages)
+
+`docs/index.html` is a self-contained page published at
+<https://bhuvankanna.github.io/bhuvanlab/>: choose a tissue, choose raw vs
+excluded ≤ −1, then type-ahead search genes by symbol or Ensembl id and select as
+many as you want. Each row renders that gene's own fitted curve with the
+truncation ceiling marked.
+
+**It stores no copy of the tables.** It fetches the real CSV from
+`raw.githubusercontent.com` at runtime (~9 MB gzipped per table, cached for the
+session), which is why it cannot drift out of sync with `outputs/` and why the
+repo does not carry a duplicated GUI dataset. `raw.githubusercontent.com` serves
+`Access-Control-Allow-Origin: *`, so the cross-origin fetch works.
+
+Pages publishes **only `docs/`** (branch `main`, folder `/docs`). That matters:
+the Pages site size limit is 1 GB and `outputs/` alone is 1.94 GB, so publishing
+the whole repo would fail.
+
+Regenerate its two static inputs after adding tissues or changing columns:
+
+```bash
+cd fourparam
+python build_gui_data.py     # writes ../../docs/manifest.json and ../../docs/genes.tsv
+```
+
+`genes.tsv` is built from a single table because the gene set is byte-identical
+across all 100; `build_gui_data.py` verifies that and aborts if it ever stops
+being true.
 
 ## Keep this file current
 
