@@ -176,3 +176,43 @@ whether the fit converged (NaN on a `fit_success=False` row).
 
 If you change the code, columns, filters, or layout, update this file in the same
 change so it always describes the repo accurately.
+
+## Push changes to GitHub as we work
+
+This folder is the `fourparamsacrosstissues/` subdirectory of the GitHub repo
+**`BhuvanKanna/bhuvanlab`**. The git root is the **parent** directory
+(`bhuvanlab-main/bhuvanlab-main/`), not this folder — run git from there, or with
+`git -C ..`.
+
+**After completing any change to files here, commit and push it** without waiting
+to be asked:
+
+```bash
+cd ..                      # the git root
+git add -A                 # stages only altered/new files
+git commit -m "<what changed and why>"
+git push origin main
+```
+
+Write a real commit message describing the change. Batch one logical change per
+commit rather than committing every intermediate edit. If a task is still
+in progress and the tree is in a broken state, finish it first, then push.
+
+### Things that will bite you if you don't know them
+
+- **`data/*.csv.gz` are Git LFS pointers, not real files.** The repo is
+  configured `--skip-smudge` with `lfs.fetchexclude=*`, so those 134-byte
+  pointers are correct and must stay that way. ~5.5 GB of LFS payload is
+  deliberately not downloaded. Never "fix" them. To get one on purpose:
+  `git lfs pull --include="fourparamsacrosstissues/data/v11_log2_liver.csv.gz"`.
+- **This is a blobless partial clone** (`--filter=blob:none`), so `.git` is a few
+  hundred KB rather than 813 MB. Old file contents are fetched on demand; that is
+  intended. `git fetch --refetch origin main` backfills if ever needed.
+- **`outputs/` is plain git, not LFS, on purpose.** These CSVs compress 2.46× in
+  git (1.94 GB → ~788 MB); LFS stores blobs uncompressed and would cost more.
+- **A full 100-table regeneration is a ~788 MB push.** That is slow on a home
+  connection and permanently adds that much to repo history. Before pushing a
+  regeneration of many tissues, say so and confirm — don't push it silently. A
+  single-tissue regeneration (~8 MB compressed) is fine to push normally.
+- **Never commit while a generation run is still writing** — a partially written
+  CSV looks like a valid file. Wait for the run to finish.
