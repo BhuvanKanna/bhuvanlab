@@ -110,5 +110,3 @@ git pull --rebase
 .\tools\install-autosync.ps1 -Uninstall
 .\tools\sync-watch.ps1 -QuietSeconds 10
 ```
-
-<!-- watcher test 16:35:47 -->

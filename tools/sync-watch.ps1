@@ -55,23 +55,37 @@ function Write-Log {
     Write-Host $line -ForegroundColor $color
 }
 
-# Paths we never want to trigger a sync. Checked against the repo-relative path.
-$IgnorePatterns = @(
-    '\.git\',
-    '\.sync\',
-    '__pycache__',
-    '.pyc',
-    '.tmp',
-    '.swp',
-    '~'
-)
+# Directories whose contents must never trigger a sync. Matched per path
+# SEGMENT, not as a substring: committing writes to .git and logging writes to
+# .sync, and FileSystemWatcher reports those as directory-level events whose
+# path is "...\.git" with no trailing separator. A substring test for "\.git\"
+# misses that and the watcher then retriggers itself forever.
+$IgnoredSegments = @('.git', '.sync', '__pycache__', '.venv', 'venv', 'env',
+                     'fourparam-venv', '.vscode', '.idea')
+
+$IgnoredExtensions = @('.pyc', '.pyo', '.tmp', '.swp', '.log')
 
 function Test-Relevant {
     param([string]$FullPath)
     if ([string]::IsNullOrWhiteSpace($FullPath)) { return $false }
-    foreach ($pattern in $IgnorePatterns) {
-        if ($FullPath -like ('*' + $pattern + '*')) { return $false }
+
+    $rel = $FullPath
+    if ($FullPath.StartsWith($RepoRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        $rel = $FullPath.Substring($RepoRoot.Length)
     }
+    $rel = $rel.Trim([char]'\', [char]'/')
+
+    # The repo root directory itself -- fires whenever any subdirectory changes.
+    if ($rel -eq '') { return $false }
+
+    foreach ($segment in ($rel -split '[\\/]+')) {
+        if ($IgnoredSegments -contains $segment) { return $false }
+    }
+    foreach ($ext in $IgnoredExtensions) {
+        if ($rel.EndsWith($ext, [StringComparison]::OrdinalIgnoreCase)) { return $false }
+    }
+    if ($rel.EndsWith('~')) { return $false }
+
     return $true
 }
 
@@ -93,6 +107,30 @@ $watcher.EnableRaisingEvents = $true
 
 Write-Log "Watching $RepoRoot" 'WATCH'
 Write-Log "Quiet period ${QuietSeconds}s | size guard ${ThresholdMB} MB | Ctrl+C to stop" 'WATCH'
+
+# Reconcile once at startup. A FileSystemWatcher only reports events that happen
+# while it is live, so anything edited before logon -- or while the watcher was
+# stopped -- would otherwise sit uncommitted forever, invisible to the watcher.
+function Invoke-Sync {
+    param([string]$Reason)
+    try {
+        $syncArgs = @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $SyncNow,
+            '-ThresholdMB', $ThresholdMB, '-Quiet'
+        )
+        if ($Force) { $syncArgs += '-Force' }
+        & powershell.exe @syncArgs
+        # sync-now.ps1 logs its own outcome; 3 = intentionally held.
+        if ($LASTEXITCODE -eq 3) {
+            Write-Log "Sync held (see log above). Release: tools\sync-now.ps1 -Force" 'WATCH'
+        }
+    } catch {
+        Write-Log ("Sync run failed (" + $Reason + "): " + $_.Exception.Message) 'ERROR'
+    }
+}
+
+Write-Log "Startup reconciliation ..." 'WATCH'
+Invoke-Sync 'startup'
 
 $pending    = $false
 $lastChange = Get-Date
@@ -120,20 +158,7 @@ try {
         # Fire once the writes have stopped for long enough.
         if ($pending -and ((Get-Date) - $lastChange).TotalSeconds -ge $QuietSeconds) {
             $pending = $false
-            try {
-                $syncArgs = @(
-                    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $SyncNow,
-                    '-ThresholdMB', $ThresholdMB, '-Quiet'
-                )
-                if ($Force) { $syncArgs += '-Force' }
-                & powershell.exe @syncArgs
-                # sync-now.ps1 logs its own outcome; 3 = intentionally held.
-                if ($LASTEXITCODE -eq 3) {
-                    Write-Log "Sync held (see log above). Release: tools\sync-now.ps1 -Force" 'WATCH'
-                }
-            } catch {
-                Write-Log ("Sync run failed: " + $_.Exception.Message) 'ERROR'
-            }
+            Invoke-Sync 'change'
         }
 
         Start-Sleep -Seconds 3
