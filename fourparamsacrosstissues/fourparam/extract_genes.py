@@ -21,7 +21,7 @@ that is absent from the annotation is loud rather than silently empty.
 
 Examples
 --------
-Explicit genes plus every ALDH, all 50 tissues, both tables::
+Explicit genes plus every ALDH, all 54 tissues, both tables::
 
     python extract_genes.py --genes APP SNCA PCSK9 "ALDH*" -o ../results/genes.csv
 

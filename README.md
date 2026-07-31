@@ -1,7 +1,7 @@
 # bhuvanlab
 
 Distribution-shape and truncation-index analysis of human gene expression across
-the **50 GTEx v11 tissues**.
+the **54 GTEx v11 tissues**.
 
 ## → [Open the Truncation Browser](https://bhuvankanna.github.io/bhuvanlab/)
 
@@ -43,7 +43,7 @@ The full column list is in
 
 ## Extracting genes at the command line
 
-`extract_genes.py` pulls a gene set out of all 100 tables into one tidy CSV
+`extract_genes.py` pulls a gene set out of all 108 tables into one tidy CSV
 (`tissue × table × gene`, every statistic column):
 
 ```bash
@@ -67,10 +67,10 @@ than silently returning nothing.
 
 [`genelists/adh_aldh_plus.txt`](fourparamsacrosstissues/genelists/adh_aldh_plus.txt)
 holds APP, SNCA, PCSK9, SOX9, SERPINA1, the six requested alcohol dehydrogenases,
-and `ALDH*`. That resolves to **38 genes**, giving 38 × 50 tissues × 2 tables =
-**3,800 rows** in
+and `ALDH*`. That resolves to **38 genes**, giving 38 × 54 tissues × 2 tables =
+**4,104 rows** in
 [`results/adh_aldh_plus_all_tissues.csv`](fourparamsacrosstissues/results/adh_aldh_plus_all_tissues.csv)
-(3,708 with a converged fit).
+(4,007 with a converged fit).
 
 > **Note on Ensembl versions.** The requested ids came from an older GTEx
 > annotation and do **not** match these tables verbatim — APP was given as
@@ -88,16 +88,16 @@ docs/                         <- the GitHub Pages site (the Truncation Browser)
   genes.tsv                   <- gene index for type-ahead
 fourparamsacrosstissues/
   CLAUDE.md                   <- full spec: columns, filters, how tables are made
-  data/                       <- 50 input matrices (Git LFS pointers, see below)
+  data/                       <- 54 input matrices (Git LFS pointers, see below)
   fourparam/                  <- the code
     bhuvanfitter.py           <- the fit library; single source of truth
     generate_fourparam.py     <- one table from one matrix
-    generate_all.py           <- all 100 tables
+    generate_all.py           <- all 108 tables
     run_cluster.py            <- the same, spread over several machines
     extract_genes.py          <- pull a gene set out of the tables
     build_gui_data.py         <- regenerate docs/manifest.json + docs/genes.tsv
   genelists/                  <- reusable gene sets
-  outputs/                    <- the 100 generated tables
+  outputs/                    <- the 108 generated tables
   results/                    <- extracted gene subsets
 ```
 
@@ -107,7 +107,7 @@ Requires Python with `numpy`, `pandas`, `scipy`, `matplotlib`.
 
 ```bash
 cd fourparamsacrosstissues/fourparam
-python generate_all.py          # all 100 tables; resumable, skips existing
+python generate_all.py          # all 108 tables; resumable, skips existing
 python build_gui_data.py        # refresh the GUI's manifest + gene index
 ```
 
@@ -116,7 +116,7 @@ writing the index — the GUI depends on that being true.
 
 ## Notes on the data
 
-- **`data/*.csv.gz` are Git LFS pointers.** The 50 matrices are ~5.5 GB of LFS
+- **`data/*.csv.gz` are Git LFS pointers.** The 54 matrices are ~5.7 GB of LFS
   payload and are not downloaded by default. Fetch one deliberately:
   ```bash
   git lfs pull --include="fourparamsacrosstissues/data/v11_log2_liver.csv.gz"
@@ -125,7 +125,7 @@ writing the index — the GUI depends on that being true.
   value is `≥ −1`. That is what the "excluded ≤ −1" table drops: the
   zero-expression samples, and nothing else.
 - `outputs/` is tracked as ordinary git rather than LFS on purpose — these CSVs
-  compress 2.46× in git (1.94 GB → ~788 MB), whereas LFS stores blobs
+  compress 2.46× in git (2.05 GB → ~852 MB), whereas LFS stores blobs
   uncompressed.
 - Tables keep **every** gene, including failures (`fit_success = False`, metrics
   `NaN`). Analysis-time filters such as `fit_success == True`,

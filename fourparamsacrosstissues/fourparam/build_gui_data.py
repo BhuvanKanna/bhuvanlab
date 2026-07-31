@@ -10,7 +10,7 @@ data. All this script produces is:
   docs/genes.tsv      "<versioned ensembl id>\\t<symbol>" per line, for typeahead
 
 ``genes.tsv`` is built from a single table because the gene set is byte-identical
-across all 100 of them (every gene is written to every table, even when its fit
+across all 108 of them (every gene is written to every table, even when its fit
 fails). The script asserts that rather than trusting it.
 
 Run after adding tissues or changing the table columns::

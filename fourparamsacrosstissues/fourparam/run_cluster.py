@@ -3,7 +3,7 @@
 run_cluster.py
 
 Cluster driver: generate the same 100 fourparam tables as ``generate_all.py``,
-but spread the 50 tissues across several machines instead of one.
+but spread the 54 tissues across several machines instead of one.
 
 It does **not** reimplement any of the science. Each remote node runs this
 repo's own ``generate_fourparam.py`` unchanged (once per threshold), so the

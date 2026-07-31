@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Truncation Browser — GTEx v11 expression distribution shape</title>
-<meta name="description" content="Browse 4-parameter Gaussian fits and truncation indices for 74,628 genes across 50 GTEx v11 human tissues.">
+<meta name="description" content="Browse 4-parameter Gaussian fits and truncation indices for 74,628 genes across 54 GTEx v11 human tissues.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -527,7 +527,7 @@ async function fetchTextWithProgress(url, onBytes) {
 }
 
 /* =====================================================================
-   Gene index (shared by all 100 tables — the gene set is identical)
+   Gene index (shared by all 108 tables — the gene set is identical)
    ===================================================================== */
 async function loadGeneIndex() {
   const text = await fetchTextWithProgress(GENES_URL, (b) =>

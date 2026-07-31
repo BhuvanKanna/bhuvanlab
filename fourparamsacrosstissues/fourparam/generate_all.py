@@ -4,7 +4,7 @@ generate_all.py
 
 Driver that generates **both** fourparam tables (raw and excluded <= -1) for
 **every** converted tissue matrix in ``../data/``, writing all of them to
-``../outputs/``. With 50 tissue files this produces 100 tables.
+``../outputs/``. With 54 tissue files this produces 108 tables.
 
 For each ``../data/v11_log2_<tissue>.csv.gz`` it runs ``generate_fourparam.py``
 twice:

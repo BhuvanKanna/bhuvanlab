@@ -5,7 +5,7 @@ no prior context — everything you need is here or in `fourparam/`.
 
 ## What this project is
 
-For each of the **50 GTEx v11 human tissues**, we characterise the shape of every
+For each of the **54 GTEx v11 human tissues**, we characterise the shape of every
 gene's expression-level distribution across the population of donors. Per gene we
 fit a **4-parameter Gaussian** to its 40-bin expression histogram and compute a
 set of shape / truncation metrics (see "Generated statistics" below). The headline
@@ -24,13 +24,13 @@ CLAUDE.md                     <- this file
 fourparam/                    <- all the code (kept separate from the data)
   bhuvanfitter.py             <- the fit library (4-param Gaussian + metrics); single source of truth
   generate_fourparam.py       <- generate ONE fourparam table from ONE matrix (raw or excluded)
-  generate_all.py             <- driver: both tables for every tissue -> 100 tables
-  run_cluster.py              <- same 100 tables, spread over several machines
+  generate_all.py             <- driver: both tables for every tissue -> 108 tables
+  run_cluster.py              <- same 108 tables, spread over several machines
   convert_gct_to_log2.py      <- (reference) raw GTEx GCT -> log2(TPM+1)-1 CSV
   download_data.py            <- (reference) how data/ was produced
   extract_genes.py            <- pull a gene set out of the tables -> one tidy CSV
   build_gui_data.py           <- regenerate the browser GUI's static inputs
-data/                         <- the 50 input matrices (nothing else)
+data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
 outputs/                      <- the generated tables go here (starts empty)
   v11_log2_<tissue>_fourparam.csv                              <- raw
@@ -60,14 +60,14 @@ Values are already **`log2(TPM + 1) - 1`** transformed (linear TPM → log2). Un
 this transform **TPM = 0 maps to exactly `-1`** (the floor, no clamping) and every
 value is `>= -1`. Integer TPMs 0,1,2,3,… → −1, 0, 0.585, 1, …
 
-## What to do (produces 100 tables)
+## What to do (produces 108 tables)
 
-Generate **two** fourparam tables **per tissue** — 50 tissues × 2 = **100 tables**
+Generate **two** fourparam tables **per tissue** — 54 tissues × 2 = **108 tables**
 in `outputs/`:
 
 ```bash
 cd fourparam
-python generate_all.py            # both tables for all 50 tissues (skips any already written)
+python generate_all.py            # both tables for all 54 tissues (skips any already written)
 ```
 
 `generate_all.py` is resumable — it skips tables that already exist, so if it is
@@ -77,7 +77,7 @@ interrupted just run it again. Tune `--jobs N` for parallelism (default 8);
 ### Running it across several machines (much faster)
 
 The work is ~74.6k curve fits per table and ~7.5M in total, which is hours on
-one box. `run_cluster.py` spreads the 50 tissues over several machines:
+one box. `run_cluster.py` spreads the 54 tissues over several machines:
 
 ```bash
 cd fourparam
@@ -100,6 +100,14 @@ machine, with no copying. Each remote node needs a `~/fourparam-venv` holding
 `numpy`, `pandas`, `scipy` and `matplotlib` — a preflight check imports
 `bhuvanfitter` and runs a real fit on every node, and drops any node that fails
 instead of letting it die mid-run.
+
+To fetch a tissue matrix that is missing from `data/` (the converted
+`log2(TPM+1)−1` CSV is derived from GTEx's raw GCT):
+
+```bash
+cd fourparam
+python download_data.py --tissues thyroid,whole_blood   # omit --tissues for all 54
+```
 
 To fit one tissue by hand:
 
@@ -181,7 +189,7 @@ whether the fit converged (NaN on a `fit_success=False` row).
 
 ## Extracting a gene set (`extract_genes.py`)
 
-Pulls the rows for a gene set out of all 100 tables into one tidy CSV, one row
+Pulls the rows for a gene set out of all 108 tables into one tidy CSV, one row
 per `gene × tissue × table`, carrying every statistic column:
 
 ```bash
@@ -216,7 +224,7 @@ repo does not carry a duplicated GUI dataset. `raw.githubusercontent.com` serves
 `Access-Control-Allow-Origin: *`, so the cross-origin fetch works.
 
 Pages publishes **only `docs/`** (branch `main`, folder `/docs`). That matters:
-the Pages site size limit is 1 GB and `outputs/` alone is 1.94 GB, so publishing
+the Pages site size limit is 1 GB and `outputs/` alone is 2.05 GB, so publishing
 the whole repo would fail.
 
 Regenerate its two static inputs after adding tissues or changing columns:
@@ -227,7 +235,7 @@ python build_gui_data.py     # writes ../../docs/manifest.json and ../../docs/ge
 ```
 
 `genes.tsv` is built from a single table because the gene set is byte-identical
-across all 100; `build_gui_data.py` verifies that and aborts if it ever stops
+across all 108; `build_gui_data.py` verifies that and aborts if it ever stops
 being true.
 
 ## Keep this file current
@@ -260,15 +268,18 @@ in progress and the tree is in a broken state, finish it first, then push.
 
 - **`data/*.csv.gz` are Git LFS pointers, not real files.** The repo is
   configured `--skip-smudge` with `lfs.fetchexclude=*`, so those 134-byte
-  pointers are correct and must stay that way. ~5.5 GB of LFS payload is
+  pointers are correct and must stay that way. ~5.7 GB of LFS payload is
   deliberately not downloaded. Never "fix" them. To get one on purpose:
   `git lfs pull --include="fourparamsacrosstissues/data/v11_log2_liver.csv.gz"`.
+  `download_data.py` recognises pointers and leaves them alone; without that
+  guard its gzip-integrity resume check would call every pointer corrupt and
+  re-download the lot.
 - **This is a blobless partial clone** (`--filter=blob:none`), so `.git` is a few
   hundred KB rather than 813 MB. Old file contents are fetched on demand; that is
   intended. `git fetch --refetch origin main` backfills if ever needed.
 - **`outputs/` is plain git, not LFS, on purpose.** These CSVs compress 2.46× in
-  git (1.94 GB → ~788 MB); LFS stores blobs uncompressed and would cost more.
-- **A full 100-table regeneration is a ~788 MB push.** That is slow on a home
+  git (2.05 GB → ~852 MB); LFS stores blobs uncompressed and would cost more.
+- **A full 108-table regeneration is a ~852 MB push.** That is slow on a home
   connection and permanently adds that much to repo history. Before pushing a
   regeneration of many tissues, say so and confirm — don't push it silently. A
   single-tissue regeneration (~8 MB compressed) is fine to push normally.

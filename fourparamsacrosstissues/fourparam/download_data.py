@@ -2,26 +2,44 @@
 """
 download_data.py
 
-Download all 50 GTEx **v11 Gene-TPMs-by-tissue** matrices and convert each to a
+Download all 54 GTEx **v11 Gene-TPMs-by-tissue** matrices and convert each to a
 ``log2(TPM + 1) - 1`` CSV in ``../data/``. Resumable: a tissue whose converted
 file already exists is skipped, and the raw ``.gct.gz`` is deleted after a
-successful conversion, so ``../data/`` ends up holding **only** the 50 converted
+successful conversion, so ``../data/`` ends up holding **only** the 54 converted
 matrices, named ``v11_log2_<tissue>.csv.gz``.
 
 Source: https://storage.googleapis.com/adult-gtex/bulk-gex/v11/rna-seq/tpms-by-tissue/
 
 Usage
 -----
-    python download_data.py
+    python download_data.py                                  # all 54
+    python download_data.py --tissues thyroid,whole_blood    # just these
 """
 from __future__ import annotations
 
+import argparse
 import gzip
 import subprocess
 import sys
 from pathlib import Path
 
 from convert_gct_to_log2 import convert
+
+LFS_POINTER_MAGIC = b"version https://git-lfs.github.com/spec/v1"
+
+
+def _is_lfs_pointer(path: Path) -> bool:
+    """True if `path` is a Git LFS pointer rather than the payload it stands for.
+
+    ``data/`` is LFS-tracked and this repo is configured not to download the
+    payload, so these ~134-byte text stubs are the normal on-disk state. They are
+    not gzip, so `_valid_gz` would call them corrupt and this script would delete
+    them and re-fetch gigabytes. Treat them as present instead."""
+    try:
+        with path.open("rb") as fh:
+            return fh.read(len(LFS_POINTER_MAGIC)) == LFS_POINTER_MAGIC
+    except OSError:
+        return False
 
 
 def _valid_gz(path: Path) -> bool:
@@ -58,28 +76,48 @@ TISSUES = [
     "minor_salivary_gland", "muscle_skeletal", "nerve_tibial", "ovary",
     "pancreas", "pituitary", "prostate", "skin_not_sun_exposed_suprapubic",
     "skin_sun_exposed_lower_leg", "small_intestine_terminal_ileum", "spleen",
-    "stomach", "testis",
+    "stomach", "testis", "thyroid", "uterus", "vagina", "whole_blood",
 ]
 
 
 def main() -> None:
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--tissues", default=None,
+                   help="Comma-separated subset of TISSUES to fetch "
+                        "(default: all 54).")
+    args = p.parse_args()
+
+    tissues = TISSUES
+    if args.tissues:
+        wanted = [t.strip() for t in args.tissues.split(",") if t.strip()]
+        unknown = [t for t in wanted if t not in TISSUES]
+        if unknown:
+            raise SystemExit(f"Unknown tissue(s): {', '.join(unknown)}")
+        tissues = wanted
+
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     done = 0
-    for i, tissue in enumerate(TISSUES, 1):
+    for i, tissue in enumerate(tissues, 1):
         out = DATA_DIR / f"v11_log2_{tissue}.csv.gz"
+        if out.exists() and _is_lfs_pointer(out):
+            print(f"[{i}/{len(tissues)}] skip (LFS pointer): {out.name}",
+                  flush=True)
+            done += 1
+            continue
         if out.exists() and _valid_gz(out):
-            print(f"[{i}/{len(TISSUES)}] skip (valid): {out.name}", flush=True)
+            print(f"[{i}/{len(tissues)}] skip (valid): {out.name}", flush=True)
             done += 1
             continue
         if out.exists():   # present but truncated/corrupt -> discard and redo
-            print(f"[{i}/{len(TISSUES)}] corrupt, re-fetching: {out.name}",
+            print(f"[{i}/{len(tissues)}] corrupt, re-fetching: {out.name}",
                   flush=True)
             out.unlink()
 
         fname = f"gene_tpm_adult_gtex_v11_{tissue}.gct.gz"
         url = BASE + fname
         raw = DATA_DIR / fname
-        print(f"[{i}/{len(TISSUES)}] downloading {fname} ...", flush=True)
+        print(f"[{i}/{len(tissues)}] downloading {fname} ...", flush=True)
         rc = subprocess.call(
             ["curl", "-fsSL", "-o", str(raw), url])
         if rc != 0 or not raw.exists():
@@ -100,9 +138,9 @@ def main() -> None:
         raw.unlink(missing_ok=True)   # keep only the converted file
         done += 1
 
-    print(f"Done. {done}/{len(TISSUES)} tissues present in {DATA_DIR}.",
+    print(f"Done. {done}/{len(tissues)} tissues present in {DATA_DIR}.",
           flush=True)
-    if done != len(TISSUES):
+    if done != len(tissues):
         sys.exit(1)
 
 
