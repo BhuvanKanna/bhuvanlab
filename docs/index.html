@@ -341,6 +341,113 @@ footer p { margin: 0 0 7px; max-width: 78ch; }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+
+/* ==========================================================================
+   Tabs
+   ========================================================================== */
+.tabs {
+  display: flex; gap: 4px; margin-bottom: 16px;
+  border-bottom: 1px solid var(--rule);
+}
+.tabs button {
+  font-family: var(--mono); font-size: .74rem; font-weight: 500;
+  letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); background: transparent;
+  border: 0; border-bottom: 2px solid transparent;
+  padding: 10px 14px; margin-bottom: -1px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.count-pill {
+  font-size: .68rem; font-weight: 600; letter-spacing: 0;
+  background: var(--accent-wash); color: var(--accent);
+  border-radius: 9px; padding: 1px 7px; min-width: 20px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.tabs button[aria-selected="true"] .count-pill { background: var(--accent); color: var(--accent-ink); }
+.tabpanel[hidden] { display: none; }
+
+/* ---------- tissue token input (mirrors the gene one) ---------- */
+.tissue-field { grid-column: 1 / -1; position: relative; }
+#tissueInput {
+  flex: 1 1 150px; min-width: 130px; border: 0; background: transparent;
+  font-family: var(--sans); font-size: .9rem; color: var(--ink);
+  padding: 6px 4px; outline: 0;
+}
+#tissueInput::placeholder { color: var(--muted); }
+.chip.t { background: var(--sunken); color: var(--ink); border-color: var(--rule); }
+
+/* ---------- load row ---------- */
+.loadrow {
+  display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center;
+  margin-top: 16px; padding-top: 15px; border-top: 1px solid var(--rule-soft);
+}
+.btn.primary {
+  background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+  font-weight: 600;
+}
+.btn.primary:hover:not(:disabled) { filter: brightness(1.08); color: var(--accent-ink); }
+.btn.primary:disabled { opacity: .4; }
+.loadnote { font-family: var(--mono); font-size: .74rem; color: var(--muted); }
+.loadnote strong { color: var(--ink); font-weight: 600; }
+.loadnote .heavy { color: var(--ceiling); }
+
+/* ---------- banner ---------- */
+.banner {
+  display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+  padding: 10px 16px; font-size: .82rem;
+  background: var(--accent-wash); color: var(--ink);
+  border-bottom: 1px solid var(--rule-soft);
+}
+.banner[hidden] { display: none; }
+.banner .btn { padding: 4px 9px; font-size: .78rem; }
+
+/* ---------- select column ---------- */
+.checkcell { width: 38px; }
+input[type="checkbox"] {
+  width: 15px; height: 15px; margin: 0; cursor: pointer;
+  accent-color: var(--accent); vertical-align: middle;
+}
+/* With a select column present, pin BOTH the checkbox and the gene identity;
+   the generic :first-child rules above would otherwise pin only the checkbox
+   and hang the divider on the wrong edge. */
+table.t-sel thead th.col-check, table.t-sel tbody td.col-check {
+  position: sticky; left: 0; text-align: left;
+  padding-left: 13px; padding-right: 5px;
+}
+table.t-sel thead th.col-check { z-index: 4; cursor: default; }
+table.t-sel tbody td.col-check { z-index: 1; }
+table.t-sel thead th.col-check::after, table.t-sel tbody td.col-check::after { display: none; }
+table.t-sel thead th.col-gene, table.t-sel tbody td.col-gene {
+  position: sticky; left: 38px; text-align: left;
+}
+table.t-sel thead th.col-gene { z-index: 4; }
+table.t-sel tbody td.col-gene { z-index: 1; }
+table.t-sel thead th.col-gene::after, table.t-sel tbody td.col-gene::after {
+  content: ""; position: absolute; top: 0; right: 0; bottom: -1px;
+  width: 1px; background: var(--rule-soft);
+}
+tbody tr.picked td { background: var(--accent-wash); }
+tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.98); }
+@media (max-width: 620px) {
+  table.t-sel thead th.col-check, table.t-sel tbody td.col-check,
+  table.t-sel thead th.col-gene, table.t-sel tbody td.col-gene { position: static; }
+}
+.c-tissue { font-size: .78rem; }
+
+/* ---------- working set ---------- */
+.minifilter {
+  font-family: var(--sans); font-size: .8rem; color: var(--ink);
+  background: var(--sunken); border: 1px solid var(--rule);
+  border-radius: var(--r); padding: 5px 9px; width: 150px; outline: 0;
+}
+.minifilter:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.rowdel {
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  font: inherit; line-height: 1; padding: 2px 6px; border-radius: 2px;
+}
+.rowdel:hover { color: var(--ceiling); background: var(--sunken); }
 </style>
 </head>
 <body>
@@ -364,54 +471,99 @@ footer p { margin: 0 0 7px; max-width: 78ch; }
 </header>
 
 <main>
-  <section class="panel controls" aria-label="Query">
-    <div class="control-grid">
-      <div class="field">
-        <label for="tissue">Tissue</label>
-        <select id="tissue"></select>
-      </div>
+  <div class="tabs" role="tablist" aria-label="Views">
+    <button type="button" id="tabSelect" role="tab" aria-selected="true"
+            aria-controls="panelSelect">Gene selection</button>
+    <button type="button" id="tabWorking" role="tab" aria-selected="false"
+            aria-controls="panelWorking">Working set
+      <span class="count-pill" id="wsCount">0</span></button>
+  </div>
 
-      <div class="field">
-        <span class="field-label" id="valuesLabel">Values included</span>
-        <div class="segmented" role="group" aria-labelledby="valuesLabel" id="kindGroup"></div>
-      </div>
-
-      <div class="field gene-field">
-        <span class="field-label" id="genesLabel">Genes</span>
-        <div class="tokenbox" id="tokenbox">
-          <input id="geneInput" type="text" autocomplete="off" spellcheck="false"
-                 role="combobox" aria-expanded="false" aria-autocomplete="list"
-                 aria-controls="suggest" aria-labelledby="genesLabel"
-                 placeholder="Type a symbol or ENSG id — ALDH2, APP, ENSG00000111275…">
+  <div class="tabpanel" id="panelSelect" role="tabpanel" aria-labelledby="tabSelect">
+    <section class="panel controls" aria-label="Query">
+      <div class="control-grid">
+        <div class="field tissue-field">
+          <span class="field-label" id="tissuesLabel">Tissues</span>
+          <div class="tokenbox" id="tissuebox">
+            <input id="tissueInput" type="text" autocomplete="off" spellcheck="false"
+                   role="combobox" aria-expanded="false" aria-autocomplete="list"
+                   aria-controls="tissueSuggest" aria-labelledby="tissuesLabel"
+                   placeholder="Type a tissue — liver, brain, whole blood…">
+          </div>
+          <div class="suggest" id="tissueSuggest" hidden role="listbox" aria-label="Tissue matches"></div>
+          <div class="quick">
+            <button class="linkbtn" id="allTissues" type="button">Select every tissue</button>
+            <span class="sep">·</span>
+            <button class="linkbtn" id="clearTissues" type="button" disabled>Clear tissues</button>
+          </div>
         </div>
-        <div class="suggest" id="suggest" hidden role="listbox" aria-label="Gene matches"></div>
-        <div class="quick">
-          <button class="linkbtn" id="loadExample" type="button">Load the ADH / ALDH set</button>
-          <span class="sep">·</span>
-          <button class="linkbtn" id="clearGenes" type="button" disabled>Clear genes</button>
-          <span class="sep">·</span>
-          <button class="linkbtn" id="copyLink" type="button">Copy link to this view</button>
+
+        <div class="field">
+          <span class="field-label" id="valuesLabel">Values included</span>
+          <div class="segmented" role="group" aria-labelledby="valuesLabel" id="kindGroup"></div>
+        </div>
+
+        <div class="field gene-field">
+          <span class="field-label" id="genesLabel">Genes</span>
+          <div class="tokenbox" id="tokenbox">
+            <input id="geneInput" type="text" autocomplete="off" spellcheck="false"
+                   role="combobox" aria-expanded="false" aria-autocomplete="list"
+                   aria-controls="suggest" aria-labelledby="genesLabel"
+                   placeholder="Type a symbol or ENSG id — ALDH2, APP, ENSG00000111275…">
+          </div>
+          <div class="suggest" id="suggest" hidden role="listbox" aria-label="Gene matches"></div>
+          <div class="quick">
+            <button class="linkbtn" id="loadExample" type="button">Load the ADH / ALDH set</button>
+            <span class="sep">·</span>
+            <button class="linkbtn" id="clearGenes" type="button" disabled>Clear genes</button>
+            <span class="sep">·</span>
+            <button class="linkbtn" id="copyLink" type="button">Copy link to this view</button>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
 
-  <section class="panel" aria-label="Results">
-    <div class="statusbar">
-      <span class="status-text" id="status">Loading gene index…</span>
-      <span class="spacer"></span>
-      <button class="btn" id="toggleCols" type="button" aria-pressed="false">All columns</button>
-      <button class="btn" id="download" type="button" disabled>Download CSV</button>
-    </div>
-    <div class="progress" id="progress" hidden><i></i></div>
-    <div id="resultArea"></div>
-    <div class="legend" id="legend" hidden>
-      <span class="key"><span class="swatch"></span> fitted curve, observed range</span>
-      <span class="key"><span class="swatch d"></span> censored tail beyond the ceiling</span>
-      <span class="key"><span class="swatch v"></span> ceiling <code>x_max</code></span>
-      <span class="key">TI = f(x_max)/f(peak), baseline removed</span>
-    </div>
-  </section>
+      <div class="loadrow">
+        <button class="btn primary" id="loadTables" type="button" disabled>Load tables</button>
+        <button class="btn" id="cancelLoad" type="button" hidden>Cancel</button>
+        <span class="loadnote" id="loadNote"></span>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Results">
+      <div class="statusbar">
+        <span class="status-text" id="status">Loading gene index…</span>
+        <span class="spacer"></span>
+        <button class="btn" id="addAll" type="button" disabled>Add all to working set</button>
+        <button class="btn" id="toggleCols" type="button" aria-pressed="false">All columns</button>
+        <button class="btn" id="download" type="button" disabled>Download CSV</button>
+      </div>
+      <div class="progress" id="progress" hidden><i></i></div>
+      <div class="banner" id="staleBanner" hidden></div>
+      <div id="resultArea"></div>
+      <div class="legend" id="legend" hidden>
+        <span class="key"><span class="swatch"></span> fitted curve, observed range</span>
+        <span class="key"><span class="swatch d"></span> censored tail beyond the ceiling</span>
+        <span class="key"><span class="swatch v"></span> ceiling <code>x_max</code></span>
+        <span class="key">TI = f(x_max)/f(peak), baseline removed</span>
+      </div>
+    </section>
+  </div>
+
+  <div class="tabpanel" id="panelWorking" role="tabpanel" aria-labelledby="tabWorking" hidden>
+    <section class="panel" aria-label="Working set">
+      <div class="statusbar">
+        <span class="status-text" id="wsStatus">Working set is empty</span>
+        <span class="spacer"></span>
+        <input id="wsFilter" class="minifilter" type="text" autocomplete="off"
+               spellcheck="false" placeholder="Filter rows…" aria-label="Filter working set">
+        <button class="btn" id="wsCols" type="button" aria-pressed="false">All columns</button>
+        <button class="btn" id="wsExport" type="button" disabled>Export CSV</button>
+        <button class="btn" id="wsClear" type="button" disabled>Clear all</button>
+      </div>
+      <div class="banner" id="wsBanner" hidden></div>
+      <div id="wsArea"></div>
+    </section>
+  </div>
 </main>
 
 <footer>
@@ -439,6 +591,17 @@ const MANIFEST_URL = "manifest.json";
 const GENES_URL    = "genes.tsv";
 const MAX_CACHED_TABLES = 4;      // ~21 MB of text each
 const MAX_SUGGESTIONS   = 40;
+const WS_STORAGE_KEY    = "tb-working-set-v1";
+
+/* A table is ~8 MB over the wire. Selecting every tissue is therefore a
+   ~430 MB errand, which is why loading is an explicit act rather than a
+   side effect of changing a selection. */
+const MB_PER_TABLE = 8;
+
+/* Rows render as real DOM with an SVG apiece, so a 54-tissue x 38-gene query
+   (2,052 rows) would build ~25k nodes. Cap what is drawn; the working set and
+   both CSV exports always operate on every loaded row, never on this subset. */
+const RENDER_LIMIT = 800;
 
 // Compact column set shown by default; the rest appear under "All columns".
 const COMPACT_COLS = [
@@ -462,12 +625,27 @@ let GID = [], SYM = [], SYMU = [], NOVER = [], NOVERU = [];
 let geneIndexByNover = new Map();
 
 let selected = [];                 // array of gene-index integers
+let selectedTissues = [];          // array of tissue names
 let currentKind = "raw";
 let showAllCols = false;
 let sortCol = null, sortDir = 1;
-let lastRows = [];                 // rows currently rendered (for CSV)
 let activeSuggestion = -1, suggestions = [];
-let loadToken = 0;                 // guards against out-of-order table loads
+let activeTissueSuggestion = -1, tissueSuggestions = [];
+
+/* Everything the last Load produced: one entry per gene x tissue x table. */
+let loadedRows = [];               // {tissue, kind, gi, fields[]}
+let loadedHeader = null, loadedColIdx = null;
+let loadedMeta = null;             // {missing, failed[], tissues, kind}
+let resultsStale = false;          // selection changed since the last Load
+let loading = false, cancelRequested = false;
+
+/* Working set: key "tissue|kind|unversioned-id" -> row snapshot. Values are
+   stored, not re-derived, so the set survives a reload without re-fetching
+   the ~8 MB table each row came from. */
+let workingSet = new Map();
+let wsShowAllCols = false;
+let wsSortCol = null, wsSortDir = 1;
+let wsPersist = true;              // flipped off if localStorage refuses
 
 const tableCache = new Map();      // "tissue|kind" -> {header, map, colIdx}
 
@@ -566,6 +744,27 @@ function searchGenes(query) {
   const byLen = (a, b) => SYMU[a].length - SYMU[b].length || (SYMU[a] < SYMU[b] ? -1 : 1);
   symPrefix.sort(byLen); symIn.sort(byLen);
   return exact.concat(symPrefix, idPrefix, symIn).slice(0, MAX_SUGGESTIONS);
+}
+
+/* Tissue names are stored with underscores (`brain_frontal_cortex_ba9`) but
+   read with spaces, so match against both — typing "frontal cortex" or
+   "whole blood" has to work. An empty query lists everything unselected, which
+   makes the box browsable rather than only searchable. */
+function tissueLabel(t) { return t.replace(/_/g, " "); }
+
+function searchTissues(query) {
+  const q = query.trim().toUpperCase().replace(/[\s_]+/g, " ");
+  const chosen = new Set(selectedTissues);
+  const pool = manifest.tissues.filter((t) => !chosen.has(t));
+  if (!q) return pool;
+
+  const prefix = [], inner = [];
+  for (const t of pool) {
+    const flat = tissueLabel(t).toUpperCase();
+    if (flat.startsWith(q)) prefix.push(t);
+    else if (flat.includes(q)) inner.push(t);
+  }
+  return prefix.concat(inner);
 }
 
 /* =====================================================================
@@ -688,114 +887,251 @@ function sparkline(row, colIdx) {
 /* =====================================================================
    Render
    ===================================================================== */
-function visibleStatCols(header) {
+function visibleStatCols(header, all) {
   const skip = new Set(["gene", "genename"]);
   const stats = header.filter((c) => !skip.has(c));
-  if (showAllCols) return stats;
+  if (all) return stats;
   return COMPACT_COLS.filter((c) => stats.includes(c));
+}
+
+function kindLabelOf(kind) {
+  const spec = manifest.table_kinds.find((k) => k.id === kind);
+  return spec ? spec.label : kind;
+}
+
+function kindShort(kind) { return kind === "raw" ? "raw" : "excluded ≤ −1"; }
+
+/* =====================================================================
+   Loading: explicit, sequential, cancellable
+   ===================================================================== */
+function updateLoadNote() {
+  const nT = selectedTissues.length, nG = selected.length;
+  const note = $("loadNote");
+  $("loadTables").disabled = loading || nT === 0 || nG === 0;
+  $("clearTissues").disabled = nT === 0;
+  $("clearGenes").disabled = nG === 0;
+
+  if (loading) return;
+  if (!nT || !nG) {
+    note.innerHTML = !nG && !nT ? "Pick genes and tissues to begin"
+      : !nG ? "Pick at least one gene" : "Pick at least one tissue";
+    return;
+  }
+  // Tables already cached this session cost nothing to reuse.
+  const toFetch = selectedTissues.filter((t) => !tableCache.has(`${t}|${currentKind}`)).length;
+  const mb = toFetch * MB_PER_TABLE;
+  const nR = nG * nT;
+  let s = `<strong>${nG}</strong> gene${nG === 1 ? "" : "s"} × ` +
+          `<strong>${nT}</strong> tissue${nT === 1 ? "" : "s"} = ` +
+          `<strong>${nR.toLocaleString()}</strong> row${nR === 1 ? "" : "s"}`;
+  if (toFetch) {
+    s += ` · ${toFetch} table${toFetch === 1 ? "" : "s"} to fetch, ` +
+         `<span class="${mb >= 100 ? "heavy" : ""}">~${mb} MB</span>`;
+  } else {
+    s += " · all cached";
+  }
+  note.innerHTML = s;
+}
+
+/* A selection change does not invalidate the rows already on screen — they are
+   still true, just no longer what the controls describe. Say so instead of
+   silently wiping the table or silently refetching half a gigabyte. */
+function markStale() {
+  if (loadedRows.length) {
+    resultsStale = true;
+    showStaleBanner();
+  }
+  updateLoadNote();
+  syncHash();
+}
+
+function showStaleBanner() {
+  const b = $("staleBanner");
+  if (!resultsStale) { b.hidden = true; return; }
+  b.innerHTML = `<span>The selection changed — the table below is the previous
+    query.</span><button class="btn" type="button" id="reload">Load tables</button>`;
+  b.hidden = false;
+  $("reload").addEventListener("click", loadTables);
+}
+
+async function loadTables() {
+  if (loading || !selected.length || !selectedTissues.length) return;
+
+  loading = true;
+  cancelRequested = false;
+  $("loadTables").disabled = true;
+  $("cancelLoad").hidden = false;
+  $("progress").hidden = false;
+  $("staleBanner").hidden = true;
+
+  const tissues = selectedTissues.slice();
+  const kind = currentKind;
+  const rows = [];
+  const failed = [];
+  let missing = 0, header = null, colIdx = null, done = 0;
+
+  try {
+    for (const tissue of tissues) {
+      if (cancelRequested) break;
+      $("loadNote").innerHTML =
+        `Loading <strong>${done + 1}</strong>/${tissues.length} · ` +
+        `${escapeHtml(tissueLabel(tissue))}…`;
+
+      let tbl;
+      try {
+        tbl = await getTable(tissue, kind);
+      } catch (err) {
+        failed.push(tissue);
+        done++;
+        continue;
+      }
+      header = tbl.header; colIdx = tbl.colIdx;
+      for (const gi of selected) {
+        const line = tbl.map.get(NOVER[gi]);
+        if (!line) { missing++; continue; }
+        rows.push({ tissue, kind, gi, fields: line.split(",") });
+      }
+      done++;
+    }
+  } finally {
+    loading = false;
+    $("cancelLoad").hidden = true;
+    $("progress").hidden = true;
+  }
+
+  // A cancelled run still keeps whatever it managed to collect.
+  if (rows.length || !cancelRequested) {
+    loadedRows = rows;
+    loadedHeader = header; loadedColIdx = colIdx;
+    loadedMeta = {
+      missing, failed, kind,
+      tissues: tissues.slice(0, done),
+      cancelled: cancelRequested,
+      requested: tissues.length
+    };
+    resultsStale = false;
+    sortCol = null;
+  }
+  updateLoadNote();
+  render();
+}
+
+/* =====================================================================
+   Render: the selection table
+   ===================================================================== */
+function rowKey(r) { return `${r.tissue}|${r.kind}|${NOVER[r.gi]}`; }
+
+function sortRows(rows, col, dir, colIdx) {
+  const out = rows.slice();
+  if (col === "__tissue") {
+    out.sort((a, b) => a.tissue.localeCompare(b.tissue) * dir ||
+                       (SYM[a.gi] || "").localeCompare(SYM[b.gi] || ""));
+  } else if (col === "__gene") {
+    out.sort((a, b) => (SYM[a.gi] || "").localeCompare(SYM[b.gi] || "") * dir ||
+                       a.tissue.localeCompare(b.tissue));
+  } else if (col) {
+    const ci = colIdx[col];
+    out.sort((r1, r2) => {
+      const a = r1.fields[ci], b = r2.fields[ci];
+      const na = Number(a), nb = Number(b);
+      // Non-numeric (blank metrics on a failed fit) always sink to the bottom.
+      const fa = Number.isFinite(na), fb = Number.isFinite(nb);
+      if (fa && fb) return (na - nb) * dir;
+      if (fa !== fb) return fa ? -1 : 1;
+      return String(a) < String(b) ? -dir : String(a) > String(b) ? dir : 0;
+    });
+  } else {
+    out.sort((a, b) => (SYM[a.gi] || "").localeCompare(SYM[b.gi] || "") ||
+                       a.tissue.localeCompare(b.tissue));
+  }
+  return out;
 }
 
 function render() {
   const area = $("resultArea");
-  $("clearGenes").disabled = selected.length === 0;
+  updateLoadNote();
+  showStaleBanner();
 
-  if (selected.length === 0) {
-    lastRows = [];
+  if (!loadedRows.length) {
     $("download").disabled = true;
+    $("addAll").disabled = true;
     $("legend").hidden = true;
-    area.innerHTML = `<div class="note">
-      <h2>No genes selected</h2>
-      <p>Search above by symbol (<code>ALDH2</code>) or Ensembl id
-      (<code>ENSG00000111275</code>) and pick as many as you like. Versions are
-      ignored, so an id from an older annotation still resolves.</p>
-      <button class="btn" type="button" id="emptyExample">Load the ADH / ALDH set</button>
-    </div>`;
+    const why = !selected.length
+      ? `<p>Search by symbol (<code>ALDH2</code>) or Ensembl id
+         (<code>ENSG00000111275</code>) and pick as many as you like. Versions are
+         ignored, so an id from an older annotation still resolves.</p>
+         <button class="btn" type="button" id="emptyExample">Load the ADH / ALDH set</button>`
+      : !selectedTissues.length
+        ? `<p>Pick one or more tissues above — or select every tissue — then
+           press <strong>Load tables</strong>.</p>`
+        : `<p>Press <strong>Load tables</strong> to fetch the
+           ${selectedTissues.length === 1 ? "table" : `${selectedTissues.length} tables`}
+           for this selection.</p>`;
+    area.innerHTML = `<div class="note"><h2>Nothing loaded yet</h2>${why}</div>`;
     const b = $("emptyExample");
     if (b) b.addEventListener("click", loadExampleSet);
-    setStatus(`<strong>${GID.length.toLocaleString()}</strong> genes indexed · pick some to begin`);
+    setStatus(`<strong>${GID.length.toLocaleString()}</strong> genes · ` +
+              `<strong>${manifest.tissues.length}</strong> tissues indexed`);
     return;
   }
 
-  const tissue = $("tissue").value;
-  const token = ++loadToken;
+  const cols = visibleStatCols(loadedHeader, showAllCols);
+  const rows = sortRows(loadedRows, sortCol, sortDir, loadedColIdx);
+  const shown = rows.slice(0, RENDER_LIMIT);
+  const allPicked = rows.every((r) => workingSet.has(rowKey(r)));
 
-  getTable(tissue, currentKind).then((tbl) => {
-    if (token !== loadToken) return;   // a newer request superseded this one
-    drawTable(tbl, tissue);
-  }).catch((err) => {
-    if (token !== loadToken) return;
-    lastRows = [];
-    $("download").disabled = true;
-    $("legend").hidden = true;
-    setStatus(`<strong style="color:var(--ceiling)">Could not load ${escapeHtml(tissue)}</strong>`);
-    area.innerHTML = `<div class="note error">
-      <h2>That table did not load</h2>
-      <p>${escapeHtml(err.message)}. The tables are fetched from
-      raw.githubusercontent.com — check your connection, then try again.</p>
-      <button class="btn" type="button" id="retry">Try again</button>
-    </div>`;
-    const r = $("retry");
-    if (r) r.addEventListener("click", render);
-  });
-}
+  const sortableHead = (c, label, cls) => {
+    const arrow = sortCol === c ? `<span class="arrow">${sortDir > 0 ? "▲" : "▼"}</span>` : "";
+    return `<th class="${cls || ""}" data-col="${escapeHtml(c)}" title="${escapeHtml(c.replace(/^__/, ""))}">${escapeHtml(label)}${arrow}</th>`;
+  };
 
-function drawTable(tbl, tissue) {
-  const cols = visibleStatCols(tbl.header);
-  const rows = [];
-  const missing = [];
+  const head =
+    `<th class="col-check nosort"><input type="checkbox" id="checkAll"
+       ${allPicked ? "checked" : ""} aria-label="Add every loaded row to the working set"></th>` +
+    sortableHead("__gene", "Gene", "col-gene tl") +
+    sortableHead("__tissue", "Tissue", "tl") +
+    '<th class="tl nosort">Shape</th>' +
+    cols.map((c) => sortableHead(c, SHORT_LABEL[c] || c)).join("");
 
-  for (const gi of selected) {
-    const line = tbl.map.get(NOVER[gi]);
-    if (!line) { missing.push(SYM[gi] || GID[gi]); continue; }
-    rows.push({ gi, fields: line.split(",") });
-  }
-
-  if (sortCol) {
-    const ci = tbl.colIdx[sortCol];
-    rows.sort((r1, r2) => {
-      let a = r1.fields[ci], b = r2.fields[ci];
-      const na = Number(a), nb = Number(b);
-      if (Number.isFinite(na) && Number.isFinite(nb)) return (na - nb) * sortDir;
-      a = String(a); b = String(b);
-      return a < b ? -sortDir : a > b ? sortDir : 0;
-    });
-  } else {
-    rows.sort((r1, r2) => (SYM[r1.gi] || "").localeCompare(SYM[r2.gi] || ""));
-  }
-
-  const head = ['<th class="tl nosort">Gene</th>', '<th class="tl nosort">Shape</th>']
-    .concat(cols.map((c) => {
-      const arrow = sortCol === c ? `<span class="arrow">${sortDir > 0 ? "▲" : "▼"}</span>` : "";
-      return `<th data-col="${escapeHtml(c)}" title="${escapeHtml(c)}">` +
-             `${escapeHtml(SHORT_LABEL[c] || c)}${arrow}</th>`;
-    })).join("");
-
-  const body = rows.map(({ gi, fields }) => {
-    const ok = String(fields[tbl.colIdx.fit_success]).trim().toLowerCase() === "true";
+  const body = shown.map((r) => {
+    const { gi, fields } = r;
+    const ok = String(fields[loadedColIdx.fit_success]).trim().toLowerCase() === "true";
+    const key = rowKey(r);
+    const picked = workingSet.has(key);
     const cells = cols.map((c) => {
       if (c === "fit_success") {
         return ok ? '<td><span style="color:var(--ok)">ok</span></td>'
                   : '<td><span class="badge-fail">no fit</span></td>';
       }
-      const v = fmt(fields[tbl.colIdx[c]], c);
+      const v = fmt(fields[loadedColIdx[c]], c);
       return `<td>${v === null ? '<span class="nil">—</span>' : escapeHtml(v)}</td>`;
     }).join("");
 
-    return `<tr>
-      <td class="tl">
+    return `<tr class="${picked ? "picked" : ""}" data-key="${escapeHtml(key)}">
+      <td class="col-check"><input type="checkbox" ${picked ? "checked" : ""}
+        aria-label="Add ${escapeHtml(SYM[gi] || GID[gi])} in ${escapeHtml(tissueLabel(r.tissue))} to the working set"></td>
+      <td class="col-gene">
         <div class="c-sym">${escapeHtml(SYM[gi] || "—")}</div>
         <div class="c-id">${escapeHtml(GID[gi])}</div>
       </td>
-      <td class="c-shape">${ok ? sparkline(fields, tbl.colIdx)
+      <td class="tl c-tissue">${escapeHtml(tissueLabel(r.tissue))}</td>
+      <td class="c-shape">${ok ? sparkline(fields, loadedColIdx)
         : '<span class="nil">no fit</span>'}</td>
       ${cells}
     </tr>`;
   }).join("");
 
-  $("resultArea").innerHTML =
-    `<div class="tablewrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  const capped = rows.length > shown.length
+    ? `<div class="banner">Showing the first <strong>${RENDER_LIMIT.toLocaleString()}</strong>
+       of <strong>${rows.length.toLocaleString()}</strong> rows. Adding to the working set
+       and both CSV exports still cover all ${rows.length.toLocaleString()}.</div>`
+    : "";
 
-  $("resultArea").querySelectorAll("th[data-col]").forEach((th) => {
+  area.innerHTML = capped +
+    `<div class="tablewrap"><table class="t-sel"><thead><tr>${head}</tr></thead>` +
+    `<tbody>${body}</tbody></table></div>`;
+
+  area.querySelectorAll("th[data-col]").forEach((th) => {
     th.addEventListener("click", () => {
       const c = th.dataset.col;
       if (sortCol === c) sortDir = -sortDir; else { sortCol = c; sortDir = 1; }
@@ -803,15 +1139,44 @@ function drawTable(tbl, tissue) {
     });
   });
 
-  lastRows = { tissue, kind: currentKind, cols, rows, colIdx: tbl.colIdx };
-  $("download").disabled = rows.length === 0;
-  $("legend").hidden = rows.length === 0;
+  const byKey = new Map(rows.map((r) => [rowKey(r), r]));
+  area.querySelector("tbody").addEventListener("change", (e) => {
+    const box = e.target;
+    if (box.type !== "checkbox") return;
+    const tr = box.closest("tr");
+    const r = byKey.get(tr.dataset.key);
+    if (!r) return;
+    if (box.checked) wsAdd(r); else wsRemove(tr.dataset.key);
+    tr.classList.toggle("picked", box.checked);
+    const master = $("checkAll");
+    if (master) master.checked = rows.every((x) => workingSet.has(rowKey(x)));
+    wsSync();
+  });
 
-  const kindLabel = manifest.table_kinds.find((k) => k.id === currentKind).label;
-  let msg = `<strong>${rows.length}</strong> gene${rows.length === 1 ? "" : "s"}` +
-            ` · <strong>${escapeHtml(tissue)}</strong> · ${escapeHtml(kindLabel)}`;
-  if (missing.length) {
-    msg += ` · <span style="color:var(--ceiling)">${missing.length} not in this table</span>`;
+  $("checkAll").addEventListener("change", (e) => {
+    if (e.target.checked) rows.forEach(wsAdd);
+    else rows.forEach((r) => wsRemove(rowKey(r)));
+    wsSync();
+    render();
+  });
+
+  $("download").disabled = false;
+  $("addAll").disabled = false;
+  $("legend").hidden = false;
+
+  const m = loadedMeta;
+  const nTis = new Set(rows.map((r) => r.tissue)).size;
+  let msg = `<strong>${rows.length.toLocaleString()}</strong> row${rows.length === 1 ? "" : "s"}` +
+            ` · <strong>${nTis}</strong> tissue${nTis === 1 ? "" : "s"}` +
+            ` · ${escapeHtml(kindLabelOf(m.kind))}`;
+  if (m.missing) msg += ` · <span style="color:var(--ceiling)">${m.missing} not in table</span>`;
+  if (m.failed.length) {
+    msg += ` · <span style="color:var(--ceiling)">${m.failed.length} table` +
+           `${m.failed.length === 1 ? "" : "s"} failed</span>`;
+  }
+  if (m.cancelled) {
+    msg += ` · <span style="color:var(--ceiling)">cancelled at ${m.tissues.length}` +
+           `/${m.requested}</span>`;
   }
   setStatus(msg);
 }
@@ -847,7 +1212,273 @@ function renderChips() {
 function addGene(gi) {
   if (gi == null || gi < 0 || selected.includes(gi)) return;
   selected.push(gi);
-  renderChips(); syncHash(); render();
+  renderChips(); markStale();
+}
+
+/* =====================================================================
+   Tissue chips
+   ===================================================================== */
+function renderTissueChips() {
+  const box = $("tissuebox");
+  box.querySelectorAll(".chip").forEach((c) => c.remove());
+  const input = $("tissueInput");
+  for (const t of selectedTissues) {
+    const chip = document.createElement("span");
+    chip.className = "chip t";
+    chip.innerHTML = `<span>${escapeHtml(tissueLabel(t))}</span>`;
+    const x = document.createElement("button");
+    x.type = "button";
+    x.setAttribute("aria-label", `Remove ${tissueLabel(t)}`);
+    x.textContent = "×";
+    x.addEventListener("click", (e) => {
+      e.stopPropagation();
+      selectedTissues = selectedTissues.filter((s) => s !== t);
+      renderTissueChips(); markStale();
+    });
+    chip.appendChild(x);
+    box.insertBefore(chip, input);
+  }
+  input.placeholder = selectedTissues.length
+    ? "Add another…"
+    : "Type a tissue — liver, brain, whole blood…";
+}
+
+function addTissue(name) {
+  if (!name || selectedTissues.includes(name)) return;
+  selectedTissues.push(name);
+  renderTissueChips(); markStale();
+}
+
+function showTissueSuggestions(list) {
+  tissueSuggestions = list;
+  activeTissueSuggestion = list.length ? 0 : -1;
+  const box = $("tissueSuggest");
+  const raw = $("tissueInput").value.trim();
+  const q = raw.toUpperCase().replace(/[\s_]+/g, " ");
+
+  if (!list.length) {
+    box.innerHTML = raw
+      ? `<div class="s-none">No tissue matches “${escapeHtml(raw)}”.</div>`
+      : `<div class="s-none">Every tissue is already selected.</div>`;
+    box.hidden = false;
+    $("tissueInput").setAttribute("aria-expanded", "true");
+    return;
+  }
+
+  const mark = (text) => {
+    const i = q ? text.toUpperCase().indexOf(q) : -1;
+    if (i === -1) return escapeHtml(text);
+    return escapeHtml(text.slice(0, i)) +
+           '<span class="s-hit">' + escapeHtml(text.slice(i, i + q.length)) + "</span>" +
+           escapeHtml(text.slice(i + q.length));
+  };
+
+  box.innerHTML = "<ul>" + list.map((t, n) =>
+    `<li role="option" data-tissue="${escapeHtml(t)}" aria-selected="${n === activeTissueSuggestion}">
+       <span class="s-sym">${mark(tissueLabel(t))}</span>
+     </li>`).join("") + "</ul>";
+  box.hidden = false;
+  $("tissueInput").setAttribute("aria-expanded", "true");
+
+  box.querySelectorAll("li[data-tissue]").forEach((li) => {
+    li.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      addTissue(li.dataset.tissue);
+      $("tissueInput").value = "";
+      showTissueSuggestions(searchTissues(""));
+    });
+  });
+}
+
+function moveTissueSuggestion(delta) {
+  if (!tissueSuggestions.length) return;
+  activeTissueSuggestion =
+    (activeTissueSuggestion + delta + tissueSuggestions.length) % tissueSuggestions.length;
+  $("tissueSuggest").querySelectorAll("li").forEach((li, n) => {
+    const on = n === activeTissueSuggestion;
+    li.setAttribute("aria-selected", on);
+    if (on) li.scrollIntoView({ block: "nearest" });
+  });
+}
+
+/* =====================================================================
+   Working set
+   ===================================================================== */
+function statCols() {
+  // Canonical order comes from the manifest so exports match the CSV headers.
+  return (manifest.columns || []).filter((c) => c !== "gene" && c !== "genename");
+}
+
+function wsAdd(r) {
+  const key = rowKey(r);
+  if (workingSet.has(key)) return;
+  const v = {};
+  for (const c of statCols()) {
+    const i = loadedColIdx[c];
+    v[c] = i === undefined ? "" : (r.fields[i] ?? "");
+  }
+  workingSet.set(key, {
+    t: r.tissue, k: r.kind, g: NOVER[r.gi],
+    gid: GID[r.gi], sym: SYM[r.gi] || "", v
+  });
+}
+
+function wsRemove(key) { workingSet.delete(key); }
+
+/* Persist, but never let a full quota break the session — the set stays live
+   in memory and the tab says so. */
+function wsSave() {
+  if (!wsPersist) return;
+  try {
+    localStorage.setItem(WS_STORAGE_KEY,
+      JSON.stringify(Array.from(workingSet.entries())));
+  } catch (err) {
+    wsPersist = false;
+    renderWsBanner();
+  }
+}
+
+function wsLoad() {
+  try {
+    const raw = localStorage.getItem(WS_STORAGE_KEY);
+    if (!raw) return;
+    const entries = JSON.parse(raw);
+    if (Array.isArray(entries)) workingSet = new Map(entries);
+  } catch (err) { /* corrupt or unavailable storage: start empty */ }
+}
+
+/* One call after any working-set mutation: persist, update the tab count and
+   the working-set view. */
+function wsSync() {
+  wsSave();
+  $("wsCount").textContent = workingSet.size.toLocaleString();
+  $("wsExport").disabled = workingSet.size === 0;
+  $("wsClear").disabled = workingSet.size === 0;
+  if (!$("panelWorking").hidden) renderWorkingSet();
+}
+
+function renderWsBanner() {
+  const b = $("wsBanner");
+  if (wsPersist) { b.hidden = true; return; }
+  b.innerHTML = `<span>Browser storage is full, so this working set lives in
+    memory only — it will not survive a reload. Export it to keep it.</span>`;
+  b.hidden = false;
+}
+
+function wsRows() {
+  const q = $("wsFilter").value.trim().toUpperCase();
+  let rows = Array.from(workingSet.entries()).map(([key, e]) => ({ key, e }));
+  if (q) {
+    rows = rows.filter(({ e }) =>
+      e.sym.toUpperCase().includes(q) ||
+      e.gid.toUpperCase().includes(q) ||
+      tissueLabel(e.t).toUpperCase().includes(q));
+  }
+  const dir = wsSortDir;
+  if (wsSortCol === "__gene" || !wsSortCol) {
+    rows.sort((a, b) => a.e.sym.localeCompare(b.e.sym) * (wsSortCol ? dir : 1) ||
+                        a.e.t.localeCompare(b.e.t));
+  } else if (wsSortCol === "__tissue") {
+    rows.sort((a, b) => a.e.t.localeCompare(b.e.t) * dir ||
+                        a.e.sym.localeCompare(b.e.sym));
+  } else if (wsSortCol === "__table") {
+    rows.sort((a, b) => a.e.k.localeCompare(b.e.k) * dir ||
+                        a.e.sym.localeCompare(b.e.sym));
+  } else {
+    rows.sort((a, b) => {
+      const na = Number(a.e.v[wsSortCol]), nb = Number(b.e.v[wsSortCol]);
+      const fa = Number.isFinite(na), fb = Number.isFinite(nb);
+      if (fa && fb) return (na - nb) * dir;
+      if (fa !== fb) return fa ? -1 : 1;
+      return 0;
+    });
+  }
+  return rows;
+}
+
+function renderWorkingSet() {
+  const area = $("wsArea");
+  renderWsBanner();
+
+  if (workingSet.size === 0) {
+    area.innerHTML = `<div class="note">
+      <h2>Working set is empty</h2>
+      <p>On the <strong>Gene selection</strong> tab, tick the checkbox beside any
+      row — or use <strong>Add all to working set</strong> — to collect rows here
+      across as many tissues and queries as you like. Then export the lot as one
+      spreadsheet.</p></div>`;
+    $("wsStatus").innerHTML = "Working set is empty";
+    return;
+  }
+
+  const all = statCols();
+  const cols = wsShowAllCols ? all : COMPACT_COLS.filter((c) => all.includes(c));
+  const rows = wsRows();
+
+  const sortableHead = (c, label, cls) => {
+    const arrow = wsSortCol === c ? `<span class="arrow">${wsSortDir > 0 ? "▲" : "▼"}</span>` : "";
+    return `<th class="${cls || ""}" data-col="${escapeHtml(c)}">${escapeHtml(label)}${arrow}</th>`;
+  };
+
+  const head =
+    '<th class="col-check nosort"></th>' +
+    sortableHead("__gene", "Gene", "col-gene tl") +
+    sortableHead("__tissue", "Tissue", "tl") +
+    sortableHead("__table", "Table", "tl") +
+    cols.map((c) => sortableHead(c, SHORT_LABEL[c] || c)).join("");
+
+  const body = rows.map(({ key, e }) => {
+    const ok = String(e.v.fit_success).trim().toLowerCase() === "true";
+    const cells = cols.map((c) => {
+      if (c === "fit_success") {
+        return ok ? '<td><span style="color:var(--ok)">ok</span></td>'
+                  : '<td><span class="badge-fail">no fit</span></td>';
+      }
+      const v = fmt(e.v[c], c);
+      return `<td>${v === null ? '<span class="nil">—</span>' : escapeHtml(v)}</td>`;
+    }).join("");
+    return `<tr data-key="${escapeHtml(key)}">
+      <td class="col-check"><button class="rowdel" type="button"
+        aria-label="Remove ${escapeHtml(e.sym || e.gid)} in ${escapeHtml(tissueLabel(e.t))}">×</button></td>
+      <td class="col-gene">
+        <div class="c-sym">${escapeHtml(e.sym || "—")}</div>
+        <div class="c-id">${escapeHtml(e.gid)}</div>
+      </td>
+      <td class="tl c-tissue">${escapeHtml(tissueLabel(e.t))}</td>
+      <td class="tl c-tissue">${escapeHtml(kindShort(e.k))}</td>
+      ${cells}
+    </tr>`;
+  }).join("");
+
+  area.innerHTML =
+    `<div class="tablewrap"><table class="t-sel"><thead><tr>${head}</tr></thead>` +
+    `<tbody>${body}</tbody></table></div>`;
+
+  area.querySelectorAll("th[data-col]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const c = th.dataset.col;
+      if (wsSortCol === c) wsSortDir = -wsSortDir; else { wsSortCol = c; wsSortDir = 1; }
+      renderWorkingSet();
+    });
+  });
+
+  area.querySelector("tbody").addEventListener("click", (e) => {
+    const btn = e.target.closest(".rowdel");
+    if (!btn) return;
+    wsRemove(btn.closest("tr").dataset.key);
+    wsSync();
+    renderWorkingSet();
+    if (!$("panelSelect").hidden) render();
+  });
+
+  const genes = new Set(), tissues = new Set();
+  for (const { e } of rows) { genes.add(e.g); tissues.add(e.t); }
+  const filtered = rows.length !== workingSet.size
+    ? ` (filtered from ${workingSet.size.toLocaleString()})` : "";
+  $("wsStatus").innerHTML =
+    `<strong>${rows.length.toLocaleString()}</strong> row${rows.length === 1 ? "" : "s"}${filtered}` +
+    ` · <strong>${genes.size}</strong> gene${genes.size === 1 ? "" : "s"}` +
+    ` · <strong>${tissues.size}</strong> tissue${tissues.size === 1 ? "" : "s"}`;
 }
 
 function showSuggestions(list) {
@@ -917,32 +1548,60 @@ function loadExampleSet() {
     if (SYMU[i].startsWith("ALDH")) picks.push(i);
   }
   selected = Array.from(new Set(picks));
-  renderChips(); syncHash(); render();
+  renderChips(); markStale();
 }
 
 /* =====================================================================
-   CSV download
+   CSV export
+
+   Both exports carry the FULL statistic set regardless of the compact/all
+   column toggle — that toggle is about reading the screen, and a spreadsheet
+   silently missing columns is a trap. The header matches extract_genes.py:
+   tissue, table, gene, genename, then the table's own columns in order.
    ===================================================================== */
-function downloadCsv() {
-  if (!lastRows || !lastRows.rows || !lastRows.rows.length) return;
-  const { tissue, kind, cols, rows, colIdx } = lastRows;
-  const head = ["tissue", "table", "gene", "genename"].concat(cols);
-  const lines = [head.join(",")];
-  for (const { gi, fields } of rows) {
-    const rec = [tissue, kind, GID[gi], SYM[gi]]
-      .concat(cols.map((c) => fields[colIdx[c]] ?? ""));
-    lines.push(rec.map((v) => {
-      const s = String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    }).join(","));
-  }
+function csvCell(v) {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function saveCsv(lines, filename) {
   const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `fourparam_${tissue}_${kind}_${rows.length}genes.csv`;
+  a.download = filename;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function stamp() { return new Date().toISOString().slice(0, 10); }
+
+/* The loaded query, every row of it — not just the rendered subset. */
+function downloadCsv() {
+  if (!loadedRows.length) return;
+  const cols = statCols();
+  const lines = [["tissue", "table", "gene", "genename"].concat(cols).join(",")];
+  for (const r of sortRows(loadedRows, sortCol, sortDir, loadedColIdx)) {
+    lines.push([r.tissue, r.kind, GID[r.gi], SYM[r.gi]]
+      .concat(cols.map((c) => {
+        const i = loadedColIdx[c];
+        return i === undefined ? "" : r.fields[i];
+      })).map(csvCell).join(","));
+  }
+  const nT = new Set(loadedRows.map((r) => r.tissue)).size;
+  saveCsv(lines, `fourparam_${nT}tissues_${currentKind}_${loadedRows.length}rows.csv`);
+}
+
+function exportWorkingSet() {
+  if (!workingSet.size) return;
+  const cols = statCols();
+  const lines = [["tissue", "table", "gene", "genename"].concat(cols).join(",")];
+  // Export what is on screen, so a filter narrows the spreadsheet too.
+  for (const { e } of wsRows()) {
+    lines.push([e.t, e.k, e.gid, e.sym]
+      .concat(cols.map((c) => e.v[c])).map(csvCell).join(","));
+  }
+  saveCsv(lines, `working_set_${lines.length - 1}rows_${stamp()}.csv`);
 }
 
 /* =====================================================================
@@ -951,10 +1610,10 @@ function downloadCsv() {
 let lastWrittenHash = "";
 
 function syncHash() {
-  const parts = [
-    `tissue=${encodeURIComponent($("tissue").value)}`,
-    `table=${encodeURIComponent(currentKind)}`
-  ];
+  const parts = [`table=${encodeURIComponent(currentKind)}`];
+  // "all" keeps a 54-tissue link short and survives new tissues being added.
+  if (selectedTissues.length === manifest.tissues.length) parts.unshift("tissues=all");
+  else if (selectedTissues.length) parts.unshift(`tissues=${selectedTissues.join(",")}`);
   if (selected.length) parts.push(`genes=${selected.map((i) => NOVER[i]).join(",")}`);
   lastWrittenHash = "#" + parts.join("&");
   history.replaceState(null, "", lastWrittenHash);
@@ -965,8 +1624,17 @@ function readHash() {
   if (!h) return;
   const p = new URLSearchParams(h);
 
-  const t = p.get("tissue");
-  if (t && manifest.tissues.includes(t)) $("tissue").value = t;
+  const ts = p.get("tissues");
+  if (ts === "all") {
+    selectedTissues = manifest.tissues.slice();
+  } else if (ts) {
+    selectedTissues = ts.split(",").map((s) => s.trim())
+                        .filter((s) => manifest.tissues.includes(s));
+  } else {
+    // Links written before multi-select used a singular `tissue=`.
+    const one = p.get("tissue");
+    if (one && manifest.tissues.includes(one)) selectedTissues = [one];
+  }
 
   const k = p.get("table");
   if (k && manifest.table_kinds.some((x) => x.id === k)) currentKind = k;
@@ -976,6 +1644,18 @@ function readHash() {
     selected = g.split(",").map((id) => geneIndexByNover.get(stripVersion(id.trim())))
                 .filter((i) => i !== undefined);
   }
+}
+
+/* =====================================================================
+   Tabs
+   ===================================================================== */
+function showTab(which) {
+  const onSelect = which === "select";
+  $("tabSelect").setAttribute("aria-selected", onSelect);
+  $("tabWorking").setAttribute("aria-selected", !onSelect);
+  $("panelSelect").hidden = !onSelect;
+  $("panelWorking").hidden = onSelect;
+  if (!onSelect) renderWorkingSet();
 }
 
 /* =====================================================================
@@ -993,7 +1673,7 @@ function buildKindGroup() {
     b.addEventListener("click", () => {
       if (currentKind === spec.id) return;
       currentKind = spec.id;
-      buildKindGroup(); syncHash(); render();
+      buildKindGroup(); markStale();
     });
     group.appendChild(b);
   }
@@ -1023,11 +1703,9 @@ async function boot() {
   $("statTables").textContent = manifest.tissues.length * manifest.table_kinds.length;
   $("genMeta").textContent = `tables generated ${manifest.generated_utc.slice(0, 10)}`;
 
-  const sel = $("tissue");
-  sel.innerHTML = manifest.tissues.map((t) =>
-    `<option value="${escapeHtml(t)}">${escapeHtml(t.replace(/_/g, " "))}</option>`).join("");
-  const liver = manifest.tissues.indexOf("liver");
-  sel.selectedIndex = liver === -1 ? 0 : liver;
+  $("allTissues").textContent = `Select every tissue (${manifest.tissues.length})`;
+  selectedTissues = manifest.tissues.includes("liver") ? ["liver"]
+                  : manifest.tissues.slice(0, 1);
 
   try {
     await loadGeneIndex();
@@ -1037,12 +1715,79 @@ async function boot() {
   }
   $("statGenes").textContent = GID.length.toLocaleString();
 
+  const hadHash = location.hash.length > 1;
   readHash();
+  wsLoad();
   buildKindGroup();
   renderChips();
+  renderTissueChips();
+  wsSync();
 
-  // --- wiring ---
-  sel.addEventListener("change", () => { syncHash(); render(); });
+  // --- tabs ---
+  $("tabSelect").addEventListener("click", () => showTab("select"));
+  $("tabWorking").addEventListener("click", () => showTab("working"));
+
+  // --- tissue box ---
+  $("tissuebox").addEventListener("click", () => $("tissueInput").focus());
+
+  $("tissueInput").addEventListener("focus", () =>
+    showTissueSuggestions(searchTissues($("tissueInput").value)));
+
+  $("tissueInput").addEventListener("input", () =>
+    showTissueSuggestions(searchTissues($("tissueInput").value)));
+
+  $("tissueInput").addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); moveTissueSuggestion(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); moveTissueSuggestion(-1); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      const t = tissueSuggestions[activeTissueSuggestion];
+      if (t !== undefined) {
+        addTissue(t);
+        $("tissueInput").value = "";
+        showTissueSuggestions(searchTissues(""));
+      }
+    } else if (e.key === "Escape") {
+      $("tissueSuggest").hidden = true;
+      $("tissueInput").setAttribute("aria-expanded", "false");
+    } else if (e.key === "Backspace" && !$("tissueInput").value && selectedTissues.length) {
+      selectedTissues.pop();
+      renderTissueChips(); markStale();
+    }
+  });
+
+  $("allTissues").addEventListener("click", () => {
+    selectedTissues = manifest.tissues.slice();
+    renderTissueChips(); markStale();
+    $("tissueSuggest").hidden = true;
+  });
+  $("clearTissues").addEventListener("click", () => {
+    selectedTissues = [];
+    renderTissueChips(); markStale();
+  });
+
+  $("loadTables").addEventListener("click", loadTables);
+  $("cancelLoad").addEventListener("click", () => { cancelRequested = true; });
+
+  // --- working set actions ---
+  $("addAll").addEventListener("click", () => {
+    loadedRows.forEach(wsAdd);
+    wsSync(); render();
+  });
+  $("wsExport").addEventListener("click", exportWorkingSet);
+  $("wsCols").addEventListener("click", () => {
+    wsShowAllCols = !wsShowAllCols;
+    $("wsCols").setAttribute("aria-pressed", wsShowAllCols);
+    $("wsCols").textContent = wsShowAllCols ? "Fewer columns" : "All columns";
+    renderWorkingSet();
+  });
+  $("wsFilter").addEventListener("input", renderWorkingSet);
+  $("wsClear").addEventListener("click", () => {
+    if (!confirm(`Remove all ${workingSet.size} rows from the working set?`)) return;
+    workingSet.clear();
+    wsSync(); renderWorkingSet();
+    if (!$("panelSelect").hidden) render();
+  });
 
   $("tokenbox").addEventListener("click", () => $("geneInput").focus());
 
@@ -1064,7 +1809,7 @@ async function boot() {
       }
     } else if (e.key === "Escape") { showSuggestions([]); }
     else if (e.key === "Backspace" && !$("geneInput").value && selected.length) {
-      selected.pop(); renderChips(); syncHash(); render();
+      selected.pop(); renderChips(); markStale();
     }
   });
 
@@ -1073,11 +1818,15 @@ async function boot() {
       $("suggest").hidden = true;
       $("geneInput").setAttribute("aria-expanded", "false");
     }
+    if (!$("tissueSuggest").contains(e.target) && e.target !== $("tissueInput")) {
+      $("tissueSuggest").hidden = true;
+      $("tissueInput").setAttribute("aria-expanded", "false");
+    }
   });
 
   $("clearGenes").addEventListener("click", () => {
     selected = []; sortCol = null;
-    renderChips(); syncHash(); render();
+    renderChips(); markStale();
   });
   $("loadExample").addEventListener("click", loadExampleSet);
   $("download").addEventListener("click", downloadCsv);
@@ -1097,6 +1846,9 @@ async function boot() {
     readHash();
     buildKindGroup();
     renderChips();
+    renderTissueChips();
+    loadedRows = [];
+    resultsStale = false;
     render();
   });
 
@@ -1111,6 +1863,10 @@ async function boot() {
   });
 
   render();
+
+  // A shared link already names its genes and tissues, so honour it rather than
+  // making the recipient press Load to see what they were sent.
+  if (hadHash && selected.length && selectedTissues.length) loadTables();
 }
 
 boot();

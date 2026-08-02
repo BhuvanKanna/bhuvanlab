@@ -212,10 +212,34 @@ typo or an absent symbol is loud rather than quietly empty.
 ## The browser GUI (`docs/`, GitHub Pages)
 
 `docs/index.html` is a self-contained page published at
-<https://bhuvankanna.github.io/bhuvanlab/>: choose a tissue, choose raw vs
-excluded ≤ −1, then type-ahead search genes by symbol or Ensembl id and select as
-many as you want. Each row renders that gene's own fitted curve with the
-truncation ceiling marked.
+<https://bhuvankanna.github.io/bhuvanlab/>. It has two tabs:
+
+- **Gene selection** — type-ahead multi-select over genes *and* tissues (both
+  boxes work the same way; tissue matching is underscore-insensitive so "whole
+  blood" finds `whole_blood`), a raw / excluded ≤ −1 toggle, and an explicit
+  **Load tables** button. Results are one row per gene × tissue, each carrying a
+  checkbox and that gene's fitted curve with the truncation ceiling marked.
+- **Working set** — rows ticked on the first tab, accumulated across any number
+  of separate queries, filterable, and exported as one CSV.
+
+Three things about it are load-bearing and easy to undo by accident:
+
+1. **Loading is explicit.** A table is ~8 MB gzipped, so selecting all 54 tissues
+   is a ~432 MB fetch. The page prices the query before running it, fetches
+   sequentially, and can be cancelled mid-run (keeping the rows already
+   gathered). Do not make it auto-fetch on selection change — that reintroduces
+   the half-gigabyte accident this design exists to prevent.
+2. **The working set stores values, not references.** Each entry keeps all 18
+   statistic columns, so it survives a reload without re-fetching. It is keyed
+   `tissue|kind|unversioned-id`, which is why the same gene can appear for many
+   tissues and for both raw and excluded at once. It is persisted to
+   `localStorage` under `tb-working-set-v1`; if the quota is exceeded the page
+   falls back to memory-only and says so rather than failing silently.
+3. **Its CSV header is byte-identical to `extract_genes.py`'s** — `tissue, table,
+   gene, genename` then the table's own columns in `manifest.json` order. Exports
+   always carry the full statistic set regardless of the compact/all column
+   toggle, and always cover every loaded row rather than the rendered subset
+   (rendering is capped at 800 rows). Keep these in sync if columns change.
 
 **It stores no copy of the tables.** It fetches the real CSV from
 `raw.githubusercontent.com` at runtime (~9 MB gzipped per table, cached for the

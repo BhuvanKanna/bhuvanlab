@@ -6,15 +6,30 @@ the **54 GTEx v11 tissues**.
 ## → [Open the Truncation Browser](https://bhuvankanna.github.io/bhuvanlab/)
 
 **[bhuvankanna.github.io/bhuvanlab](https://bhuvankanna.github.io/bhuvanlab/)** —
-pick a tissue, pick raw or excluded ≤ −1, then search genes by symbol or Ensembl
-id and add as many as you like. Every row draws that gene's own fitted curve with
-its truncation ceiling marked, and the view can be exported to CSV or shared as a
-link.
+search genes *and* tissues by type-ahead, load the tables, then tick rows into a
+**working set** that persists across queries and exports as one spreadsheet.
+Every row draws that gene's own fitted curve with its truncation ceiling marked.
 
-- Type-ahead search over all **74,628** genes, by symbol (`ALDH2`) or id (`ENSG00000111275`)
+Two tabs:
+
+- **Gene selection** — pick any number of genes and any number of tissues (up to
+  all 54), choose raw or excluded ≤ −1, and press **Load tables**. Results are
+  one row per gene × tissue, each with a checkbox.
+- **Working set** — everything ticked so far, gathered across as many separate
+  queries as you like, filterable and exportable to CSV.
+
+- Type-ahead over all **74,628** genes (`ALDH2`, `ENSG00000111275`) and all 54
+  tissues (`whole blood` matches `whole_blood`)
 - **Ensembl versions are ignored**, so ids from an older annotation still resolve
-- Multi-select — build up a gene set one at a time
+- The working set survives a reload, and mixes tissues *and* raw/excluded rows
+- Its CSV has the **same 22 columns** `extract_genes.py` writes, so GUI and CLI
+  output are interchangeable
 - Tables are read live from this repository, so the page always matches `outputs/`
+
+> Loading is deliberately an explicit button, not automatic: a table is ~8 MB
+> over the wire, so "every tissue" is a ~432 MB errand. The page states the cost
+> before you commit to it, streams the tables one at a time, and lets you cancel
+> mid-run while keeping whatever already arrived.
 
 ---
 
