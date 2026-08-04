@@ -22,14 +22,29 @@ Two tabs:
   tissues (`whole blood` matches `whole_blood`)
 - **Ensembl versions are ignored**, so ids from an older annotation still resolve
 - The working set survives a reload, and mixes tissues *and* raw/excluded rows
-- Its CSV has the **same 22 columns** `extract_genes.py` writes, so GUI and CLI
-  output are interchangeable
+- Its CSV is **byte-identical** to what `extract_genes.py` writes — same 22
+  columns, same digits — so GUI and CLI output are genuinely interchangeable
 - Tables are read live from this repository, so the page always matches `outputs/`
 
-> Loading is deliberately an explicit button, not automatic: a table is ~8 MB
-> over the wire, so "every tissue" is a ~432 MB errand. The page states the cost
-> before you commit to it, streams the tables one at a time, and lets you cancel
-> mid-run while keeping whatever already arrived.
+> Loading is deliberately an explicit button, not automatic. The page states the
+> cost before you commit to it, streams the files one at a time, and lets you
+> cancel mid-run while keeping whatever already arrived.
+
+### Why it is fast
+
+The same 8,059,824 rows are published in **two orientations**, and each query
+takes whichever is cheaper:
+
+| | one fetch gets you | size |
+|---|---|---|
+| `outputs/` — tissue-major | every gene, **one** tissue | ~8 MB |
+| `gene_major/` — gene-major | 16 genes, **every** tissue and both filters | ~220 KB |
+
+Asking for 38 genes across all 54 tissues used to mean downloading 54 whole
+tissue tables — **432 MB** — to surface 2,052 rows. Gene-major answers it in
+**8 fetches, ~1.8 MB**, because genes are sharded in *symbol* order, so a family
+shares shards: all 27 `ALDH*` cost 2 fetches, not 27. Tissue-major is still there
+and still wins when you want many genes from a single tissue.
 
 ---
 
@@ -55,6 +70,21 @@ that:
 Both are reported per gene alongside the fit parameters and summary statistics.
 The full column list is in
 [`fourparamsacrosstissues/CLAUDE.md`](fourparamsacrosstissues/CLAUDE.md).
+
+## Distribution sheets
+
+[`fourparamsacrosstissues/diagrams/`](fourparamsacrosstissues/diagrams/) holds one
+PNG per table — **108 sheets, 540 histograms** — covering `truncationindex`,
+`sumsquarevalue`, `mean`, `std`, and `ti_fourparam_sigma_dist` across the genes in
+that tissue, plus a panel stating what was excluded. File names mirror the table
+names.
+
+Only converged fits with a finite value are histogrammed, and the dropped counts
+are printed on the sheet. Two of the five axes are not linear, for reasons that
+show up immediately in the data: `truncationindex` is bounded [0, 1] and ~91% of
+liver genes sit at exactly 0, so it gets a log count axis; `ti_fourparam_sigma_dist`
+spans six orders of magnitude either side of zero once degenerate fits are
+included, so it gets a symlog axis and nothing is clipped.
 
 ## Extracting genes at the command line
 
@@ -110,9 +140,13 @@ fourparamsacrosstissues/
     generate_all.py           <- all 108 tables
     run_cluster.py            <- the same, spread over several machines
     extract_genes.py          <- pull a gene set out of the tables
+    build_gene_major.py       <- re-orient outputs/ into gene_major/ shards
     build_gui_data.py         <- regenerate docs/manifest.json + docs/genes.tsv
+    make_diagrams.py          <- render the distribution sheets
   genelists/                  <- reusable gene sets
-  outputs/                    <- the 108 generated tables
+  outputs/                    <- the 108 generated tables (tissue-major)
+  gene_major/                 <- the same rows, gene-major: 4,665 shards
+  diagrams/                   <- 108 distribution sheets, 5 histograms each
   results/                    <- extracted gene subsets
 ```
 
@@ -123,7 +157,9 @@ Requires Python with `numpy`, `pandas`, `scipy`, `matplotlib`.
 ```bash
 cd fourparamsacrosstissues/fourparam
 python generate_all.py          # all 108 tables; resumable, skips existing
+python build_gene_major.py      # re-orient them into gene_major/ (~80 s)
 python build_gui_data.py        # refresh the GUI's manifest + gene index
+python make_diagrams.py         # 108 distribution sheets -> diagrams/
 ```
 
 `build_gui_data.py` verifies that the gene set is identical across tables before
@@ -139,9 +175,20 @@ writing the index — the GUI depends on that being true.
 - Values are `log2(TPM + 1) − 1`, so **TPM = 0 maps to exactly `−1`** and every
   value is `≥ −1`. That is what the "excluded ≤ −1" table drops: the
   zero-expression samples, and nothing else.
-- `outputs/` is tracked as ordinary git rather than LFS on purpose — these CSVs
-  compress 2.46× in git (2.05 GB → ~852 MB), whereas LFS stores blobs
-  uncompressed.
+- `outputs/` and `gene_major/` are tracked as ordinary git rather than LFS on
+  purpose — these CSVs compress ~2.5× in git (2.05 GB → ~852 MB, and 2.46 GB →
+  ~1.0 GB), whereas LFS stores blobs uncompressed.
+- `gene_major/` is a **re-orientation, not new data**. It holds exactly the same
+  8,059,824 rows as `outputs/`, byte for byte;
+  `python build_gene_major.py --verify` re-derives a sample and checks that.
+  Regenerate it whenever you regenerate a table, or the browser will serve stale
+  numbers for that tissue.
+- Nothing in this pipeline re-serialises a float. `extract_genes.py` reads with
+  `dtype=str` and `build_gene_major.py` concatenates row text, because parsing to
+  float64 and writing back is *not* lossless: pandas' CSV writer emits ~16
+  significant digits rather than the shortest round-tripping repr, which turned
+  `0.012596832467784065` into `0.012596832467784`. That is why the browser's
+  export and the CLI's agree exactly.
 - Tables keep **every** gene, including failures (`fit_success = False`, metrics
   `NaN`). Analysis-time filters such as `fit_success == True`,
   `0 < truncationindex < 1`, and `n_obs >= 30` are deliberately *not* baked in.

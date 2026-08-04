@@ -221,7 +221,9 @@ def main() -> None:
 
     out = output_csv_for(args.input, args.threshold)
     out.parent.mkdir(parents=True, exist_ok=True)
-    table.to_csv(out, index=False)
+    # Pin LF so every table in outputs/ shares one line terminator regardless of
+    # platform; build_gene_major.py copies row text verbatim.
+    table.to_csv(out, index=False, lineterminator="\n")
     n_ok = int(table["fit_success"].sum())
     print(f"Wrote {out.relative_to(HERE.parent)} "
           f"({len(table)} rows, {n_ok} fit_success)", flush=True)

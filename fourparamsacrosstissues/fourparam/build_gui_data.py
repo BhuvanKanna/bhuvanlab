@@ -6,12 +6,19 @@ tables straight from raw.githubusercontent.com at runtime, so it can never drift
 out of sync with ``outputs/`` and the repo does not grow by ~540 MB of duplicated
 data. All this script produces is:
 
-  docs/manifest.json  tissue list, column list, and the data base URL
-  docs/genes.tsv      "<versioned ensembl id>\\t<symbol>" per line, for typeahead
+  docs/manifest.json  tissue list, column list, and the two data base URLs
+  docs/genes.tsv      "<versioned ensembl id>\\t<symbol>\\t<shard>" per line
 
 ``genes.tsv`` is built from a single table because the gene set is byte-identical
 across all 108 of them (every gene is written to every table, even when its fit
 fails). The script asserts that rather than trusting it.
+
+The third column is the **gene-major shard** that holds that gene's rows for
+every tissue, as laid out by ``build_gene_major.py``. The GUI uses it to answer
+a few-genes-many-tissues query with a handful of ~220 KB fetches instead of one
+~8 MB tissue table per tissue. It is recomputed here from the same sort rule
+rather than read back from ``gene_major/``, and then checked against the shards
+actually on disk, so the index and the shards cannot silently disagree.
 
 Run after adding tissues or changing the table columns::
 
@@ -29,6 +36,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from build_gene_major import (EXCLUDED_KIND, RAW_KIND, SHARD_SIZE, gene_order)
+
 REPO_SUBDIR = "fourparamsacrosstissues"
 PREFIX = "v11_log2_"
 RAW_SUFFIX = "_fourparam.csv"
@@ -38,8 +47,11 @@ HERE = Path(__file__).resolve().parent
 DEFAULT_OUTPUTS = HERE.parent / "outputs"
 DEFAULT_DOCS = HERE.parent.parent / "docs"      # repo-root/docs
 
-DATA_BASE = ("https://raw.githubusercontent.com/BhuvanKanna/bhuvanlab/"
-             f"main/{REPO_SUBDIR}/outputs")
+RAW_BASE = "https://raw.githubusercontent.com/BhuvanKanna/bhuvanlab/main"
+DATA_BASE = f"{RAW_BASE}/{REPO_SUBDIR}/outputs"
+GENE_MAJOR_BASE = f"{RAW_BASE}/{REPO_SUBDIR}/gene_major"
+
+DEFAULT_GENE_MAJOR = HERE.parent / "gene_major"
 
 
 def gene_column_digest(path: Path) -> str:
@@ -53,6 +65,8 @@ def main(argv=None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--outputs", type=Path, default=DEFAULT_OUTPUTS)
     ap.add_argument("--docs", type=Path, default=DEFAULT_DOCS)
+    ap.add_argument("--gene-major", type=Path, default=DEFAULT_GENE_MAJOR,
+                    help="Directory of gene-major shards (default: ../gene_major).")
     ap.add_argument("--check-tables", type=int, default=4,
                     help="How many tables to verify share the gene set (0 = all).")
     args = ap.parse_args(argv)
@@ -96,21 +110,46 @@ def main(argv=None) -> int:
         return 1
     print(f"  OK - single gene set ({next(iter(digests))[:12]})", file=sys.stderr)
 
-    # ---- gene index ---------------------------------------------------------
+    # ---- gene index + gene-major shard map ----------------------------------
     reference = raw_tables[0]
     df = pd.read_csv(reference, usecols=["gene", "genename"], dtype=str)
     df["gene"] = df["gene"].fillna("")
     df["genename"] = df["genename"].fillna("")
 
+    # Recompute the shard assignment from build_gene_major's own sort rule, so
+    # there is one source of truth for it.
+    ordered = gene_order(reference)
+    shard_of_gene = {gid: i // SHARD_SIZE for i, gid in enumerate(ordered)}
+    n_shards = (len(ordered) + SHARD_SIZE - 1) // SHARD_SIZE
+
+    on_disk = sorted(args.gene_major.glob("shard_*.csv")) \
+        if args.gene_major.is_dir() else []
+    if not on_disk:
+        print(f"\n  WARNING: no shards in {args.gene_major} - run build_gene_major.py.\n"
+              f"           The GUI will fall back to tissue-major tables for every "
+              f"query.", file=sys.stderr)
+        have_gene_major = False
+    elif len(on_disk) != n_shards:
+        print(f"\n  ERROR: {args.gene_major} holds {len(on_disk):,} shards but the "
+              f"index expects {n_shards:,}.", file=sys.stderr)
+        print(f"         Re-run build_gene_major.py; aborting rather than "
+              f"publishing an index that points at missing files.", file=sys.stderr)
+        return 1
+    else:
+        have_gene_major = True
+        print(f"\nGene-major     : {len(on_disk):,} shards, "
+              f"{sum(p.stat().st_size for p in on_disk) / 1e9:.2f} GB",
+              file=sys.stderr)
+
     args.docs.mkdir(parents=True, exist_ok=True)
     genes_path = args.docs / "genes.tsv"
     with genes_path.open("w", encoding="utf-8", newline="\n") as fh:
         for gid, sym in zip(df["gene"], df["genename"]):
-            fh.write(f"{gid}\t{sym}\n")
+            fh.write(f"{gid}\t{sym}\t{shard_of_gene[gid]}\n")
 
     size_kb = genes_path.stat().st_size / 1024
-    print(f"\nWrote {genes_path.name}: {len(df):,} genes, {size_kb:,.0f} KB",
-          file=sys.stderr)
+    print(f"Wrote {genes_path.name}: {len(df):,} genes, {size_kb:,.0f} KB "
+          f"(id, symbol, shard)", file=sys.stderr)
 
     # ---- manifest -----------------------------------------------------------
     columns = list(pd.read_csv(reference, nrows=0).columns)
@@ -130,6 +169,16 @@ def main(argv=None) -> int:
         "tissues": tissues,
         "columns": columns,
         "n_genes": int(len(df)),
+        # Gene-major mirror of the same numbers: one shard covers SHARD_SIZE
+        # genes across every tissue and both filters.
+        "gene_major": {
+            "available": have_gene_major,
+            "base_url": GENE_MAJOR_BASE,
+            "shard_size": SHARD_SIZE,
+            "n_shards": n_shards,
+            "file_pattern": "shard_{shard:04d}.csv",
+            "kind_ids": {"raw": RAW_KIND, "excluded": EXCLUDED_KIND},
+        },
     }
     manifest_path = args.docs / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

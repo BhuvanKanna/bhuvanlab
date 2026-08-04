@@ -159,10 +159,18 @@ def resolve_genes(lookup: pd.DataFrame, tokens):
 
 
 def _read_one(job):
-    """Worker: pull the wanted genes out of one table."""
+    """Worker: pull the wanted genes out of one table.
+
+    Read as **text**, never as floats. Parsing to float64 and writing back is not
+    lossless here: pandas' CSV writer emits ~16 significant digits rather than
+    the shortest round-tripping repr, so ``0.012596832467784065`` in the table
+    came back out as ``0.012596832467784``. Keeping every field a string makes
+    the extract byte-identical to ``outputs/`` - and therefore to what the
+    browser exports, which reads the same text.
+    """
     tissue, kind, path, wanted = job
     try:
-        df = pd.read_csv(path, dtype={"gene": str, "genename": str})
+        df = pd.read_csv(path, dtype=str, keep_default_na=False, na_values=[])
     except Exception as exc:  # noqa: BLE001 - report and carry on
         return tissue, kind, None, f"{path.name}: {exc}"
 
@@ -262,7 +270,9 @@ def main(argv=None):
     out = out[cols]
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(args.out, index=False)
+    # Pin LF. On Windows an unpinned writer emits CRLF, which would make this
+    # file differ from outputs/ (and from the browser's export) by a stray \r.
+    out.to_csv(args.out, index=False, lineterminator="\n")
 
     n_fit = int(out["fit_success"].astype(str).str.lower().eq("true").sum()) \
         if "fit_success" in out.columns else -1

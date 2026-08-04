@@ -392,6 +392,9 @@ footer p { margin: 0 0 7px; max-width: 78ch; }
 .loadnote { font-family: var(--mono); font-size: .74rem; color: var(--muted); }
 .loadnote strong { color: var(--ink); font-weight: 600; }
 .loadnote .heavy { color: var(--ceiling); }
+/* Marks the route a query took; deliberately recessive — it is a footnote, not
+   a control. */
+.muted { color: var(--muted); opacity: .8; }
 
 /* ---------- banner ---------- */
 .banner {
@@ -590,13 +593,24 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
 const MANIFEST_URL = "manifest.json";
 const GENES_URL    = "genes.tsv";
 const MAX_CACHED_TABLES = 4;      // ~21 MB of text each
+const MAX_CACHED_SHARDS = 64;     // ~550 KB of text each
 const MAX_SUGGESTIONS   = 40;
 const WS_STORAGE_KEY    = "tb-working-set-v1";
 
-/* A table is ~8 MB over the wire. Selecting every tissue is therefore a
-   ~430 MB errand, which is why loading is an explicit act rather than a
-   side effect of changing a selection. */
+/* The same numbers exist in two orientations and a query picks the cheaper.
+
+   tissue-major (outputs/)     one file per tissue x filter, every gene inside.
+                               ~8 MB over the wire, so "38 genes x 54 tissues"
+                               costs ~432 MB to surface 2,052 rows.
+   gene-major   (gene_major/)  one file per 16 adjacent genes, holding every
+                               tissue and both filters. ~220 KB, and the tissue
+                               count does not change the price at all.
+
+   Genes are sharded in symbol order, so a family shares shards: all 27 ALDH*
+   land in 2 fetches. Tissue-major still wins when the query is many genes in
+   one tissue, which is why both routes stay. */
 const MB_PER_TABLE = 8;
+const MB_PER_SHARD = 0.22;
 
 /* Rows render as real DOM with an SVG apiece, so a 54-tissue x 38-gene query
    (2,052 rows) would build ~25k nodes. Cap what is drawn; the working set and
@@ -621,8 +635,9 @@ const SHORT_LABEL = {
 const DECIMALS = { n_obs: 0 };
 
 let manifest = null;
-let GID = [], SYM = [], SYMU = [], NOVER = [], NOVERU = [];
+let GID = [], SYM = [], SYMU = [], NOVER = [], NOVERU = [], SHARD = [];
 let geneIndexByNover = new Map();
+let geneMajor = null;              // manifest.gene_major, when shards exist
 
 let selected = [];                 // array of gene-index integers
 let selectedTissues = [];          // array of tissue names
@@ -647,7 +662,8 @@ let wsShowAllCols = false;
 let wsSortCol = null, wsSortDir = 1;
 let wsPersist = true;              // flipped off if localStorage refuses
 
-const tableCache = new Map();      // "tissue|kind" -> {header, map, colIdx}
+const tableCache = new Map();      // "tissue|kind"  -> {header, map, colIdx}
+const shardCache = new Map();      // shard id       -> {header, map, colIdx}
 
 const $ = (id) => document.getElementById(id);
 
@@ -711,18 +727,23 @@ async function loadGeneIndex() {
   const text = await fetchTextWithProgress(GENES_URL, (b) =>
     setStatus(`Loading gene index… <strong>${(b / 1048576).toFixed(1)} MB</strong>`));
 
+  /* "<id>\t<symbol>\t<shard>". The third column is written by build_gui_data.py
+     and is the gene-major shard holding this gene's rows for every tissue. Older
+     two-column files still parse; the gene-major route just stays unavailable. */
   const lines = text.split("\n");
   for (const line of lines) {
     if (!line) continue;
-    const tab = line.indexOf("\t");
-    if (tab === -1) continue;
-    const id = line.slice(0, tab);
-    const sym = line.slice(tab + 1).trim();
+    const parts = line.split("\t");
+    if (parts.length < 2) continue;
+    const id = parts[0];
+    const sym = (parts[1] || "").trim();
+    const shard = parts.length > 2 ? Number(parts[2]) : NaN;
     const nover = stripVersion(id);
     geneIndexByNover.set(nover, GID.length);
     GID.push(id); SYM.push(sym);
     SYMU.push(sym.toUpperCase());
     NOVER.push(nover); NOVERU.push(nover.toUpperCase());
+    SHARD.push(Number.isFinite(shard) ? shard : -1);
   }
 }
 
@@ -787,10 +808,12 @@ function indexTable(text) {
   while (pos < len) {
     let end = text.indexOf("\n", pos);
     if (end === -1) end = len;
-    if (end > pos) {
+    let stop = end;                       // drop a CRLF's \r, never a data byte
+    if (stop > pos && text.charCodeAt(stop - 1) === 13) stop--;
+    if (stop > pos) {
       const comma = text.indexOf(",", pos);
-      if (comma !== -1 && comma < end) {
-        map.set(stripVersion(text.slice(pos, comma)), text.slice(pos, end));
+      if (comma !== -1 && comma < stop) {
+        map.set(stripVersion(text.slice(pos, comma)), text.slice(pos, stop));
       }
     }
     pos = end + 1;
@@ -822,6 +845,112 @@ async function getTable(tissue, kind) {
   } finally {
     $("progress").hidden = true;
   }
+}
+
+/* ---------------------------------------------------------------------
+   Gene-major shards
+   --------------------------------------------------------------------- */
+function shardUrl(shard) {
+  const name = geneMajor.file_pattern.replace(
+    "{shard:04d}", String(shard).padStart(4, "0"));
+  return `${geneMajor.base_url}/${name}`;
+}
+
+/* Shard rows carry two extra leading fields, `tissue,table`. Strip them here so
+   every consumer downstream sees exactly the tissue-major shape it already
+   expects — same header, same column indices, same `fields` array. */
+function indexShard(text) {
+  const nl = text.indexOf("\n");
+  const full = text.slice(0, nl).replace(/\r$/, "").split(",");
+  const header = full.slice(2);
+  const map = new Map();
+  const len = text.length;
+  let pos = nl + 1;
+  while (pos < len) {
+    let end = text.indexOf("\n", pos);
+    if (end === -1) end = len;
+    let stop = end;                       // drop a CRLF's \r, never a data byte
+    if (stop > pos && text.charCodeAt(stop - 1) === 13) stop--;
+    if (stop > pos) {
+      const c1 = text.indexOf(",", pos);
+      const c2 = c1 === -1 ? -1 : text.indexOf(",", c1 + 1);
+      const c3 = c2 === -1 ? -1 : text.indexOf(",", c2 + 1);
+      if (c3 !== -1 && c3 < stop) {
+        const tissue = text.slice(pos, c1);
+        const kind = text.slice(c1 + 1, c2);
+        const gene = stripVersion(text.slice(c2 + 1, c3));
+        map.set(`${gene}|${tissue}|${kind}`, text.slice(c2 + 1, stop));
+      }
+    }
+    pos = end + 1;
+  }
+  const colIdx = {};
+  header.forEach((h, i) => { colIdx[h.trim()] = i; });
+  return { header: header.map((h) => h.trim()), map, colIdx };
+}
+
+async function getShard(shard) {
+  if (shardCache.has(shard)) return shardCache.get(shard);
+
+  $("progress").hidden = false;
+  try {
+    const text = await fetchTextWithProgress(shardUrl(shard), (b) => {
+      setStatus(`Fetching gene shard <strong>${shard}</strong> — ` +
+                `<strong>${(b / 1024).toFixed(0)} KB</strong>`);
+    });
+    const indexed = indexShard(text);
+    shardCache.set(shard, indexed);
+    while (shardCache.size > MAX_CACHED_SHARDS) {
+      shardCache.delete(shardCache.keys().next().value);
+    }
+    return indexed;
+  } finally {
+    $("progress").hidden = true;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Route planning: which orientation is cheaper for this exact query?
+   --------------------------------------------------------------------- */
+function shardsFor(geneIdxs) {
+  const out = new Set();
+  for (const gi of geneIdxs) {
+    if (SHARD[gi] >= 0) out.add(SHARD[gi]);
+  }
+  return Array.from(out).sort((a, b) => a - b);
+}
+
+/* Only what is *not* already cached counts toward the price, so a second query
+   over the same genes is free on whichever route it took the first time. */
+function planLoad() {
+  const nT = selectedTissues.length, nG = selected.length;
+  if (!nT || !nG) return null;
+
+  const tissuesToFetch =
+    selectedTissues.filter((t) => !tableCache.has(`${t}|${currentKind}`));
+  const tissuePlan = {
+    route: "tissue",
+    fetch: tissuesToFetch,
+    mb: tissuesToFetch.length * MB_PER_TABLE,
+    unit: "table"
+  };
+
+  const usable = geneMajor && geneMajor.available &&
+                 selected.every((gi) => SHARD[gi] >= 0);
+  if (!usable) return tissuePlan;
+
+  const shardsToFetch = shardsFor(selected).filter((s) => !shardCache.has(s));
+  const genePlan = {
+    route: "gene",
+    fetch: shardsToFetch,
+    mb: shardsToFetch.length * MB_PER_SHARD,
+    unit: "gene shard"
+  };
+  return genePlan.mb <= tissuePlan.mb ? genePlan : tissuePlan;
+}
+
+function formatMb(mb) {
+  return mb >= 1 ? `~${Math.round(mb)} MB` : `~${Math.max(1, Math.round(mb * 1024))} KB`;
 }
 
 /* =====================================================================
@@ -917,18 +1046,18 @@ function updateLoadNote() {
       : !nG ? "Pick at least one gene" : "Pick at least one tissue";
     return;
   }
-  // Tables already cached this session cost nothing to reuse.
-  const toFetch = selectedTissues.filter((t) => !tableCache.has(`${t}|${currentKind}`)).length;
-  const mb = toFetch * MB_PER_TABLE;
+  const plan = planLoad();
   const nR = nG * nT;
   let s = `<strong>${nG}</strong> gene${nG === 1 ? "" : "s"} × ` +
           `<strong>${nT}</strong> tissue${nT === 1 ? "" : "s"} = ` +
           `<strong>${nR.toLocaleString()}</strong> row${nR === 1 ? "" : "s"}`;
-  if (toFetch) {
-    s += ` · ${toFetch} table${toFetch === 1 ? "" : "s"} to fetch, ` +
-         `<span class="${mb >= 100 ? "heavy" : ""}">~${mb} MB</span>`;
-  } else {
+  if (!plan.fetch.length) {
     s += " · all cached";
+  } else {
+    const n = plan.fetch.length;
+    s += ` · ${n} ${plan.unit}${n === 1 ? "" : "s"} to fetch, ` +
+         `<span class="${plan.mb >= 100 ? "heavy" : ""}">${formatMb(plan.mb)}</span>`;
+    if (plan.route === "gene") s += " <span class=\"muted\">· gene-major</span>";
   }
   note.innerHTML = s;
 }
@@ -969,29 +1098,76 @@ async function loadTables() {
   const rows = [];
   const failed = [];
   let missing = 0, header = null, colIdx = null, done = 0;
+  const plan = planLoad();
+  const route = plan.route;
+  let unitsTotal = tissues.length, unitLabel = "tissue";
 
   try {
-    for (const tissue of tissues) {
-      if (cancelRequested) break;
-      $("loadNote").innerHTML =
-        `Loading <strong>${done + 1}</strong>/${tissues.length} · ` +
-        `${escapeHtml(tissueLabel(tissue))}…`;
-
-      let tbl;
-      try {
-        tbl = await getTable(tissue, kind);
-      } catch (err) {
-        failed.push(tissue);
-        done++;
-        continue;
-      }
-      header = tbl.header; colIdx = tbl.colIdx;
+    if (route === "gene") {
+      /* One fetch per shard covers every selected tissue at once, so the loop
+         is over shards and the tissue count costs nothing. */
+      const shards = shardsFor(selected);
+      unitsTotal = shards.length;
+      unitLabel = "gene shard";
+      const kindId = geneMajor.kind_ids[kind];
+      const bySh = new Map();
       for (const gi of selected) {
-        const line = tbl.map.get(NOVER[gi]);
-        if (!line) { missing++; continue; }
-        rows.push({ tissue, kind, gi, fields: line.split(",") });
+        if (!bySh.has(SHARD[gi])) bySh.set(SHARD[gi], []);
+        bySh.get(SHARD[gi]).push(gi);
       }
-      done++;
+
+      for (const shard of shards) {
+        if (cancelRequested) break;
+        $("loadNote").innerHTML =
+          `Loading gene shard <strong>${done + 1}</strong>/${shards.length}…`;
+
+        let sh;
+        try {
+          sh = await getShard(shard);
+        } catch (err) {
+          failed.push(`shard ${shard}`);
+          done++;
+          continue;
+        }
+        header = sh.header; colIdx = sh.colIdx;
+        for (const gi of bySh.get(shard)) {
+          for (const tissue of tissues) {
+            const line = sh.map.get(`${NOVER[gi]}|${tissue}|${kindId}`);
+            if (!line) { missing++; continue; }
+            rows.push({ tissue, kind, gi, fields: line.split(",") });
+          }
+        }
+        done++;
+      }
+      // Keep the tissue-major ordering: tissue outer, selection order inner.
+      const tOrder = new Map(tissues.map((t, i) => [t, i]));
+      const gOrder = new Map(selected.map((gi, i) => [gi, i]));
+      rows.sort((a, b) =>
+        tOrder.get(a.tissue) - tOrder.get(b.tissue) ||
+        gOrder.get(a.gi) - gOrder.get(b.gi));
+    } else {
+      for (const tissue of tissues) {
+        if (cancelRequested) break;
+        $("loadNote").innerHTML =
+          `Loading <strong>${done + 1}</strong>/${tissues.length} · ` +
+          `${escapeHtml(tissueLabel(tissue))}…`;
+
+        let tbl;
+        try {
+          tbl = await getTable(tissue, kind);
+        } catch (err) {
+          failed.push(tissue);
+          done++;
+          continue;
+        }
+        header = tbl.header; colIdx = tbl.colIdx;
+        for (const gi of selected) {
+          const line = tbl.map.get(NOVER[gi]);
+          if (!line) { missing++; continue; }
+          rows.push({ tissue, kind, gi, fields: line.split(",") });
+        }
+        done++;
+      }
     }
   } finally {
     loading = false;
@@ -1003,11 +1179,14 @@ async function loadTables() {
   if (rows.length || !cancelRequested) {
     loadedRows = rows;
     loadedHeader = header; loadedColIdx = colIdx;
+    /* On the gene route each shard already spans every tissue, so a partial run
+       covers all the tissues for fewer genes — not fewer tissues. Report the
+       tissues actually present in the rows rather than assuming either. */
     loadedMeta = {
-      missing, failed, kind,
-      tissues: tissues.slice(0, done),
+      missing, failed, kind, route, unitLabel,
+      tissues: Array.from(new Set(rows.map((r) => r.tissue))),
       cancelled: cancelRequested,
-      requested: tissues.length
+      unitsDone: done, unitsTotal
     };
     resultsStale = false;
     sortCol = null;
@@ -1171,13 +1350,14 @@ function render() {
             ` · ${escapeHtml(kindLabelOf(m.kind))}`;
   if (m.missing) msg += ` · <span style="color:var(--ceiling)">${m.missing} not in table</span>`;
   if (m.failed.length) {
-    msg += ` · <span style="color:var(--ceiling)">${m.failed.length} table` +
-           `${m.failed.length === 1 ? "" : "s"} failed</span>`;
+    msg += ` · <span style="color:var(--ceiling)">${m.failed.length} ` +
+           `${escapeHtml(m.unitLabel)}${m.failed.length === 1 ? "" : "s"} failed</span>`;
   }
   if (m.cancelled) {
-    msg += ` · <span style="color:var(--ceiling)">cancelled at ${m.tissues.length}` +
-           `/${m.requested}</span>`;
+    msg += ` · <span style="color:var(--ceiling)">cancelled at ${m.unitsDone}` +
+           `/${m.unitsTotal} ${escapeHtml(m.unitLabel)}s</span>`;
   }
+  if (m.route === "gene") msg += ` · <span class="muted">gene-major</span>`;
   setStatus(msg);
 }
 
@@ -1698,6 +1878,11 @@ async function boot() {
     setStatus('<strong style="color:var(--ceiling)">Could not load manifest.json</strong>');
     return;
   }
+
+  /* Optional: absent in an older manifest, in which case every query simply
+     takes the tissue-major route it always took. */
+  geneMajor = manifest.gene_major && manifest.gene_major.available
+    ? manifest.gene_major : null;
 
   $("statTissues").textContent = manifest.tissues.length;
   $("statTables").textContent = manifest.tissues.length * manifest.table_kinds.length;

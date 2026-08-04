@@ -47,7 +47,9 @@ def run_one(input_path: Path, threshold, jobs: int, max_nfev: int, limit) -> Non
     table = build_table(df, threshold, jobs, max_nfev, limit)
     table = insert_genename(table, load_name_map(input_path, ID_COL, NAME_COL))
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    table.to_csv(out, index=False)
+    # Pin LF so every table in outputs/ shares one line terminator regardless of
+    # platform; build_gene_major.py copies row text verbatim.
+    table.to_csv(out, index=False, lineterminator="\n")
     n_ok = int(table["fit_success"].sum())
     print(f"  wrote {out.name} ({len(table)} rows, {n_ok} fit_success)", flush=True)
 

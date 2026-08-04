@@ -29,12 +29,18 @@ fourparam/                    <- all the code (kept separate from the data)
   convert_gct_to_log2.py      <- (reference) raw GTEx GCT -> log2(TPM+1)-1 CSV
   download_data.py            <- (reference) how data/ was produced
   extract_genes.py            <- pull a gene set out of the tables -> one tidy CSV
+  build_gene_major.py         <- re-orient outputs/ into gene_major/ shards
   build_gui_data.py           <- regenerate the browser GUI's static inputs
+  make_diagrams.py            <- 5-histogram summary sheet per table -> diagrams/
 data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
 outputs/                      <- the generated tables go here (starts empty)
   v11_log2_<tissue>_fourparam.csv                              <- raw
   v11_log2_<tissue>_fourparam_excluded_at_or_below_-1.csv      <- excluded <= -1
+gene_major/                   <- the same rows re-oriented for the browser
+  shard_NNNN.csv              <- 16 genes x all 54 tissues x both filters
+diagrams/                     <- one 5-histogram summary sheet per table
+  v11_log2_<tissue>_fourparam[_excluded_at_or_below_-1].png
 genelists/                    <- reusable gene sets, one token per line
 results/                      <- extracted gene subsets (output of extract_genes.py)
 ```
@@ -209,6 +215,38 @@ single easiest way to get a wrong answer here.
 Each query token is reported as resolved (with what it hit) or `NOT FOUND`, so a
 typo or an absent symbol is loud rather than quietly empty.
 
+## Distribution sheets (`diagrams/`, `make_diagrams.py`)
+
+One PNG per table — 54 tissues × 2 filters = **108 sheets, 540 histograms** —
+covering `truncationindex`, `sumsquarevalue`, `mean`, `std`, and
+`ti_fourparam_sigma_dist` over the genes in that table, plus a panel stating what
+was excluded. File names mirror the table names, so a sheet sorts next to its
+source.
+
+```bash
+cd fourparam
+python make_diagrams.py                 # all 108, skips existing
+python make_diagrams.py --tissues liver --force
+```
+
+Only `fit_success == True` rows with a finite value are histogrammed, and the
+dropped counts are printed on the sheet rather than silently omitted.
+
+**The axis rules are per-metric on purpose** — these five columns do not share a
+shape, so one rule cannot serve them all. Do not "simplify" them to a common
+linear axis; each choice is load-bearing:
+
+- `truncationindex` is bounded [0, 1] and violently zero-inflated (~91% of liver
+  genes sit at exactly 0). Fixed [0, 1] domain with a **log count axis**; on a
+  linear one the panel is a single bar and the tail is invisible.
+- `ti_fourparam_sigma_dist` spans ~6 orders of magnitude either side of zero
+  (degenerate fits with `w ≈ 1e-4` reach 1e5 while the meaningful range is single
+  digits). **Symlog x**, linear within ±1, with symlog-spaced bins. Nothing is
+  clipped — no linear window shows the bulk without hiding ~10% of the genes.
+- `sumsquarevalue`, `mean`, `std` get an adaptive linear window: the narrower of
+  the 6×IQR fences and the p0.5–p99.5 span that hides ≤ 2%, falling back to
+  whichever hides less. The hidden count is stamped on the panel.
+
 ## The browser GUI (`docs/`, GitHub Pages)
 
 `docs/index.html` is a self-contained page published at
@@ -224,28 +262,73 @@ typo or an absent symbol is loud rather than quietly empty.
 
 Three things about it are load-bearing and easy to undo by accident:
 
-1. **Loading is explicit.** A table is ~8 MB gzipped, so selecting all 54 tissues
-   is a ~432 MB fetch. The page prices the query before running it, fetches
-   sequentially, and can be cancelled mid-run (keeping the rows already
-   gathered). Do not make it auto-fetch on selection change — that reintroduces
-   the half-gigabyte accident this design exists to prevent.
+1. **Loading is explicit, and picks an orientation.** The same numbers exist
+   twice — see "Two orientations" below. The page prices the query before
+   running it, fetches sequentially, and can be cancelled mid-run (keeping the
+   rows already gathered). Do not make it auto-fetch on selection change: the
+   tissue-major route is still chosen for many-genes-in-one-tissue queries, and
+   there it is the half-gigabyte accident this design exists to prevent.
 2. **The working set stores values, not references.** Each entry keeps all 18
    statistic columns, so it survives a reload without re-fetching. It is keyed
    `tissue|kind|unversioned-id`, which is why the same gene can appear for many
    tissues and for both raw and excluded at once. It is persisted to
    `localStorage` under `tb-working-set-v1`; if the quota is exceeded the page
    falls back to memory-only and says so rather than failing silently.
-3. **Its CSV header is byte-identical to `extract_genes.py`'s** — `tissue, table,
-   gene, genename` then the table's own columns in `manifest.json` order. Exports
-   always carry the full statistic set regardless of the compact/all column
-   toggle, and always cover every loaded row rather than the rendered subset
-   (rendering is capped at 800 rows). Keep these in sync if columns change.
+3. **Its CSV is byte-identical to `extract_genes.py`'s** — header `tissue, table,
+   gene, genename` then the table's own columns in `manifest.json` order, and
+   values passed through as text. Exports always carry the full statistic set
+   regardless of the compact/all column toggle, and always cover every loaded row
+   rather than the rendered subset (rendering is capped at 800 rows). Keep these
+   in sync if columns change.
+
+   > This is only true because **nothing re-serialises a float**. `extract_genes.py`
+   > reads with `dtype=str, keep_default_na=False`; `build_gene_major.py` builds
+   > rows by string concatenation. Parsing to float64 and writing back is *not*
+   > lossless: pandas' CSV writer emits ~16 significant digits rather than the
+   > shortest round-tripping repr, which silently turned `0.012596832467784065`
+   > into `0.012596832467784`. If you make either tool go through floats, this
+   > guarantee quietly dies.
 
 **It stores no copy of the tables.** It fetches the real CSV from
-`raw.githubusercontent.com` at runtime (~9 MB gzipped per table, cached for the
-session), which is why it cannot drift out of sync with `outputs/` and why the
-repo does not carry a duplicated GUI dataset. `raw.githubusercontent.com` serves
-`Access-Control-Allow-Origin: *`, so the cross-origin fetch works.
+`raw.githubusercontent.com` at runtime, so it cannot drift out of sync with
+`outputs/`. `raw.githubusercontent.com` serves `Access-Control-Allow-Origin: *`,
+so the cross-origin fetch works.
+
+### Two orientations: `outputs/` and `gene_major/`
+
+The same 8,059,824 rows are published twice, because the two shapes answer
+opposite questions and a browser query is nearly always the second kind:
+
+| | file | one fetch gets you | cost |
+|---|---|---|---|
+| tissue-major | `outputs/v11_log2_<tissue>_fourparam*.csv` | every gene, **one** tissue | ~8 MB |
+| gene-major | `gene_major/shard_NNNN.csv` | 16 genes, **every** tissue and both filters | ~220 KB |
+
+`shard_NNNN.csv` carries the `tissue,table,` prefix columns that `outputs/` rows
+lack — that is exactly the `extract_genes.py` header, so a shard and a CLI
+extract concatenate without reconciling anything. The GUI strips those two
+fields on read so both routes produce identical row objects downstream.
+
+**Genes are sharded in symbol order, not id order.** That is deliberate: a family
+lands in adjacent shards, so all 27 `ALDH*` cost 2 fetches rather than 27. The
+whole `adh_aldh_plus` list (38 genes × 54 tissues × 2 = 2,052 rows) is 8 shards,
+~1.8 MB, against 432 MB tissue-major.
+
+`docs/genes.tsv` is `id \t symbol \t shard`; the third column is that map. The
+GUI picks whichever route fetches fewer bytes, counting only what is not already
+cached, and labels the choice in the status line. Rebuild after regenerating any
+table:
+
+```bash
+cd fourparam
+python build_gene_major.py            # ~80 s, 4,665 shards, 2.46 GB
+python build_gene_major.py --verify   # byte-compares shards against outputs/
+```
+
+Line endings matter here. `build_gene_major.py` copies row text verbatim, so it
+normalises CRLF on read; the writers now pin `lineterminator="\n"`. The eight
+tables for thyroid/uterus/vagina/whole_blood were written with CRLF by an earlier
+run and have been normalised in place.
 
 Pages publishes **only `docs/`** (branch `main`, folder `/docs`). That matters:
 the Pages site size limit is 1 GB and `outputs/` alone is 2.05 GB, so publishing
