@@ -294,13 +294,23 @@ tbody td:first-child::after, thead th:first-child::after {
 }
 .nil { color: var(--muted); opacity: .55; }
 
-/* the signature: per-gene truncated-Gaussian miniature */
-.spark { display: block; width: 116px; height: 34px; overflow: visible; }
-.spark .curve-live { fill: none; stroke: var(--curve); stroke-width: 1.4; }
-.spark .curve-censored { fill: none; stroke: var(--curve); stroke-width: 1.4; stroke-dasharray: 2 2.5; opacity: .32; }
-.spark .fill-live { fill: var(--curve); opacity: .13; }
+/* the signature: per-gene 40-bin histogram with its fitted curve overlaid.
+   overflow:hidden is load-bearing — a degenerate fit is drawn clipped rather
+   than rescaled, so the bars stay legible and a curve leaving the frame is
+   itself the signal. Clipping this way needs no per-cell clipPath id, which
+   would have to stay unique across up to RENDER_LIMIT rows. */
+.spark { display: block; width: 160px; height: 44px; overflow: hidden; }
+.spark .bars {
+  fill: var(--muted); fill-opacity: .30;
+  stroke: var(--muted); stroke-opacity: .55; stroke-width: .8;
+}
+.spark .curve-live { fill: none; stroke: var(--curve); stroke-width: 1.6; }
+.spark .curve-censored { fill: none; stroke: var(--curve); stroke-width: 1.6; stroke-dasharray: 2 2.5; opacity: .32; }
 .spark .ceiling { stroke: var(--ceiling); stroke-width: 1.4; }
 .spark .base { stroke: var(--rule); stroke-width: 1; }
+@media (prefers-color-scheme: dark) { .spark .bars { fill-opacity: .42; } }
+:root[data-theme="dark"] .spark .bars { fill-opacity: .42; }
+:root[data-theme="light"] .spark .bars { fill-opacity: .30; }
 
 /* ---------- empty / error ---------- */
 .note { padding: 46px 22px; text-align: center; color: var(--muted); }
@@ -322,6 +332,7 @@ tbody td:first-child::after, thead th:first-child::after {
 .legend .swatch { width: 15px; height: 2px; background: var(--curve); }
 .legend .swatch.v { background: var(--ceiling); width: 2px; height: 13px; }
 .legend .swatch.d { background: none; border-top: 2px dashed var(--curve); opacity: .5; height: 0; }
+.legend .swatch.b { background: var(--muted); opacity: .45; width: 13px; height: 9px; }
 
 footer {
   max-width: 1440px; margin: 0 auto; padding: 0 22px 44px;
@@ -544,6 +555,7 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
       <div class="banner" id="staleBanner" hidden></div>
       <div id="resultArea"></div>
       <div class="legend" id="legend" hidden>
+        <span class="key"><span class="swatch b"></span> observed histogram, 40 bins</span>
         <span class="key"><span class="swatch"></span> fitted curve, observed range</span>
         <span class="key"><span class="swatch d"></span> censored tail beyond the ceiling</span>
         <span class="key"><span class="swatch v"></span> ceiling <code>x_max</code></span>
@@ -954,63 +966,143 @@ function formatMb(mb) {
 }
 
 /* =====================================================================
-   The signature: a truncated-Gaussian miniature drawn from this row's fit
+   The signature: this row's real 40-bin histogram, with its fitted
+   4-parameter Gaussian overlaid on the same count axis.
+
+   Bin edges are not transported. numpy bins with no explicit range, so they
+   are linspace(min, max, 41) and both ends are already columns. The one rule
+   that has to be mirrored here is numpy's zero-width fallback, or every gene
+   sitting entirely at -1 divides by zero.
    ===================================================================== */
+const HIST_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const HIST_BINS = 40;
+const HIST_LEVELS = 63;
+const SPARK_W = 160, SPARK_H = 44;
+const SPARK_PAD_FRAC = 0.12;   // dead space past the ceiling, right side only
+const SPARK_HEADROOM = 1.15;   // y-axis top, as a multiple of hist_max
+
+function decodeHistogram(s) {
+  if (typeof s !== "string" || s.length !== HIST_BINS) return null;
+  const out = new Array(HIST_BINS);
+  for (let i = 0; i < HIST_BINS; i++) {
+    const v = HIST_ALPHABET.indexOf(s[i]);
+    if (v < 0) return null;
+    out[i] = v / HIST_LEVELS;          // fraction of hist_max
+  }
+  return out;
+}
+
 function sparkline(row, colIdx) {
   const num = (c) => {
-    const v = Number(row[colIdx[c]]);
+    const i = colIdx[c];
+    if (i === undefined) return NaN;
+    const v = Number(row[i]);
     return Number.isFinite(v) ? v : NaN;
   };
+  const txt = (c) => {
+    const i = colIdx[c];
+    return i === undefined || row[i] == null ? "" : String(row[i]).trim();
+  };
+
   const y0 = num("y0"), A = num("A"), x0 = num("x0"), w = num("w");
-  const right = num("right"), lo = num("min");
-  if (![y0, A, x0, w, right].every(Number.isFinite) || w <= 0) return "";
+  const lo0 = num("min"), hi0 = num("max"), histMax = num("hist_max");
+  const bars = decodeHistogram(txt("hist"));
 
-  const sigma = w / Math.SQRT2;
-  // Domain: the peak's own +/-3.4 sigma, widened to include the data range.
-  let a = Math.min(x0 - 3.4 * sigma, Number.isFinite(lo) ? lo : Infinity);
-  let b = Math.max(x0 + 3.4 * sigma, right);
+  const haveCurve = [y0, A, x0, w].every(Number.isFinite) && w > 0;
+  const haveBars = !!bars && Number.isFinite(histMax) && histMax > 0 &&
+                   Number.isFinite(lo0) && Number.isFinite(hi0);
+  if (!haveBars && !haveCurve) return "";
+
+  // -- x domain ------------------------------------------------------------
+  let lo, hi;
+  if (Number.isFinite(lo0) && Number.isFinite(hi0)) {
+    if (hi0 > lo0) { lo = lo0; hi = hi0; }
+    else { lo = lo0 - 0.5; hi = hi0 + 0.5; }   // numpy's zero-width fallback
+  } else {
+    const sigma = w / Math.SQRT2;
+    lo = x0 - 3 * sigma; hi = x0 + 3 * sigma;
+  }
+  const a = lo, b = hi + SPARK_PAD_FRAC * (hi - lo);
   if (!(b > a)) return "";
-  const pad = (b - a) * 0.04; a -= pad; b += pad;
 
-  const W = 116, H = 34, N = 72;
+  const W = SPARK_W, H = SPARK_H, base = H - 1.5, usable = H - 3;
+  const sx = (x) => ((x - a) / (b - a)) * W;
   const f = (x) => y0 + A * Math.exp(-Math.pow((x - x0) / w, 2));
 
-  // Scale to the curve's own range over the window.
-  let fmin = Infinity, fmax = -Infinity;
-  for (let i = 0; i <= N; i++) {
-    const v = f(a + (b - a) * i / N);
-    if (v < fmin) fmin = v;
-    if (v > fmax) fmax = v;
+  // -- y domain, in count units --------------------------------------------
+  // The curve was fit to bin counts, so it shares the bars' axis directly —
+  // that is what makes the overlay a comparison rather than a decoration.
+  let yLo = 0, yHi;
+  if (haveBars) {
+    yHi = SPARK_HEADROOM * histMax;
+  } else {
+    let mn = Infinity, mx = -Infinity;
+    for (let i = 0; i <= 96; i++) {
+      const v = f(a + (b - a) * i / 96);
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
+    yLo = mn; yHi = mx > mn ? mx : mn + 1;
   }
-  const span = fmax - fmin || 1;
-  const sx = (x) => ((x - a) / (b - a)) * W;
-  const sy = (v) => H - 1.5 - ((v - fmin) / span) * (H - 4);
+  const sy = (v) => base - ((v - yLo) / (yHi - yLo)) * usable;
 
-  const live = [], censored = [];
-  for (let i = 0; i <= N; i++) {
-    const x = a + (b - a) * i / N;
-    (x <= right ? live : censored).push([sx(x), sy(f(x))]);
+  // -- bars: one stepped path, not 40 rects ---------------------------------
+  // 800 rows x 40 rects would add ~32k nodes; see the RENDER_LIMIT note above.
+  let barsPath = "";
+  if (haveBars) {
+    const binW = (hi - lo) / HIST_BINS;
+    let d = `M${sx(lo).toFixed(1)} ${base.toFixed(1)}`;
+    for (let i = 0; i < HIST_BINS; i++) {
+      const y = sy(bars[i] * histMax).toFixed(1);
+      d += `L${sx(lo + i * binW).toFixed(1)} ${y}` +
+           `L${sx(lo + (i + 1) * binW).toFixed(1)} ${y}`;
+    }
+    d += `L${sx(hi).toFixed(1)} ${base.toFixed(1)}Z`;
+    barsPath = `<path class="bars" d="${d}"/>`;
   }
-  // Bridge the gap so the two segments meet exactly at the ceiling.
-  if (live.length && censored.length) {
-    censored.unshift([sx(right), sy(f(right))]);
-    live.push([sx(right), sy(f(right))]);
+
+  // -- curve, split at the ceiling ------------------------------------------
+  const cut = Number.isFinite(num("right")) ? num("right") : hi;
+  let livePath = "", censPath = "";
+  if (haveCurve) {
+    const N = 96, live = [], cens = [];
+    for (let i = 0; i <= N; i++) {
+      const x = a + (b - a) * i / N;
+      (x <= cut ? live : cens).push([sx(x), sy(f(x))]);
+    }
+    // Bridge the gap so the two segments meet exactly at the ceiling.
+    if (live.length && cens.length) {
+      const j = [sx(cut), sy(f(cut))];
+      live.push(j); cens.unshift(j);
+    }
+    const d = (pts) => pts.map((p, i) =>
+      `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("");
+    if (cens.length) censPath = `<path class="curve-censored" d="${d(cens)}"/>`;
+    if (live.length) livePath = `<path class="curve-live" d="${d(live)}"/>`;
   }
-  const d = (pts) => pts.map((p, i) =>
-    `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("");
 
-  const cx = sx(right).toFixed(1);
-  const area = live.length
-    ? `<path class="fill-live" d="${d(live)}L${cx} ${H - 1.5}L${sx(a).toFixed(1)} ${H - 1.5}Z"/>`
-    : "";
+  const cx = sx(cut).toFixed(1);
+  const nObs = num("n_obs");
+  const label = haveBars
+    ? `40-bin histogram, n = ${Number.isFinite(nObs) ? nObs : "?"}, ` +
+      `peak bin ${histMax}, range ${lo.toFixed(2)} to ${hi.toFixed(2)}`
+    : "fitted curve only, no histogram available";
 
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-hidden="true" preserveAspectRatio="none">
-    <line class="base" x1="0" y1="${H - 1.5}" x2="${W}" y2="${H - 1.5}"/>
-    ${area}
-    ${censored.length ? `<path class="curve-censored" d="${d(censored)}"/>` : ""}
-    ${live.length ? `<path class="curve-live" d="${d(live)}"/>` : ""}
-    <line class="ceiling" x1="${cx}" y1="1" x2="${cx}" y2="${H - 1.5}"/>
+  return `<svg class="spark" role="img" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <title>${escapeHtml(label)}</title>
+    <line class="base" x1="0" y1="${base}" x2="${W}" y2="${base}"/>
+    ${barsPath}
+    ${censPath}
+    ${livePath}
+    <line class="ceiling" x1="${cx}" y1="1" x2="${cx}" y2="${base}"/>
   </svg>`;
+}
+
+/* A failed fit still has a histogram worth seeing, so the cell no longer keys
+   off fit_success — it falls back only when there is nothing at all to draw. */
+function shapeCell(fields, colIdx) {
+  return sparkline(fields, colIdx) || '<span class="nil">—</span>';
 }
 
 /* =====================================================================
@@ -1294,8 +1386,7 @@ function render() {
         <div class="c-id">${escapeHtml(GID[gi])}</div>
       </td>
       <td class="tl c-tissue">${escapeHtml(tissueLabel(r.tissue))}</td>
-      <td class="c-shape">${ok ? sparkline(fields, loadedColIdx)
-        : '<span class="nil">no fit</span>'}</td>
+      <td class="c-shape">${shapeCell(fields, loadedColIdx)}</td>
       ${cells}
     </tr>`;
   }).join("");

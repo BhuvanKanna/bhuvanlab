@@ -8,7 +8,8 @@ the **54 GTEx v11 tissues**.
 **[bhuvankanna.github.io/bhuvanlab](https://bhuvankanna.github.io/bhuvanlab/)** —
 search genes *and* tissues by type-ahead, load the tables, then tick rows into a
 **working set** that persists across queries and exports as one spreadsheet.
-Every row draws that gene's own fitted curve with its truncation ceiling marked.
+Every row draws that gene's own 40-bin expression histogram with its fitted
+Gaussian overlaid and its truncation ceiling marked.
 
 Two tabs:
 
