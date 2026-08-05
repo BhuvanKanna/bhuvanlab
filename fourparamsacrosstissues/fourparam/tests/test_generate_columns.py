@@ -29,6 +29,37 @@ def test_failed_row_defaults_to_empty_histogram():
     assert row["hist_max"] == 0
 
 
+def test_a_histogram_never_ships_without_its_bin_edges():
+    """THE contract the browser depends on: bin edges are not stored, they are
+    linspace(min, max, 41). A row carrying `hist` but NaN min/max cannot be
+    drawn at all, which is exactly what failed-fit rows used to do."""
+    gf._init_worker(None, 2000)
+    rng = np.random.default_rng(9)
+    rows = [gf._fit_one(("ok", rng.normal(size=250))),        # converges
+            gf._fit_one(("small", np.array([1.0, 2.0, 3.0]))),  # below MIN_OBS
+            gf._fit_one(("flat", np.full(40, -1.0))),           # all identical
+            gf._fit_one(("none", np.array([np.nan])))]          # no data
+    for row in rows:
+        if row["hist"]:
+            assert np.isfinite(row["min"]), row["gene"]
+            assert np.isfinite(row["max"]), row["gene"]
+
+
+def test_failed_row_carries_min_and_max_when_there_is_data():
+    gf._init_worker(None, 2000)
+    row = gf._fit_one(("G", np.array([1.5, 2.0, 9.25])))
+    assert row["fit_success"] is False
+    assert row["min"] == 1.5
+    assert row["max"] == 9.25
+
+
+def test_failed_row_with_no_data_has_nan_min_and_max():
+    gf._init_worker(None, 2000)
+    row = gf._fit_one(("G", np.array([np.nan])))
+    assert row["hist"] == ""
+    assert np.isnan(row["min"]) and np.isnan(row["max"])
+
+
 def test_below_min_obs_still_gets_a_histogram():
     """A gene that never reaches the fit still shows its real distribution."""
     gf._init_worker(None, 2000)

@@ -132,7 +132,8 @@ def insert_genename(table: pd.DataFrame, name_map: pd.Series) -> pd.DataFrame:
     return table
 
 
-def _failed_row(gene: str, n_obs: int, hist: str = "", hist_max: int = 0) -> dict:
+def _failed_row(gene: str, n_obs: int, hist: str = "", hist_max: int = 0,
+                lo=np.nan, hi=np.nan) -> dict:
     row = {c: np.nan for c in COLUMNS}
     row["gene"] = gene
     row["n_obs"] = int(n_obs)
@@ -141,6 +142,11 @@ def _failed_row(gene: str, n_obs: int, hist: str = "", hist_max: int = 0) -> dic
     # "12.0" instead of "12" for every other row.
     row["hist"] = hist
     row["hist_max"] = int(hist_max)
+    # min/max are facts about the data, not outputs of the fit, and `hist` is
+    # unreadable without them — its bin edges are linspace(min, max, 41), so a
+    # histogram on a row with NaN min/max cannot be drawn at all.
+    row["min"] = lo
+    row["max"] = hi
     return row
 
 
@@ -166,16 +172,19 @@ def _fit_one(item) -> dict:
     n_obs = int(data.size)
 
     # Computed before and independently of the fit: a gene whose fit failed
-    # still gets to show its real distribution in the browser.
+    # still gets to show its real distribution in the browser. min/max travel
+    # with it because they are the histogram's bin edges.
     hist, hist_max = encode_histogram(data)
+    lo = float(data.min()) if n_obs else np.nan
+    hi = float(data.max()) if n_obs else np.nan
 
     if n_obs < MIN_OBS:
-        return _failed_row(gene, n_obs, hist, hist_max)
+        return _failed_row(gene, n_obs, hist, hist_max, lo, hi)
     try:
         bf = BhuvanFitter(data, gene_name=gene)
         row = bf.fit("fourparam", max_nfev=_WORKER_MAX_NFEV)
     except (RuntimeError, ValueError):
-        return _failed_row(gene, n_obs, hist, hist_max)
+        return _failed_row(gene, n_obs, hist, hist_max, lo, hi)
     row["hist"] = hist
     row["hist_max"] = hist_max
     return row
