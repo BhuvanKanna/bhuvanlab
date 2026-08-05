@@ -13,6 +13,8 @@ _fourparam_gaussian(x, y0, A, x0, w)   -- the model curve (module level so
                                           scipy.optimize.curve_fit can use it)
 BhuvanFitter(data, gene_name, x_max)   -- fit + metrics + plotting for one gene
 gene_peaks(values, ...)                -- KDE peak detection for one gene
+encode_histogram(data, bins)           -- quantised 40-bin histogram for the
+                                          browser's Shape thumbnail
 """
 
 import numpy as np
@@ -20,6 +22,45 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.stats import gaussian_kde, skew, kurtosis
 from scipy.signal import find_peaks
+
+
+# -- thumbnail histogram encoding ---------------------------------------------
+# One character per bin, so the column is fixed width and contains no comma or
+# quote: the browser parses these CSVs with a plain split(","), and any quoted
+# field would shift every column index after it.
+HIST_BINS = 40
+HIST_LEVELS = 63
+HIST_ALPHABET = ("ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                 "abcdefghijklmnopqrstuvwxyz"
+                 "0123456789+/")
+
+
+def encode_histogram(data, bins: int = HIST_BINS):
+    """
+    Quantise a gene's 40-bin histogram to ``(hist, hist_max)``.
+
+    ``hist`` is exactly ``bins`` characters from ``HIST_ALPHABET``, each holding
+    ``round(count * HIST_LEVELS / hist_max)``; ``hist_max`` is the true count in
+    the tallest bin. Returns ``("", 0)`` when there is no finite data.
+
+    Binning matches ``BhuvanFitter`` exactly (``np.histogram(arr, bins=40)``
+    with no explicit range) so the bars line up with the curve fitted to them.
+    Bin edges are deliberately not returned: they are ``linspace(min, max, 41)``
+    and both ends are already table columns.
+
+    This is **a rendering aid, not analysis data** — it is lossy to within
+    1/63 of the peak. ``n_obs`` and ``hist_max`` remain exact.
+    """
+    arr = np.asarray(data, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return "", 0
+    counts, _ = np.histogram(arr, bins=bins)
+    hist_max = int(counts.max())
+    if hist_max <= 0:
+        return "", 0
+    levels = np.rint(counts * (HIST_LEVELS / hist_max)).astype(int)
+    return "".join(HIST_ALPHABET[v] for v in levels), hist_max
 
 
 def _fourparam_gaussian(x, y0, A, x0, w):
