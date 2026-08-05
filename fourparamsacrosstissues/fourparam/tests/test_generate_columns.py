@@ -88,3 +88,33 @@ def test_no_commas_or_quotes_in_the_hist_column():
     row = gf._fit_one(("G", rng.normal(size=200)))
     assert "," not in row["hist"]
     assert '"' not in row["hist"]
+
+
+def test_written_csv_has_a_uniform_field_count(tmp_path):
+    """The browser splits on "," with no quoted-field handling, so a single
+    stray comma or quote would shift every column index after it. Ragged rows
+    are the failure mode that would cause, so assert against them directly."""
+    gf._init_worker(None, 2000)
+    rng = np.random.default_rng(7)
+    rows = [gf._fit_one(("A", rng.normal(size=250))),          # clean fit
+            gf._fit_one(("B", np.array([1.0, 2.0, 3.0]))),     # below MIN_OBS
+            gf._fit_one(("C", np.full(40, -1.0))),             # all identical
+            gf._fit_one(("D", np.array([np.nan])))]            # no data
+    table = pd.DataFrame.from_records(rows, columns=gf.COLUMNS)
+    out = tmp_path / "t.csv"
+    table.to_csv(out, index=False, lineterminator="\n")
+
+    lines = out.read_text().strip().split("\n")
+    assert {len(line.split(",")) for line in lines} == {len(gf.COLUMNS)}
+    assert '"' not in out.read_text()
+
+
+def test_hist_column_is_reached_by_key_not_attribute():
+    """DataFrame.hist is pandas' plotting method, so df.hist silently returns a
+    bound method instead of the column. Pin that df["hist"] is the real one."""
+    gf._init_worker(None, 2000)
+    rng = np.random.default_rng(8)
+    table = pd.DataFrame.from_records(
+        [gf._fit_one(("A", rng.normal(size=200)))], columns=gf.COLUMNS)
+    assert callable(table.hist)
+    assert len(table["hist"].iloc[0]) == HIST_BINS

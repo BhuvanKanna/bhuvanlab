@@ -32,6 +32,7 @@ fourparam/                    <- all the code (kept separate from the data)
   build_gene_major.py         <- re-orient outputs/ into gene_major/ shards
   build_gui_data.py           <- regenerate the browser GUI's static inputs
   make_diagrams.py            <- 5-histogram summary sheet per table -> diagrams/
+  tests/                      <- pytest suite: `python -m pytest tests/ -q`
 data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
 outputs/                      <- the generated tables go here (starts empty)
@@ -185,6 +186,8 @@ One row per gene. Columns, in order:
 | `maxheight`, `rightheight` | curve height at the peak / at `x_max`, above the curve's interval-minimum baseline (`truncationindex = rightheight/maxheight`) |
 | `n_obs` | number of finite values fit (after any exclusion) |
 | `fit_success` | `True` if the fit converged with `n_obs >= 10`, else `False` (metrics `NaN`) |
+| `hist` | 40-character thumbnail histogram, one character per bin from `A-Za-z0-9+/` (= 0–63), each `round(count * 63 / hist_max)`. **A rendering aid for the browser, not analysis data** — quantised and lossy to 1/63 of the peak. Empty when `n_obs = 0`. Written whenever `n_obs >= 1`, **independent of `fit_success`**, so a gene whose fit failed still shows its real distribution. Bin edges are not stored: they are `linspace(min, max, 41)`, and numpy widens a zero-width range to `[min-0.5, max+0.5]` |
+| `hist_max` | exact count in the tallest bin; `0` when there is no histogram (never `NaN` — one `NaN` in the column makes pandas write every other row's value as a float) |
 
 Fitting details (in `bhuvanfitter.py`, the single source of truth): the histogram
 is always **40 bins**; the curve is fit by ordinary least squares (Trust Region
@@ -256,9 +259,40 @@ linear axis; each choice is load-bearing:
   boxes work the same way; tissue matching is underscore-insensitive so "whole
   blood" finds `whole_blood`), a raw / excluded ≤ −1 toggle, and an explicit
   **Load tables** button. Results are one row per gene × tissue, each carrying a
-  checkbox and that gene's fitted curve with the truncation ceiling marked.
+  checkbox and that gene's **real 40-bin histogram with the fitted curve
+  overlaid** and the truncation ceiling marked (see "The Shape cell" below).
 - **Working set** — rows ticked on the first tab, accumulated across any number
   of separate queries, filterable, and exported as one CSV.
+
+### The Shape cell
+
+Each row draws that gene's **real 40-bin histogram** (from `hist` / `hist_max`)
+with its fitted 4-parameter Gaussian overlaid **on the same count axis** — the
+curve was fit to bin counts, which is what makes the overlay a comparison rather
+than a decoration. 160 × 44px; grey bars are the observation, the teal curve is
+the model, and the rust line is the ceiling.
+
+- **The x-domain is padded 12% past `max`, on the right only.** `x_max` *is* the
+  data max, so without that pad the ceiling would coincide with the panel's right
+  border and carry no information. The asymmetry is the point: it says the cap is
+  on the right. Do not "tidy" it into symmetric padding.
+- **The curve is clipped, not rescaled.** The y-axis is fixed to
+  `[0, 1.15 * hist_max]`, so a degenerate fit visibly leaves the frame instead of
+  squashing the bars to nothing. That exit is the signal. Clipping is
+  `.spark { overflow: hidden }` — deliberately not a `clipPath`, whose id would
+  have to stay unique across up to `RENDER_LIMIT` rows.
+- **The bars are one stepped `<path>`, not 40 `<rect>`s.** At 800 rendered rows,
+  40 rects apiece would add ~32k DOM nodes.
+- **The cell no longer keys off `fit_success`.** A failed fit still has a
+  histogram worth seeing; the cell falls back to `—` only when there is neither a
+  histogram nor fit parameters.
+
+> Why the earlier synthetic sparkline was replaced: it drew the fitted curve over
+> the peak's own ±3.4σ and never the data. For APP in kidney cortex (σ = 16 for a
+> 4-unit data span) that window is [−52, 66], which renders the ceiling at 99% of
+> full height while `truncationindex` is exactly 0 — the table and the picture
+> normalising over windows ~30× apart. See
+> `specs/2026-08-05-histogram-thumbnail-design.md`.
 
 Three things about it are load-bearing and easy to undo by accident:
 
@@ -373,6 +407,18 @@ in progress and the tree is in a broken state, finish it first, then push.
 
 ### Things that will bite you if you don't know them
 
+- **The `hist` column must never contain a comma or a quote.** The browser parses
+  these CSVs with a plain `split(",")` and has no quoted-field handling, so a
+  single comma there silently shifts every column index after it. That is exactly
+  why the histogram is one character per bin rather than comma-separated counts.
+- **`hist` is quantised and lossy.** It is a rendering aid for the browser
+  thumbnail, never a source of truth for counts. `n_obs` and `hist_max` are exact;
+  use those.
+- **Always write `df["hist"]`, never `df.hist`.** `DataFrame.hist` is pandas' own
+  histogram-plotting method, so attribute access silently returns a bound method
+  instead of the column and fails somewhere later with a confusing error. The
+  generator is unaffected (it builds rows as dicts keyed by `COLUMNS`), but any
+  analysis code reading these tables will hit this.
 - **`data/*.csv.gz` are Git LFS pointers, not real files.** The repo is
   configured `--skip-smudge` with `lfs.fetchexclude=*`, so those 134-byte
   pointers are correct and must stay that way. ~5.7 GB of LFS payload is
