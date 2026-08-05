@@ -71,7 +71,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from bhuvanfitter import BhuvanFitter
+from bhuvanfitter import BhuvanFitter, encode_histogram
 
 warnings.filterwarnings("ignore")  # silence skew/kurt precision-loss noise on near-constant genes
 
@@ -87,6 +87,9 @@ COLUMNS = [
     "ti_fourparam_sigma_dist", "truncationindex",
     "min", "max", "mean", "std", "skew", "kurt",
     "right", "maxheight", "rightheight", "n_obs", "fit_success",
+    # Thumbnail histogram for the browser's Shape column. Quantised and lossy —
+    # a rendering aid, not analysis data. See bhuvanfitter.encode_histogram.
+    "hist", "hist_max",
 ]
 
 
@@ -129,11 +132,15 @@ def insert_genename(table: pd.DataFrame, name_map: pd.Series) -> pd.DataFrame:
     return table
 
 
-def _failed_row(gene: str, n_obs: int) -> dict:
+def _failed_row(gene: str, n_obs: int, hist: str = "", hist_max: int = 0) -> dict:
     row = {c: np.nan for c in COLUMNS}
     row["gene"] = gene
     row["n_obs"] = int(n_obs)
     row["fit_success"] = False
+    # 0 rather than NaN: one NaN anywhere in the column makes pandas write
+    # "12.0" instead of "12" for every other row.
+    row["hist"] = hist
+    row["hist_max"] = int(hist_max)
     return row
 
 
@@ -157,13 +164,21 @@ def _fit_one(item) -> dict:
     if _WORKER_THRESHOLD is not None:
         data = data[data > _WORKER_THRESHOLD]   # drop values <= threshold
     n_obs = int(data.size)
+
+    # Computed before and independently of the fit: a gene whose fit failed
+    # still gets to show its real distribution in the browser.
+    hist, hist_max = encode_histogram(data)
+
     if n_obs < MIN_OBS:
-        return _failed_row(gene, n_obs)
+        return _failed_row(gene, n_obs, hist, hist_max)
     try:
         bf = BhuvanFitter(data, gene_name=gene)
-        return bf.fit("fourparam", max_nfev=_WORKER_MAX_NFEV)
+        row = bf.fit("fourparam", max_nfev=_WORKER_MAX_NFEV)
     except (RuntimeError, ValueError):
-        return _failed_row(gene, n_obs)
+        return _failed_row(gene, n_obs, hist, hist_max)
+    row["hist"] = hist
+    row["hist_max"] = hist_max
+    return row
 
 
 def build_table(df: pd.DataFrame, threshold, jobs: int, max_nfev: int,
