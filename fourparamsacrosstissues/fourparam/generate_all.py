@@ -29,7 +29,7 @@ from pathlib import Path
 
 from generate_fourparam import (
     load_expression, load_name_map, insert_genename, build_table,
-    output_csv_for, OUT_DIR,
+    output_csv_for, OUT_DIR, COLUMNS,
 )
 
 HERE = Path(__file__).resolve().parent
@@ -38,11 +38,27 @@ ID_COL, NAME_COL = "Name", "Description"
 THRESHOLDS = [None, -1.0]   # raw, then excluded <= -1
 
 
-def run_one(input_path: Path, threshold, jobs: int, max_nfev: int, limit) -> None:
+CURRENT_HEADER = ["gene", "genename"] + COLUMNS[1:]
+
+
+def header_is_current(path: Path) -> bool:
+    """True if this table's columns match what the generator writes today."""
+    with path.open("r", encoding="utf-8") as fh:
+        return fh.readline().rstrip("\r\n").split(",") == CURRENT_HEADER
+
+
+def run_one(input_path: Path, threshold, jobs: int, max_nfev: int, limit,
+            refresh: bool = False) -> None:
     out = output_csv_for(input_path, threshold)
     if out.exists():
-        print(f"  skip (exists): {out.name}", flush=True)
-        return
+        # Plain skip is what makes an interrupted run resumable. But after a
+        # column is added, "exists" no longer means "current" -- every stale
+        # table would be skipped and the run would silently do nothing.
+        # --refresh keeps the resumability and fixes that.
+        if not refresh or header_is_current(out):
+            print(f"  skip (exists): {out.name}", flush=True)
+            return
+        print(f"  refresh (stale columns): {out.name}", flush=True)
     df = load_expression(input_path, id_col=ID_COL, drop_cols=[NAME_COL])
     table = build_table(df, threshold, jobs, max_nfev, limit)
     table = insert_genename(table, load_name_map(input_path, ID_COL, NAME_COL))
@@ -60,6 +76,11 @@ def main() -> None:
     p.add_argument("--jobs", type=int, default=8)
     p.add_argument("--max-nfev", type=int, default=2000, dest="max_nfev")
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--refresh", action="store_true",
+                   help="Also regenerate tables whose columns are out of date "
+                        "(header != the generator's current COLUMNS). Without "
+                        "this, every existing table is skipped, so a run after "
+                        "a column change silently does nothing.")
     args = p.parse_args()
 
     tissues = sorted(DATA_DIR.glob("v11_log2_*.csv.gz"))
@@ -71,7 +92,8 @@ def main() -> None:
     for i, tissue in enumerate(tissues, 1):
         print(f"[{i}/{len(tissues)}] {tissue.name}", flush=True)
         for threshold in THRESHOLDS:
-            run_one(tissue, threshold, args.jobs, args.max_nfev, args.limit)
+            run_one(tissue, threshold, args.jobs, args.max_nfev, args.limit,
+                    refresh=args.refresh)
 
     print("Done.", flush=True)
 
