@@ -1012,17 +1012,19 @@ function sparkline(row, colIdx) {
   const haveCurve = [y0, A, x0, w].every(Number.isFinite) && w > 0;
   const haveBars = !!bars && Number.isFinite(histMax) && histMax > 0 &&
                    Number.isFinite(lo0) && Number.isFinite(hi0);
-  if (!haveBars && !haveCurve) return "";
+
+  // The histogram is required, the curve is not. Nothing is ever drawn from the
+  // fit alone: with no bin counts there is no scale to draw it against, so the
+  // only available choice is to rescale the curve to its own range -- which
+  // stretches a degenerate near-flat fit to fill the cell and manufactures
+  // shape that is not there. That is the exact error this cell replaced.
+  if (!haveBars) return "";
 
   // -- x domain ------------------------------------------------------------
+  // min/max are guaranteed finite by haveBars.
   let lo, hi;
-  if (Number.isFinite(lo0) && Number.isFinite(hi0)) {
-    if (hi0 > lo0) { lo = lo0; hi = hi0; }
-    else { lo = lo0 - 0.5; hi = hi0 + 0.5; }   // numpy's zero-width fallback
-  } else {
-    const sigma = w / Math.SQRT2;
-    lo = x0 - 3 * sigma; hi = x0 + 3 * sigma;
-  }
+  if (hi0 > lo0) { lo = lo0; hi = hi0; }
+  else { lo = lo0 - 0.5; hi = hi0 + 0.5; }   // numpy's zero-width fallback
   const a = lo, b = hi + SPARK_PAD_FRAC * (hi - lo);
   if (!(b > a)) return "";
 
@@ -1033,34 +1035,21 @@ function sparkline(row, colIdx) {
   // -- y domain, in count units --------------------------------------------
   // The curve was fit to bin counts, so it shares the bars' axis directly —
   // that is what makes the overlay a comparison rather than a decoration.
-  let yLo = 0, yHi;
-  if (haveBars) {
-    yHi = SPARK_HEADROOM * histMax;
-  } else {
-    let mn = Infinity, mx = -Infinity;
-    for (let i = 0; i <= 96; i++) {
-      const v = f(a + (b - a) * i / 96);
-      if (v < mn) mn = v;
-      if (v > mx) mx = v;
-    }
-    yLo = mn; yHi = mx > mn ? mx : mn + 1;
-  }
+  // Always anchored to the observed counts, never to the curve's own range.
+  const yLo = 0, yHi = SPARK_HEADROOM * histMax;
   const sy = (v) => base - ((v - yLo) / (yHi - yLo)) * usable;
 
   // -- bars: one stepped path, not 40 rects ---------------------------------
   // 800 rows x 40 rects would add ~32k nodes; see the RENDER_LIMIT note above.
-  let barsPath = "";
-  if (haveBars) {
-    const binW = (hi - lo) / HIST_BINS;
-    let d = `M${sx(lo).toFixed(1)} ${base.toFixed(1)}`;
-    for (let i = 0; i < HIST_BINS; i++) {
-      const y = sy(bars[i] * histMax).toFixed(1);
-      d += `L${sx(lo + i * binW).toFixed(1)} ${y}` +
-           `L${sx(lo + (i + 1) * binW).toFixed(1)} ${y}`;
-    }
-    d += `L${sx(hi).toFixed(1)} ${base.toFixed(1)}Z`;
-    barsPath = `<path class="bars" d="${d}"/>`;
+  const binW = (hi - lo) / HIST_BINS;
+  let barsD = `M${sx(lo).toFixed(1)} ${base.toFixed(1)}`;
+  for (let i = 0; i < HIST_BINS; i++) {
+    const y = sy(bars[i] * histMax).toFixed(1);
+    barsD += `L${sx(lo + i * binW).toFixed(1)} ${y}` +
+             `L${sx(lo + (i + 1) * binW).toFixed(1)} ${y}`;
   }
+  barsD += `L${sx(hi).toFixed(1)} ${base.toFixed(1)}Z`;
+  const barsPath = `<path class="bars" d="${barsD}"/>`;
 
   // -- curve, split at the ceiling ------------------------------------------
   const cut = Number.isFinite(num("right")) ? num("right") : hi;
@@ -1084,10 +1073,10 @@ function sparkline(row, colIdx) {
 
   const cx = sx(cut).toFixed(1);
   const nObs = num("n_obs");
-  const label = haveBars
-    ? `40-bin histogram, n = ${Number.isFinite(nObs) ? nObs : "?"}, ` +
-      `peak bin ${histMax}, range ${lo.toFixed(2)} to ${hi.toFixed(2)}`
-    : "fitted curve only, no histogram available";
+  const label =
+    `40-bin histogram, n = ${Number.isFinite(nObs) ? nObs : "?"}, ` +
+    `peak bin ${histMax}, range ${lo.toFixed(2)} to ${hi.toFixed(2)}` +
+    (haveCurve ? "" : "; fit did not converge, no curve");
 
   return `<svg class="spark" role="img" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
     <title>${escapeHtml(label)}</title>
@@ -1099,10 +1088,12 @@ function sparkline(row, colIdx) {
   </svg>`;
 }
 
-/* A failed fit still has a histogram worth seeing, so the cell no longer keys
-   off fit_success — it falls back only when there is nothing at all to draw. */
+/* A failed fit still has a histogram worth seeing, so the cell does not key off
+   fit_success. An empty cell means one thing only: this table carries no `hist`
+   column yet, so say that rather than leaving a bare dash. */
 function shapeCell(fields, colIdx) {
-  return sparkline(fields, colIdx) || '<span class="nil">—</span>';
+  return sparkline(fields, colIdx) ||
+    '<span class="nil" title="No histogram in this table yet">—</span>';
 }
 
 /* =====================================================================
