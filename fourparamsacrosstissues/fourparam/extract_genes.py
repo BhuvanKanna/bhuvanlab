@@ -58,6 +58,11 @@ STAT_COLUMNS = [
     "ti_fourparam_sigma_dist", "truncationindex",
     "min", "max", "mean", "std", "skew", "kurt",
     "right", "maxheight", "rightheight", "n_obs", "fit_success",
+    # Thumbnail histogram for the browser's Shape column. Must stay in sync with
+    # generate_fourparam.COLUMNS and build_gene_major.SHARD_HEADER, or the
+    # byte-identity guarantee between this tool's CSV and the browser's export
+    # quietly dies.
+    "hist", "hist_max",
 ]
 
 

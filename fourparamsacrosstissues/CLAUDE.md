@@ -394,6 +394,28 @@ python build_gui_data.py     # writes ../../docs/manifest.json and ../../docs/ge
 across all 108; `build_gui_data.py` verifies that and aborts if it ever stops
 being true.
 
+**`--reference <tissue>` picks the table that supplies `manifest.columns`.**
+It defaults to the alphabetically first raw table, which is wrong mid-migration:
+if you have added a column and regenerated only some tissues, the default table
+may not carry it yet and you publish a manifest that silently omits it. The
+manifest drives the browser's CSV export, so an omitted column is an export that
+quietly loses data.
+
+### Four places hardcode the column list — they must agree
+
+| where | what it is |
+|---|---|
+| `generate_fourparam.COLUMNS` | what gets written to `outputs/` |
+| `build_gene_major.SHARD_HEADER` | what the gene-major mirror expects **and** emits |
+| `extract_genes.STAT_COLUMNS` | what the CLI extract emits |
+| `docs/manifest.json` `"columns"` | what the browser's CSV export follows |
+
+Drift is silent and expensive: `build_gene_major.py` rejects every table with
+"unexpected header" (it fails safe, but the whole run dies), or the browser
+export loses columns, or the byte-identity guarantee with `extract_genes.py`
+quietly stops holding. `tests/test_column_lists_agree.py` pins all four —
+run `python -m pytest tests/ -q` after changing any column.
+
 ## Keep this file current
 
 If you change the code, columns, filters, or layout, update this file in the same

@@ -67,6 +67,12 @@ def main(argv=None) -> int:
     ap.add_argument("--docs", type=Path, default=DEFAULT_DOCS)
     ap.add_argument("--gene-major", type=Path, default=DEFAULT_GENE_MAJOR,
                     help="Directory of gene-major shards (default: ../gene_major).")
+    ap.add_argument("--reference", type=str, default=None,
+                   help="Tissue whose raw table supplies manifest.columns "
+                        "(default: first alphabetically). During a partial "
+                        "column migration the alphabetically-first table may "
+                        "not carry the new columns yet, which would publish a "
+                        "manifest that silently omits them.")
     ap.add_argument("--check-tables", type=int, default=4,
                     help="How many tables to verify share the gene set (0 = all).")
     args = ap.parse_args(argv)
@@ -112,6 +118,15 @@ def main(argv=None) -> int:
 
     # ---- gene index + gene-major shard map ----------------------------------
     reference = raw_tables[0]
+    if args.reference:
+        match = [p for p in raw_tables
+                 if p.name == f"{PREFIX}{args.reference}{RAW_SUFFIX}"]
+        if not match:
+            print(f"  ERROR: no raw table for --reference {args.reference!r}.",
+                  file=sys.stderr)
+            return 1
+        reference = match[0]
+    print(f"  Reference table: {reference.name}", file=sys.stderr)
     df = pd.read_csv(reference, usecols=["gene", "genename"], dtype=str)
     df["gene"] = df["gene"].fillna("")
     df["genename"] = df["genename"].fillna("")
