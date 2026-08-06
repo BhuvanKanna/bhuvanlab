@@ -32,6 +32,7 @@ fourparam/                    <- all the code (kept separate from the data)
   build_gene_major.py         <- re-orient outputs/ into gene_major/ shards
   build_gui_data.py           <- regenerate the browser GUI's static inputs
   make_diagrams.py            <- 5-histogram summary sheet per table -> diagrams/
+  verify_hist_columns.py      <- check hist/hist_max invariants in outputs/
   tests/                      <- pytest suite: `python -m pytest tests/ -q`
 data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
@@ -127,6 +128,20 @@ python generate_fourparam.py --input ../data/v11_log2_liver.csv.gz \
 python generate_fourparam.py --input ../data/v11_log2_liver.csv.gz \
     --id-col Name --name-col Description --threshold -1 --jobs 8
 ```
+
+### Check the histogram columns after regenerating
+
+```bash
+cd fourparam
+python verify_hist_columns.py                      # every table in outputs/
+python verify_hist_columns.py --tissues uterus     # just one
+```
+
+Exits non-zero on any problem. It checks the things the browser depends on and
+cannot defend itself against: uniform field counts (one stray comma in `hist`
+shifts every column index after it), fixed 40-char `hist`, integer `hist_max`,
+`hist` empty exactly when `n_obs = 0`, and — the one that has already bitten
+once — **no histogram shipped without its `min`/`max` bin edges**.
 
 ### The two table types differ by exactly one filter
 
