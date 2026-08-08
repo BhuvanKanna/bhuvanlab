@@ -201,7 +201,7 @@ One row per gene. Columns, in order:
 | `maxheight`, `rightheight` | curve height at the peak / at `x_max`, above the curve's interval-minimum baseline (`truncationindex = rightheight/maxheight`) |
 | `n_obs` | number of finite values fit (after any exclusion) |
 | `fit_success` | `True` if the fit converged with `n_obs >= 10`, else `False` (metrics `NaN`) |
-| `hist` | 40-character thumbnail histogram, one character per bin from `A-Za-z0-9+/` (= 0–63), each `round(count * 63 / hist_max)`. **A rendering aid for the browser, not analysis data** — quantised and lossy to 1/63 of the peak. Empty when `n_obs = 0`. Written whenever `n_obs >= 1`, **independent of `fit_success`**, so a gene whose fit failed still shows its real distribution. Bin edges are not stored: they are `linspace(min, max, 41)`, and numpy widens a zero-width range to `[min-0.5, max+0.5]` |
+| `hist` | 40-character thumbnail histogram, one character per bin from `A-Za-z0-9+/` (= 0–63), each `round(count * 63 / hist_max)`. **Not analysis data** — quantised and lossy to 1/63 of the peak. Written for a browser thumbnail that no longer exists: the Shape cell now draws the fitted curve, and `outputs/` never carried these two columns in the first place, so nothing currently reads them. Empty when `n_obs = 0`. Written whenever `n_obs >= 1`, **independent of `fit_success`**, so a gene whose fit failed still shows its real distribution. Bin edges are not stored: they are `linspace(min, max, 41)`, and numpy widens a zero-width range to `[min-0.5, max+0.5]` |
 | `hist_max` | exact count in the tallest bin; `0` when there is no histogram (never `NaN` — one `NaN` in the column makes pandas write every other row's value as a float) |
 
 Fitting details (in `bhuvanfitter.py`, the single source of truth): the histogram
@@ -274,40 +274,64 @@ linear axis; each choice is load-bearing:
   boxes work the same way; tissue matching is underscore-insensitive so "whole
   blood" finds `whole_blood`), a raw / excluded ≤ −1 toggle, and an explicit
   **Load tables** button. Results are one row per gene × tissue, each carrying a
-  checkbox and that gene's **real 40-bin histogram with the fitted curve
-  overlaid** and the truncation ceiling marked (see "The Shape cell" below).
+  checkbox and that gene's **fitted curve on a fixed sigma axis, with the slice
+  its data actually covers marked out** (see "The Shape cell" below).
 - **Working set** — rows ticked on the first tab, accumulated across any number
   of separate queries, filterable, and exported as one CSV.
 
 ### The Shape cell
 
-Each row draws that gene's **real 40-bin histogram** (from `hist` / `hist_max`)
-with its fitted 4-parameter Gaussian overlaid **on the same count axis** — the
-curve was fit to bin counts, which is what makes the overlay a comparison rather
-than a decoration. 160 × 44px; grey bars are the observation, the teal curve is
-the model, and the rust line is the ceiling.
+Each row draws the fitted 4-parameter Gaussian on a **fixed −4σ … +4σ axis**,
+with the slice the observations actually span filled in. 160 × 44px. Three
+states of one curve: dotted below `min` (modelled, never observed), solid and
+filled across `[min, x_max]`, dashed past the ceiling. Rust line is the ceiling
+`x_max`; a muted dashed line marks the data floor `min`.
 
-- **The x-domain is padded 12% past `max`, on the right only.** `x_max` *is* the
-  data max, so without that pad the ceiling would coincide with the panel's right
-  border and carry no information. The asymmetry is the point: it says the cap is
-  on the right. Do not "tidy" it into symmetric padding.
-- **The curve is clipped, not rescaled.** The y-axis is fixed to
-  `[0, 1.15 * hist_max]`, so a degenerate fit visibly leaves the frame instead of
-  squashing the bars to nothing. That exit is the signal. Clipping is
-  `.spark { overflow: hidden }` — deliberately not a `clipPath`, whose id would
-  have to stay unique across up to `RENDER_LIMIT` rows.
-- **The bars are one stepped `<path>`, not 40 `<rect>`s.** At 800 rendered rows,
-  40 rects apiece would add ~32k DOM nodes.
-- **The cell no longer keys off `fit_success`.** A failed fit still has a
-  histogram worth seeing; the cell falls back to `—` only when there is neither a
-  histogram nor fit parameters.
+It reads **four columns** — `ti_fourparam_sigma_dist`, `w`, `x0`, `min` — and no
+histogram.
 
-> Why the earlier synthetic sparkline was replaced: it drew the fitted curve over
-> the peak's own ±3.4σ and never the data. For APP in kidney cortex (σ = 16 for a
-> 4-unit data span) that window is [−52, 66], which renders the ceiling at 99% of
-> full height while `truncationindex` is exactly 0 — the table and the picture
-> normalising over windows ~30× apart. See
-> `specs/2026-08-05-histogram-thumbnail-design.md`.
+- **The bell is universal; only the window is per-gene.** `((x − x0)/w)²` is
+  exactly `z²/2` for `z = (x − x0)/σ`, `σ = w/√2`. So in z units every gene's
+  fitted curve is the same `exp(−z²/2)` once `y0` and `A` divide out — there is
+  no per-gene shape to draw. The real content is `z_min = (min − x0)/σ` to
+  `z_max = (max − x0)/σ`, and `z_max` **is** `ti_fourparam_sigma_dist`.
+- **Marking `z_min` is what makes a degenerate fit visible, and is the whole
+  reason this cell is not just a canonical bell with a cut.** APP in kidney
+  cortex fits `w = 22.7` (σ = 16.0) to a 3.95-unit data span, so its entire
+  observed range is a **0.25σ sliver** at the apex. `ti_fourparam_sigma_dist`
+  reads 0.124 — apparently maximal truncation — and `truncationindex` reads 0,
+  and neither means anything. On this axis that row is a thin spike rather than
+  a plausible bell.
+- **The axis is fixed and never data-derived.** Two cells are comparable by
+  construction, and nothing is ever rescaled to its own range. Both edges clamp
+  to the frame: a gene at 40σ and one at 4σ both read as "no visible
+  truncation", which is exactly true at this scale.
+- **A window is only drawn when it is one.** An inverted or non-finite
+  `z_min` (`w <= 0`, or a table lacking `min`/`x0`) degrades to the bare cut
+  rather than inventing an extent. The cell is `—` exactly when
+  `ti_fourparam_sigma_dist` is not finite, so it says the same thing the metric
+  does.
+- **The cell does not key off `fit_success`.** A converged-but-degenerate fit is
+  precisely what this picture is for.
+
+> Two earlier designs and why they went:
+>
+> - A **synthetic sparkline** over the peak's own ±3.4σ, which never showed the
+>   data. For APP that window is [−52, 66], rendering the ceiling at 99% of full
+>   height while `truncationindex` is 0 — table and picture normalising over
+>   windows ~30× apart. See `specs/2026-08-05-histogram-thumbnail-design.md`.
+> - The **real 40-bin histogram** from `hist` / `hist_max` with the curve
+>   overlaid on the count axis. Correct, but `outputs/` does not carry those two
+>   columns, so in production the cell rendered a dash for every row. `hist` and
+>   `hist_max` are now in the skip set in `visibleStatCols()` — nothing draws
+>   them and an encoded 40-char blob is not a readable table column. They remain
+>   in the CSV export, which mirrors the source table rather than this view.
+>
+> An **x-unit axis cut at `x_max`** was considered and rejected: `x_max` *is*
+> the data max, so the ceiling lands at the same spot in every row and carries
+> no information; each row would get its own x- and y-scale, so no two cells
+> would be comparable; and with no count axis to borrow, the y-scale would have
+> to come from the curve itself — the self-rescaling this cell exists to avoid.
 
 Three things about it are load-bearing and easy to undo by accident:
 

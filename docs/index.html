@@ -294,23 +294,31 @@ tbody td:first-child::after, thead th:first-child::after {
 }
 .nil { color: var(--muted); opacity: .55; }
 
-/* the signature: per-gene 40-bin histogram with its fitted curve overlaid.
-   overflow:hidden is load-bearing — a degenerate fit is drawn clipped rather
-   than rescaled, so the bars stay legible and a curve leaving the frame is
-   itself the signal. Clipping this way needs no per-cell clipPath id, which
-   would have to stay unique across up to RENDER_LIMIT rows. */
+/* the signature: the fitted curve on a fixed −4σ…+4σ axis, with the slice the
+   observations actually cover filled in. Three states of one curve — dotted
+   below `min` (modelled, never seen), solid+filled across the observed window,
+   dashed past the ceiling (censored). The axis never rescales, so the width of
+   that filled band is directly comparable between rows: a wide band is a
+   well-determined fit, a sliver is a fit whose sigma dwarfs its own data. */
 .spark { display: block; width: 160px; height: 44px; overflow: hidden; }
-.spark .bars {
-  fill: var(--muted); fill-opacity: .30;
-  stroke: var(--muted); stroke-opacity: .55; stroke-width: .8;
+.spark .retained {
+  fill: var(--curve); fill-opacity: .16;
+  stroke: var(--curve); stroke-width: 1.5; stroke-linejoin: round;
 }
-.spark .curve-live { fill: none; stroke: var(--curve); stroke-width: 1.6; }
-.spark .curve-censored { fill: none; stroke: var(--curve); stroke-width: 1.6; stroke-dasharray: 2 2.5; opacity: .32; }
+.spark .censored { fill: none; stroke: var(--curve); stroke-width: 1.4; stroke-dasharray: 2 2.5; opacity: .34; }
+.spark .unobs { fill: none; stroke: var(--curve); stroke-width: 1.2; stroke-dasharray: 1 2.5; opacity: .30; }
 .spark .ceiling { stroke: var(--ceiling); stroke-width: 1.4; }
+.spark .floor { stroke: var(--muted); stroke-width: 1.1; stroke-dasharray: 2 2; opacity: .6; }
 .spark .base { stroke: var(--rule); stroke-width: 1; }
-@media (prefers-color-scheme: dark) { .spark .bars { fill-opacity: .42; } }
-:root[data-theme="dark"] .spark .bars { fill-opacity: .42; }
-:root[data-theme="light"] .spark .bars { fill-opacity: .30; }
+.spark .tick { stroke: var(--rule); stroke-width: 1; }
+@media (prefers-color-scheme: dark) {
+  .spark .retained { fill-opacity: .22; }
+  .spark .unobs { opacity: .38; }
+}
+:root[data-theme="dark"] .spark .retained { fill-opacity: .22; }
+:root[data-theme="dark"] .spark .unobs { opacity: .38; }
+:root[data-theme="light"] .spark .retained { fill-opacity: .16; }
+:root[data-theme="light"] .spark .unobs { opacity: .30; }
 
 /* ---------- empty / error ---------- */
 .note { padding: 46px 22px; text-align: center; color: var(--muted); }
@@ -332,7 +340,12 @@ tbody td:first-child::after, thead th:first-child::after {
 .legend .swatch { width: 15px; height: 2px; background: var(--curve); }
 .legend .swatch.v { background: var(--ceiling); width: 2px; height: 13px; }
 .legend .swatch.d { background: none; border-top: 2px dashed var(--curve); opacity: .5; height: 0; }
-.legend .swatch.b { background: var(--muted); opacity: .45; width: 13px; height: 9px; }
+.legend .swatch.o { background: none; border-top: 2px dotted var(--curve); opacity: .45; height: 0; }
+.legend .swatch.m { background: none; border-left: 2px dashed var(--muted); width: 0; height: 12px; opacity: .7; }
+.legend .swatch.f {
+  width: 15px; height: 10px; border: 1px solid var(--curve);
+  background: color-mix(in srgb, var(--curve) 16%, transparent);
+}
 
 footer {
   max-width: 1440px; margin: 0 auto; padding: 0 22px 44px;
@@ -555,10 +568,12 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
       <div class="banner" id="staleBanner" hidden></div>
       <div id="resultArea"></div>
       <div class="legend" id="legend" hidden>
-        <span class="key"><span class="swatch b"></span> observed histogram, 40 bins</span>
-        <span class="key"><span class="swatch"></span> fitted curve, observed range</span>
-        <span class="key"><span class="swatch d"></span> censored tail beyond the ceiling</span>
-        <span class="key"><span class="swatch v"></span> ceiling <code>x_max</code></span>
+        <span class="key"><span class="swatch f"></span> observed range, <code>min</code> to <code>x_max</code></span>
+        <span class="key"><span class="swatch o"></span> modelled below <code>min</code>, never observed</span>
+        <span class="key"><span class="swatch d"></span> censored beyond the ceiling</span>
+        <span class="key"><span class="swatch m"></span> data floor <code>min</code></span>
+        <span class="key"><span class="swatch v"></span> ceiling <code>x_max</code>, at σ-dist</span>
+        <span class="key">axis fixed at −4σ … +4σ for every gene</span>
         <span class="key">TI = f(x_max)/f(peak), baseline removed</span>
       </div>
     </section>
@@ -966,141 +981,118 @@ function formatMb(mb) {
 }
 
 /* =====================================================================
-   The signature: this row's real 40-bin histogram, with its fitted
-   4-parameter Gaussian overlaid on the same count axis.
+   The signature: the fitted curve on a fixed sigma axis, with the slice the
+   data actually covers marked out.
 
-   Bin edges are not transported. numpy bins with no explicit range, so they
-   are linspace(min, max, 41) and both ends are already columns. The one rule
-   that has to be mirrored here is numpy's zero-width fallback, or every gene
-   sitting entirely at -1 divides by zero.
+   The algebra that makes this cheap: ((x - x0)/w)^2 is exactly z^2/2 for
+   z = (x - x0)/sigma, sigma = w/sqrt(2). So in z units every gene's fitted
+   curve is the same bell once y0 and A divide out -- there is no per-gene
+   shape to draw. The only real per-gene content is which slice of that bell
+   the observations span, from z_min = (min - x0)/sigma to
+   z_max = (max - x0)/sigma, and z_max is already the published
+   ti_fourparam_sigma_dist.
+
+   Marking z_min is what makes a degenerate fit visible. APP in kidney cortex
+   fits sigma = 16 to a 3.95-unit data span, so its whole observed range is a
+   0.25-sigma sliver at the apex: sigma_dist reads 0.124 (apparently maximal
+   truncation) and truncationindex reads 0, and neither means anything. On this
+   axis that row is a thin spike instead of a plausible bell, which is the point.
+
+   The axis is fixed for every row, so two cells are comparable by construction
+   and never rescaled to their own range.
    ===================================================================== */
-const HIST_ALPHABET =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-const HIST_BINS = 40;
-const HIST_LEVELS = 63;
 const SPARK_W = 160, SPARK_H = 44;
-const SPARK_PAD_FRAC = 0.12;   // dead space past the ceiling, right side only
-const SPARK_HEADROOM = 1.15;   // y-axis top, as a multiple of hist_max
+const Z_LO = -4, Z_HI = 4;     // fixed for every row, never data-derived
+const CURVE_N = 120;           // samples across the full axis
 
-function decodeHistogram(s) {
-  if (typeof s !== "string" || s.length !== HIST_BINS) return null;
-  const out = new Array(HIST_BINS);
-  for (let i = 0; i < HIST_BINS; i++) {
-    const v = HIST_ALPHABET.indexOf(s[i]);
-    if (v < 0) return null;
-    out[i] = v / HIST_LEVELS;          // fraction of hist_max
-  }
-  return out;
-}
-
-function sparkline(row, colIdx) {
+function shapeCell(row, colIdx) {
   const num = (c) => {
     const i = colIdx[c];
     if (i === undefined) return NaN;
     const v = Number(row[i]);
     return Number.isFinite(v) ? v : NaN;
   };
-  const txt = (c) => {
-    const i = colIdx[c];
-    return i === undefined || row[i] == null ? "" : String(row[i]).trim();
+
+  // z_max is the metric itself, so the cell is empty exactly when the metric is.
+  const zMax = num("ti_fourparam_sigma_dist");
+  if (!Number.isFinite(zMax)) {
+    return '<span class="nil" title="No sigma-distance for this row">\u2014</span>';
+  }
+
+  // Same signed sigma the generator used, so z_min and z_max stay on one scale.
+  const sigma = num("w") / Math.SQRT2;
+  const zMin = (num("min") - num("x0")) / sigma;
+  // A window is only drawn when it is a window: an inverted or non-finite one
+  // (w <= 0, or a table without min/x0) degrades to the bare cut rather than
+  // inventing an extent.
+  const haveWindow = Number.isFinite(zMin) && zMin < zMax;
+
+  const W = SPARK_W, H = SPARK_H, base = H - 1.5, usable = H - 4;
+  const sx = (x) => ((x - Z_LO) / (Z_HI - Z_LO)) * W;
+  const sy = (v) => base - v * usable;        // v is phi(z)/phi(0), in [0,1]
+  const phi = (x) => Math.exp(-0.5 * x * x);
+
+  // Both edges clamp to the frame, so a gene at 40 sigma and one at 4 sigma both
+  // read as "no visible truncation" -- which is exactly true at this scale.
+  const clamp = (z) => Math.min(Z_HI, Math.max(Z_LO, z));
+  const lo = haveWindow ? clamp(zMin) : Z_LO;
+  const hi = clamp(zMax);
+  const ceilIn = zMax > Z_LO && zMax < Z_HI;
+  const floorIn = haveWindow && zMin > Z_LO && zMin < Z_HI;
+
+  const pts = (from, to) => {
+    const out = [];
+    for (let k = 0; k <= CURVE_N; k++) {
+      const x = from + (to - from) * k / CURVE_N;
+      out.push([sx(x), sy(phi(x))]);
+    }
+    return out;
   };
+  const d = (p) => p.map((q, k) =>
+    `${k ? "L" : "M"}${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join("");
 
-  const y0 = num("y0"), A = num("A"), x0 = num("x0"), w = num("w");
-  const lo0 = num("min"), hi0 = num("max"), histMax = num("hist_max");
-  const bars = decodeHistogram(txt("hist"));
-
-  const haveCurve = [y0, A, x0, w].every(Number.isFinite) && w > 0;
-  const haveBars = !!bars && Number.isFinite(histMax) && histMax > 0 &&
-                   Number.isFinite(lo0) && Number.isFinite(hi0);
-
-  // The histogram is required, the curve is not. Nothing is ever drawn from the
-  // fit alone: with no bin counts there is no scale to draw it against, so the
-  // only available choice is to rescale the curve to its own range -- which
-  // stretches a degenerate near-flat fit to fill the cell and manufactures
-  // shape that is not there. That is the exact error this cell replaced.
-  if (!haveBars) return "";
-
-  // -- x domain ------------------------------------------------------------
-  // min/max are guaranteed finite by haveBars.
-  let lo, hi;
-  if (hi0 > lo0) { lo = lo0; hi = hi0; }
-  else { lo = lo0 - 0.5; hi = hi0 + 0.5; }   // numpy's zero-width fallback
-  const a = lo, b = hi + SPARK_PAD_FRAC * (hi - lo);
-  if (!(b > a)) return "";
-
-  const W = SPARK_W, H = SPARK_H, base = H - 1.5, usable = H - 3;
-  const sx = (x) => ((x - a) / (b - a)) * W;
-  const f = (x) => y0 + A * Math.exp(-Math.pow((x - x0) / w, 2));
-
-  // -- y domain, in count units --------------------------------------------
-  // The curve was fit to bin counts, so it shares the bars' axis directly —
-  // that is what makes the overlay a comparison rather than a decoration.
-  // Always anchored to the observed counts, never to the curve's own range.
-  const yLo = 0, yHi = SPARK_HEADROOM * histMax;
-  const sy = (v) => base - ((v - yLo) / (yHi - yLo)) * usable;
-
-  // -- bars: one stepped path, not 40 rects ---------------------------------
-  // 800 rows x 40 rects would add ~32k nodes; see the RENDER_LIMIT note above.
-  const binW = (hi - lo) / HIST_BINS;
-  let barsD = `M${sx(lo).toFixed(1)} ${base.toFixed(1)}`;
-  for (let i = 0; i < HIST_BINS; i++) {
-    const y = sy(bars[i] * histMax).toFixed(1);
-    barsD += `L${sx(lo + i * binW).toFixed(1)} ${y}` +
-             `L${sx(lo + (i + 1) * binW).toFixed(1)} ${y}`;
+  let below = "", observed = "", censored = "";
+  if (lo > Z_LO) below = `<path class="unobs" d="${d(pts(Z_LO, lo))}"/>`;
+  if (hi > lo) {
+    observed = `<path class="retained" d="${d(pts(lo, hi))}` +
+               `L${sx(hi).toFixed(1)} ${base.toFixed(1)}` +
+               `L${sx(lo).toFixed(1)} ${base.toFixed(1)}Z"/>`;
   }
-  barsD += `L${sx(hi).toFixed(1)} ${base.toFixed(1)}Z`;
-  const barsPath = `<path class="bars" d="${barsD}"/>`;
+  if (hi < Z_HI) censored = `<path class="censored" d="${d(pts(hi, Z_HI))}"/>`;
 
-  // -- curve, split at the ceiling ------------------------------------------
-  const cut = Number.isFinite(num("right")) ? num("right") : hi;
-  let livePath = "", censPath = "";
-  if (haveCurve) {
-    const N = 96, live = [], cens = [];
-    for (let i = 0; i <= N; i++) {
-      const x = a + (b - a) * i / N;
-      (x <= cut ? live : cens).push([sx(x), sy(f(x))]);
-    }
-    // Bridge the gap so the two segments meet exactly at the ceiling.
-    if (live.length && cens.length) {
-      const j = [sx(cut), sy(f(cut))];
-      live.push(j); cens.unshift(j);
-    }
-    const d = (pts) => pts.map((p, i) =>
-      `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("");
-    if (cens.length) censPath = `<path class="curve-censored" d="${d(cens)}"/>`;
-    if (live.length) livePath = `<path class="curve-live" d="${d(live)}"/>`;
-  }
+  const cx = sx(hi).toFixed(1), fx = sx(lo).toFixed(1), mid = sx(0).toFixed(1);
+  const ceiling = ceilIn
+    ? `<line class="ceiling" x1="${cx}" y1="1" x2="${cx}" y2="${base.toFixed(1)}"/>` : "";
+  const floor = floorIn
+    ? `<line class="floor" x1="${fx}" y1="1" x2="${fx}" y2="${base.toFixed(1)}"/>` : "";
 
-  const cx = sx(cut).toFixed(1);
-  const nObs = num("n_obs");
-  const label =
-    `40-bin histogram, n = ${Number.isFinite(nObs) ? nObs : "?"}, ` +
-    `peak bin ${histMax}, range ${lo.toFixed(2)} to ${hi.toFixed(2)}` +
-    (haveCurve ? "" : "; fit did not converge, no curve");
+  const label = `fitted curve on a fixed \u22124\u03c3\u2026+4\u03c3 axis; ceiling at ` +
+    `${zMax.toFixed(2)}\u03c3` +
+    (haveWindow
+      ? `, observations span ${zMin.toFixed(2)}\u03c3 to ${zMax.toFixed(2)}\u03c3 ` +
+        `(${(zMax - zMin).toFixed(2)}\u03c3 of the curve)`
+      : "") +
+    (ceilIn ? ""
+     : zMax >= Z_HI ? " \u2014 ceiling beyond +4\u03c3, nothing censored at this scale"
+                    : " \u2014 ceiling below \u22124\u03c3, effectively all censored");
 
   return `<svg class="spark" role="img" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
     <title>${escapeHtml(label)}</title>
     <line class="base" x1="0" y1="${base}" x2="${W}" y2="${base}"/>
-    ${barsPath}
-    ${censPath}
-    ${livePath}
-    <line class="ceiling" x1="${cx}" y1="1" x2="${cx}" y2="${base}"/>
+    <line class="tick" x1="${mid}" y1="${(base - 2.5).toFixed(1)}" x2="${mid}" y2="${base}"/>
+    ${below}${observed}${censored}${floor}${ceiling}
   </svg>`;
-}
-
-/* A failed fit still has a histogram worth seeing, so the cell does not key off
-   fit_success. An empty cell means one thing only: this table carries no `hist`
-   column yet, so say that rather than leaving a bare dash. */
-function shapeCell(fields, colIdx) {
-  return sparkline(fields, colIdx) ||
-    '<span class="nil" title="No histogram in this table yet">—</span>';
 }
 
 /* =====================================================================
    Render
    ===================================================================== */
+/* hist / hist_max exist only to feed the old bar-chart cell. Nothing draws them
+   any more and an encoded 40-char blob is not a readable table column, so they
+   never surface — not even under "All columns". They stay in the CSV export,
+   which mirrors the source table rather than this view. */
 function visibleStatCols(header, all) {
-  const skip = new Set(["gene", "genename"]);
+  const skip = new Set(["gene", "genename", "hist", "hist_max"]);
   const stats = header.filter((c) => !skip.has(c));
   if (all) return stats;
   return COMPACT_COLS.filter((c) => stats.includes(c));

@@ -8,8 +8,12 @@ the **54 GTEx v11 tissues**.
 **[bhuvankanna.github.io/bhuvanlab](https://bhuvankanna.github.io/bhuvanlab/)** —
 search genes *and* tissues by type-ahead, load the tables, then tick rows into a
 **working set** that persists across queries and exports as one spreadsheet.
-Every row draws that gene's own 40-bin expression histogram with its fitted
-Gaussian overlaid and its truncation ceiling marked.
+Every row draws that gene's fitted curve on a fixed −4σ … +4σ axis, with the
+slice its observations actually cover filled in — from `(min − x0)/σ` to
+`(x_max − x0)/σ`, the second of which *is* the σ-distance — dotted below the
+data floor and dashed past the censored ceiling. The axis never rescales, so
+the width of that filled band is comparable between rows: a wide band is a
+well-determined fit, a sliver is a fit whose σ dwarfs its own data.
 
 Two tabs:
 
