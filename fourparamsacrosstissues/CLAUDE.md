@@ -296,10 +296,35 @@ One p-value is not an answer, because "not normal" covers zero-inflation,
 bimodality, right skew and right-truncation, and only the last is this project's
 hypothesis. Each stage only sees what survives the one before:
 
+```mermaid
+flowchart TD
+    S["one gene's finite values"] --> G1{"stage 0 &middot; support<br/>&ge;20% of donors at the floor?"}
+    G1 -->|yes| Z(["zero_inflated"])
+    G1 -->|no| G2{"stage 0 &middot; sample size<br/>fewer than 20 values left?"}
+    G2 -->|yes| U(["undetermined"])
+    G2 -->|no| G3{"stage 1 &middot; shape<br/>more than one KDE mode?"}
+    G3 -->|yes| M(["multimodal"])
+    G3 -->|no| G4{"stages 3+4 &middot; truncation<br/>leans LEFT past the null skew band<br/><b>AND</b> d_aic &gt; calibrated threshold"}
+    G4 -->|both| T(["right_truncated"])
+    G4 -->|not both| G5{"stage 3 &middot; direction<br/>leans RIGHT past the band?"}
+    G5 -->|yes| RS(["right_skewed"])
+    G5 -->|no| G6{"stage 2 &middot; normality<br/>fails Shapiro-Wilk, BH-corrected?"}
+    G6 -->|yes| NN(["non_normal"])
+    G6 -->|no| N(["normal"])
+
+    classDef hot stroke:#c0402b,stroke-width:2px,color:#c0402b
+    classDef good stroke:#2f6f4f,stroke-width:2px,color:#2f6f4f
+    class G4,T hot
+    class N good
+```
+
+Falling through means "still a candidate"; branching right ends the test. The
+**order is load-bearing** — a bimodal gene is also non-normal and also skewed, so
+asking in a different sequence would give it a different, less informative label.
+
 | stage | function | rules out |
 |---|---|---|
 | 0 | `classify_support` | ≥20% of donors at the −1 floor — a spike plus a smear, not a failed Gaussian |
-
 | 1 | `count_modes` | >1 KDE mode (reuses `gene_peaks`) — wants a mixture, not a truncated Gaussian |
 | 2 | `run_tests` | Shapiro–Wilk, D'Agostino–Pearson, Anderson–Darling |
 | 3 | skew direction | right-truncation removes the **upper** tail, so it makes skew **negative** |
