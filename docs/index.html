@@ -287,6 +287,14 @@ tbody td:first-child::after, thead th:first-child::after {
 .c-sym { font-weight: 600; font-size: .84rem; }
 .c-id { color: var(--muted); font-size: .74rem; }
 .c-shape { padding: 4px 11px !important; }
+/* Two shape columns sit side by side and their headers are the only thing
+   telling them apart, so the axis each one uses is named in the header rather
+   than left to the legend. */
+thead th .sub {
+  display: block; margin-top: 2px;
+  font-size: .88em; letter-spacing: .02em; text-transform: none;
+  font-weight: 400; opacity: .72;
+}
 .badge-fail {
   font-family: var(--mono); font-size: .66rem; letter-spacing: .06em;
   text-transform: uppercase; color: var(--ceiling);
@@ -337,6 +345,11 @@ tbody td:first-child::after, thead th:first-child::after {
   font-size: .76rem; color: var(--muted);
 }
 .legend .key { display: inline-flex; align-items: center; gap: 7px; }
+/* The two prose keys explain a whole column each, so they wrap and sit on their
+   own line under the swatch row rather than fighting it for space. */
+.legend .key.sep { margin-top: 4px; border-top: 1px solid var(--rule-soft); padding-top: 9px; }
+.legend .key.sep, .legend .key.sep ~ .key { flex: 1 1 100%; display: block; max-width: 92ch; }
+.legend .key strong { color: var(--ink); font-weight: 600; }
 .legend .swatch { width: 15px; height: 2px; background: var(--curve); }
 .legend .swatch.v { background: var(--ceiling); width: 2px; height: 13px; }
 .legend .swatch.d { background: none; border-top: 2px dashed var(--curve); opacity: .5; height: 0; }
@@ -572,8 +585,12 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
         <span class="key"><span class="swatch o"></span> modelled below <code>min</code>, never observed</span>
         <span class="key"><span class="swatch d"></span> censored beyond the ceiling</span>
         <span class="key"><span class="swatch m"></span> data floor <code>min</code></span>
-        <span class="key"><span class="swatch v"></span> ceiling <code>x_max</code>, at σ-dist</span>
-        <span class="key">axis fixed at −4σ … +4σ for every gene</span>
+        <span class="key"><span class="swatch v"></span> ceiling <code>x_max</code></span>
+        <span class="key sep"><strong>Fitted curve</strong> — real log2 units, each gene on its own
+          scale. Shows what was fit; cells are <em>not</em> comparable to each other.</span>
+        <span class="key"><strong>Curve coverage</strong> — every gene on one −4σ … +4σ ruler.
+          Solid band = how much of the fitted curve the data actually spans, so a sliver
+          means σ dwarfs the data. Ceiling sits at σ-dist.</span>
         <span class="key">TI = f(x_max)/f(peak), baseline removed</span>
       </div>
     </section>
@@ -981,7 +998,88 @@ function formatMb(mb) {
 }
 
 /* =====================================================================
-   The signature: the fitted curve on a fixed sigma axis, with the slice the
+   Shape, part 1 of 2: the fitted curve in the gene's own expression units.
+
+   Answers "what shape was actually fit to this gene, on the scale the x0 / w /
+   min / max columns beside it are printed in". The window is the observed range
+   with 12% pad on the RIGHT only -- x_max IS the data max, so without that pad
+   the ceiling lands exactly on the frame border and says nothing. The asymmetry
+   is the message: the cap is on the right. Do not tidy it into symmetric
+   padding.
+
+   Both scales here are per-gene, which is the honest cost of real units: two
+   cells side by side share no axis and are not comparable. That is what the
+   sigma-axis cell next to it is for.
+   ===================================================================== */
+function fittedCurveCell(row, colIdx) {
+  const num = (c) => {
+    const i = colIdx[c];
+    if (i === undefined) return NaN;
+    const v = Number(row[i]);
+    return Number.isFinite(v) ? v : NaN;
+  };
+
+  const y0 = num("y0"), A = num("A"), x0 = num("x0"), w = num("w");
+  const lo0 = num("min"), hi0 = num("max");
+  if (![y0, A, x0, w, lo0, hi0].every(Number.isFinite) || w === 0) {
+    return '<span class="nil" title="No fitted curve for this row">\u2014</span>';
+  }
+
+  // numpy's zero-width fallback, mirrored: a gene sitting entirely at one value
+  // would otherwise divide by zero here.
+  let lo, hi;
+  if (hi0 > lo0) { lo = lo0; hi = hi0; }
+  else { lo = lo0 - 0.5; hi = hi0 + 0.5; }
+  const a = lo, b = hi + 0.12 * (hi - lo);
+  if (!(b > a)) return '<span class="nil">\u2014</span>';
+
+  const cutRaw = num("right");
+  const cut = Number.isFinite(cutRaw) ? Math.min(Math.max(cutRaw, a), b) : hi;
+
+  const W = SPARK_W, H = SPARK_H, base = H - 1.5, usable = H - 4;
+  const f = (x) => y0 + A * Math.exp(-Math.pow((x - x0) / w, 2));
+
+  // y is anchored at zero and only the top is data-derived. There is no count
+  // axis to borrow -- outputs/ carries no histogram -- so this is the minimum
+  // self-scaling the cell can get away with. Anchoring at zero is what stops a
+  // near-flat fit from being stretched to fill the frame.
+  let top = -Infinity;
+  for (let k = 0; k <= CURVE_N; k++) top = Math.max(top, f(a + (b - a) * k / CURVE_N));
+  if (!(top > 0)) return '<span class="nil" title="Fitted curve is non-positive over the observed range">\u2014</span>';
+  top *= 1.15;
+
+  const sx = (x) => ((x - a) / (b - a)) * W;
+  const sy = (v) => base - (Math.max(0, v) / top) * usable;
+  const pts = (from, to) => {
+    const out = [];
+    for (let k = 0; k <= CURVE_N; k++) {
+      const x = from + (to - from) * k / CURVE_N;
+      out.push([sx(x), sy(f(x))]);
+    }
+    return out;
+  };
+  const d = (p) => p.map((q, k) =>
+    `${k ? "L" : "M"}${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join("");
+
+  const observed = `<path class="retained" d="${d(pts(a, cut))}` +
+                   `L${sx(cut).toFixed(1)} ${base.toFixed(1)}` +
+                   `L${sx(a).toFixed(1)} ${base.toFixed(1)}Z"/>`;
+  const censored = cut < b ? `<path class="censored" d="${d(pts(cut, b))}"/>` : "";
+  const cx = sx(cut).toFixed(1);
+
+  const label = `fitted curve in log2 units over ${lo.toFixed(2)} to ${hi.toFixed(2)}, ` +
+                `ceiling at ${cut.toFixed(2)}; peak x0 ${x0.toFixed(2)}, w ${w.toFixed(3)}`;
+
+  return `<svg class="spark" role="img" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <title>${escapeHtml(label)}</title>
+    <line class="base" x1="0" y1="${base}" x2="${W}" y2="${base}"/>
+    ${observed}${censored}
+    <line class="ceiling" x1="${cx}" y1="1" x2="${cx}" y2="${base.toFixed(1)}"/>
+  </svg>`;
+}
+
+/* =====================================================================
+   Shape, part 2 of 2: the same curve on a fixed sigma axis, with the slice the
    data actually covers marked out.
 
    The algebra that makes this cheap: ((x - x0)/w)^2 is exactly z^2/2 for
@@ -1344,7 +1442,8 @@ function render() {
        ${allPicked ? "checked" : ""} aria-label="Add every loaded row to the working set"></th>` +
     sortableHead("__gene", "Gene", "col-gene tl") +
     sortableHead("__tissue", "Tissue", "tl") +
-    '<th class="tl nosort">Shape</th>' +
+    '<th class="tl nosort">Fitted curve<span class="sub">log2 units, own range</span></th>' +
+    '<th class="tl nosort">Curve coverage<span class="sub">σ from peak, fixed axis</span></th>' +
     cols.map((c) => sortableHead(c, SHORT_LABEL[c] || c)).join("");
 
   const body = shown.map((r) => {
@@ -1369,6 +1468,7 @@ function render() {
         <div class="c-id">${escapeHtml(GID[gi])}</div>
       </td>
       <td class="tl c-tissue">${escapeHtml(tissueLabel(r.tissue))}</td>
+      <td class="c-shape">${fittedCurveCell(fields, loadedColIdx)}</td>
       <td class="c-shape">${shapeCell(fields, loadedColIdx)}</td>
       ${cells}
     </tr>`;

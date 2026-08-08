@@ -274,45 +274,65 @@ linear axis; each choice is load-bearing:
   boxes work the same way; tissue matching is underscore-insensitive so "whole
   blood" finds `whole_blood`), a raw / excluded ≤ −1 toggle, and an explicit
   **Load tables** button. Results are one row per gene × tissue, each carrying a
-  checkbox and that gene's **fitted curve on a fixed sigma axis, with the slice
-  its data actually covers marked out** (see "The Shape cell" below).
+  checkbox and **two views of that gene's fitted curve** — one in real log2
+  units, one on a fixed sigma axis (see "The two shape columns" below).
 - **Working set** — rows ticked on the first tab, accumulated across any number
   of separate queries, filterable, and exported as one CSV.
 
-### The Shape cell
+### The two shape columns
 
-Each row draws the fitted 4-parameter Gaussian on a **fixed −4σ … +4σ axis**,
-with the slice the observations actually span filled in. 160 × 44px. Three
-states of one curve: dotted below `min` (modelled, never observed), solid and
-filled across `[min, x_max]`, dashed past the ceiling. Rust line is the ceiling
-`x_max`; a muted dashed line marks the data floor `min`.
+Each row draws its fitted 4-parameter Gaussian **twice**, 160 x 44px each. The
+two answer different questions and neither replaces the other, which is why both
+ship. The headers name the axis rather than leaving it to the legend.
 
-It reads **four columns** — `ti_fourparam_sigma_dist`, `w`, `x0`, `min` — and no
-histogram.
+| column | axis | answers |
+|---|---|---|
+| **Fitted curve** | real log2 units, `[min, max]` + 12% right pad | what shape was fit to this gene, on the scale the `x0` / `w` / `min` / `max` columns are printed in |
+| **Curve coverage** | fixed −4σ … +4σ, same for every gene | how much of that curve the data actually spans, and where the ceiling sits |
+
+Shared ink: solid + filled is observed, dashed is censored past the ceiling,
+rust vertical is the ceiling `x_max`. Coverage adds a dotted curve below `min`
+(modelled, never observed) and a muted dashed line at the data floor `min`.
+
+**Fitted curve** — `fittedCurveCell()`, reads `y0`, `A`, `x0`, `w`, `min`,
+`max`, `right`.
+
+- **The pad is 12% past `max`, on the right only.** `x_max` *is* the data max,
+  so without it the ceiling lands exactly on the frame border and carries no
+  information. The asymmetry is the message: the cap is on the right. Do not
+  tidy it into symmetric padding.
+- **y is anchored at zero; only the top is data-derived.** `outputs/` carries no
+  count axis to borrow, so some self-scaling is unavoidable — anchoring at zero
+  is what stops a near-flat fit from being stretched to fill the cell.
+- **Both scales are per-gene**, so two of these cells side by side are *not*
+  comparable. That is the honest cost of real units, and precisely what the
+  column next to it exists to fix.
+
+**Curve coverage** — `shapeCell()`, reads `ti_fourparam_sigma_dist`, `w`, `x0`,
+`min`.
 
 - **The bell is universal; only the window is per-gene.** `((x − x0)/w)²` is
   exactly `z²/2` for `z = (x − x0)/σ`, `σ = w/√2`. So in z units every gene's
   fitted curve is the same `exp(−z²/2)` once `y0` and `A` divide out — there is
-  no per-gene shape to draw. The real content is `z_min = (min − x0)/σ` to
+  no per-gene shape to draw. The content is `z_min = (min − x0)/σ` to
   `z_max = (max − x0)/σ`, and `z_max` **is** `ti_fourparam_sigma_dist`.
 - **Marking `z_min` is what makes a degenerate fit visible, and is the whole
-  reason this cell is not just a canonical bell with a cut.** APP in kidney
-  cortex fits `w = 22.7` (σ = 16.0) to a 3.95-unit data span, so its entire
-  observed range is a **0.25σ sliver** at the apex. `ti_fourparam_sigma_dist`
-  reads 0.124 — apparently maximal truncation — and `truncationindex` reads 0,
-  and neither means anything. On this axis that row is a thin spike rather than
-  a plausible bell.
-- **The axis is fixed and never data-derived.** Two cells are comparable by
-  construction, and nothing is ever rescaled to its own range. Both edges clamp
-  to the frame: a gene at 40σ and one at 4σ both read as "no visible
-  truncation", which is exactly true at this scale.
-- **A window is only drawn when it is one.** An inverted or non-finite
-  `z_min` (`w <= 0`, or a table lacking `min`/`x0`) degrades to the bare cut
-  rather than inventing an extent. The cell is `—` exactly when
-  `ti_fourparam_sigma_dist` is not finite, so it says the same thing the metric
-  does.
-- **The cell does not key off `fit_success`.** A converged-but-degenerate fit is
-  precisely what this picture is for.
+  reason this is not just a canonical bell with a cut.** APP in kidney cortex
+  fits `w = 22.7` (σ = 16.0) to a 3.95-unit data span, so its entire observed
+  range is a **0.25σ sliver** at the apex. `ti_fourparam_sigma_dist` reads
+  0.124 — apparently maximal truncation — and `truncationindex` reads 0, and
+  neither means anything. Here that row is a thin spike, not a plausible bell.
+- **The axis is fixed and never data-derived**, so cells are comparable by
+  construction and nothing is rescaled to its own range. Both edges clamp to the
+  frame: a gene at 40σ and one at 4σ both read as "no visible truncation", which
+  is exactly true at this scale.
+- **A window is only drawn when it is one.** An inverted or non-finite `z_min`
+  (`w <= 0`, or a table lacking `min`/`x0`) degrades to the bare cut rather than
+  inventing an extent.
+
+Neither cell keys off `fit_success` — a converged-but-degenerate fit is exactly
+what these pictures are for. Each falls back to `—` only when its own inputs are
+missing or non-finite.
 
 > Two earlier designs and why they went:
 >
@@ -321,17 +341,12 @@ histogram.
 >   height while `truncationindex` is 0 — table and picture normalising over
 >   windows ~30× apart. See `specs/2026-08-05-histogram-thumbnail-design.md`.
 > - The **real 40-bin histogram** from `hist` / `hist_max` with the curve
->   overlaid on the count axis. Correct, but `outputs/` does not carry those two
->   columns, so in production the cell rendered a dash for every row. `hist` and
->   `hist_max` are now in the skip set in `visibleStatCols()` — nothing draws
->   them and an encoded 40-char blob is not a readable table column. They remain
->   in the CSV export, which mirrors the source table rather than this view.
->
-> An **x-unit axis cut at `x_max`** was considered and rejected: `x_max` *is*
-> the data max, so the ceiling lands at the same spot in every row and carries
-> no information; each row would get its own x- and y-scale, so no two cells
-> would be comparable; and with no count axis to borrow, the y-scale would have
-> to come from the curve itself — the self-rescaling this cell exists to avoid.
+>   overlaid on the count axis. Correct in principle, but `outputs/` does not
+>   carry those two columns, so in production the cell rendered a dash for every
+>   row. `hist` and `hist_max` are now in the skip set in `visibleStatCols()` —
+>   nothing draws them and an encoded 40-char blob is not a readable table
+>   column. They remain in the CSV export, which mirrors the source table rather
+>   than this view.
 
 Three things about it are load-bearing and easy to undo by accident:
 
