@@ -37,7 +37,9 @@ from __future__ import annotations
 import argparse
 import multiprocessing as mp
 import os
+import subprocess
 import warnings
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -68,6 +70,11 @@ COLUMNS = [
     # stage 5
     "dist_class",
 ]
+
+# What a checkpoint row holds. shapiro_bh_reject is excluded because Benjamini-
+# Hochberg ranks every gene against every other and cannot be computed on a
+# prefix -- it is filled in once, over the assembled table.
+CHECKPOINT_COLUMNS = [c for c in COLUMNS if c != "shapiro_bh_reject"]
 
 
 def qc_csv_for(input_path: Path, threshold) -> Path:
@@ -178,32 +185,153 @@ def _gate_fields(data, p: dict, n_obs: int, frac_at_floor: float) -> dict:
     return out
 
 
+def partial_path(out: Path) -> Path:
+    return out.with_suffix(out.suffix + ".partial")
+
+
+@contextmanager
+def output_lock(out: Path):
+    """
+    Refuse to run if another process is already building this table.
+
+    Two runs sharing one output is not a theoretical worry here: the intended
+    workflow is kill-and-resume, and a kill that misses (killing a shell job
+    rather than the python process) leaves the first run alive. Both then append
+    to the same checkpoint, the first finishes and deletes it, and the second
+    writes a table whose earlier rows are all NaN -- which looks like real data.
+
+    O_EXCL creation is atomic on both POSIX and Windows. A lock whose PID is gone
+    is stale and reclaimed, so a hard kill does not wedge the tissue forever.
+    """
+    lock = out.with_suffix(out.suffix + ".lock")
+    if lock.exists():
+        try:
+            pid = int(lock.read_text().strip())
+            alive = (pid != os.getpid()) and _pid_alive(pid)
+        except (ValueError, OSError):
+            alive = False
+        if alive:
+            raise SystemExit(
+                f"{lock.name} is held by pid {pid}, which is still running.\n"
+                f"Another compute_qc is building this table. Wait for it, or kill\n"
+                f"that pid and delete the lock.")
+        print(f"reclaiming stale lock {lock.name}", flush=True)
+        lock.unlink(missing_ok=True)
+
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    try:
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+        yield
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def _pid_alive(pid: int) -> bool:
+    if os.name == "nt":
+        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                             capture_output=True, text=True).stdout
+        return str(pid) in out
+    try:
+        os.kill(pid, 0)
+    except (OSError, ProcessLookupError):
+        return False
+    return True
+
+
 def build_table(df: pd.DataFrame, threshold, params: pd.DataFrame, null: dict,
-                jobs: int, limit=None) -> pd.DataFrame:
+                jobs: int, out: Path, limit=None, flush_every: int = 2000) -> pd.DataFrame:
+    """
+    Run the cascade over every gene, checkpointing to `<out>.partial` as it goes.
+
+    A full tissue at n=818 is close to an hour, and a run that dies at minute 55
+    with nothing on disk is worse than useless. Rows are appended in chunks, so a
+    killed run resumes from the last flush rather than from zero. `.partial` is a
+    separate path on purpose -- the final name only ever appears once the table
+    is complete, so "file exists" keeps meaning "finished" for the skip check and
+    for anything downstream.
+
+    `shapiro_bh_reject` is deliberately absent from the checkpoint: Benjamini-
+    Hochberg ranks every gene against every other, so it cannot be computed on a
+    prefix. It is filled in once at the end, over the assembled table.
+    """
     genes = list(df.columns)
     if limit:
         genes = genes[:limit]
+
+    part = partial_path(out)
+    want = set(genes)
+    done: set[str] = set()
+    if part.exists():
+        try:
+            prev = pd.read_csv(part, dtype={"gene": str}, keep_default_na=False,
+                               nrows=0)
+            if list(prev.columns) != CHECKPOINT_COLUMNS:
+                # Written by a different version of this file. Its columns will
+                # not line up, and a silently misaligned resume is far worse
+                # than recomputing.
+                raise ValueError("checkpoint schema mismatch")
+            ids = pd.read_csv(part, usecols=["gene"], dtype=str,
+                              keep_default_na=False)
+            # Only genes we are actually asked for. A checkpoint from a wider
+            # run (say a different --limit) is still a valid source for the
+            # overlap, but must not inflate the progress count.
+            done = set(ids["gene"]) & want
+        except (ValueError, pd.errors.EmptyDataError, KeyError):
+            # A checkpoint truncated mid-line, or from an older schema, is not
+            # recoverable; start over rather than carrying a corrupt row through.
+            print(f"discarding unusable checkpoint {part.name}", flush=True)
+            part.unlink()
+            done = set()
+    todo = [g for g in genes if g not in done]
+    if done:
+        print(f"resuming: {len(done):,} of {len(genes):,} already done, "
+              f"{len(todo):,} to go", flush=True)
 
     # Ship the fit parameters to workers as a plain dict: a DataFrame is pickled
     # per chunk, a dict of small dicts is pickled once at pool start.
     pmap = ({} if params.empty
             else {g: r for g, r in params.to_dict(orient="index").items()})
 
-    items = ((g, df[g].to_numpy(dtype=float)) for g in genes)
-    if jobs and jobs != 1:
-        n = jobs if jobs > 0 else (os.cpu_count() or 1)
-        with mp.Pool(n, initializer=_init_worker,
-                     initargs=(threshold, pmap, null)) as pool:
-            records = list(pool.imap(_qc_one, items, chunksize=32))
-    else:
-        _init_worker(threshold, pmap, null)
-        records = [_qc_one(it) for it in items]
+    if todo:
+        part.parent.mkdir(parents=True, exist_ok=True)
+        items = ((g, df[g].to_numpy(dtype=float)) for g in todo)
+        buf: list[dict] = []
 
-    table = pd.DataFrame.from_records(records, columns=COLUMNS)
+        def flush():
+            if not buf:
+                return
+            chunk = pd.DataFrame.from_records(buf, columns=COLUMNS)[CHECKPOINT_COLUMNS]
+            header = not part.exists()
+            chunk.to_csv(part, mode="a", index=False, header=header,
+                         lineterminator="\n")
+            buf.clear()
 
-    # BH needs every gene's p-value at once, so it cannot live in the worker.
+        if jobs and jobs != 1:
+            n = jobs if jobs > 0 else (os.cpu_count() or 1)
+            with mp.Pool(n, initializer=_init_worker,
+                         initargs=(threshold, pmap, null)) as pool:
+                for i, rec in enumerate(pool.imap(_qc_one, items, chunksize=32), 1):
+                    buf.append(rec)
+                    if i % flush_every == 0:
+                        flush()
+                        print(f"  {len(done) + i:,}/{len(genes):,}", flush=True)
+        else:
+            _init_worker(threshold, pmap, null)
+            for i, it in enumerate(items, 1):
+                buf.append(_qc_one(it))
+                if i % flush_every == 0:
+                    flush()
+        flush()
+
+    table = pd.read_csv(part, dtype={"gene": str}, keep_default_na=True)
+    table = table.set_index("gene").reindex(genes).reset_index()
+
+    # BH ranks every gene against every other, so it cannot be computed on a
+    # prefix and does not belong in the checkpoint.
     table["shapiro_bh_reject"] = N.bh_fdr(table["shapiro_p"].to_numpy())
-    return table
+    return table[COLUMNS]
 
 
 def main() -> None:
@@ -221,6 +349,9 @@ def main() -> None:
                    help="Only the first N genes (smoke tests).")
     p.add_argument("--null-sims", type=int, default=N.NULL_SIMS,
                    help="Simulated normals for the d_aic threshold.")
+    p.add_argument("--flush-every", type=int, default=2000, dest="flush_every",
+                   help="Checkpoint every N genes. Lower = less lost to a kill, "
+                        "more append syscalls.")
     p.add_argument("--force", action="store_true",
                    help="Recompute even if the output exists.")
     args = p.parse_args()
@@ -229,6 +360,11 @@ def main() -> None:
     if out.exists() and not args.force:
         print(f"exists, skipping: {out}   (--force to recompute)")
         return
+    if args.force:
+        # --force means recompute, so any checkpoint is stale by definition.
+        # Resuming one under --force is how a complete 74,628-gene table once
+        # got overwritten by the tail of a --limit 2200 run.
+        partial_path(out).unlink(missing_ok=True)
 
     if args.input.stat().st_size < 1000:
         raise SystemExit(
@@ -256,12 +392,16 @@ def main() -> None:
           f"(median {null['d_aic_median']:.3f}); "
           f"skew noise band [{null['skew_lo']:.3f}, {null['skew_hi']:.3f}]")
 
-    table = build_table(df, args.threshold, params, null, args.jobs, args.limit)
+    with output_lock(out):
+        table = build_table(df, args.threshold, params, null, args.jobs, out,
+                            args.limit, args.flush_every)
     # genename is already a COLUMNS slot, so this fills it rather than inserting.
     table["genename"] = table["gene"].map(names)
 
     QC_DIR.mkdir(parents=True, exist_ok=True)
     table.to_csv(out, index=False, lineterminator="\n")
+    # Only now is the run complete, so only now may the checkpoint go.
+    partial_path(out).unlink(missing_ok=True)
     print(f"wrote {out}  ({len(table):,} genes)")
     counts = table["dist_class"].value_counts()
     for k, v in counts.items():
