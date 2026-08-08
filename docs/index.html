@@ -302,6 +302,24 @@ thead th .sub {
 }
 .nil { color: var(--muted); opacity: .55; }
 
+/* Distribution class. Only `truncated` gets the vermilion reserved for the
+   truncation ceiling — it is the one verdict that says "look here". The rest
+   are deliberately quiet: they are census, not signal. */
+.dc {
+  font-family: var(--mono); font-size: .68rem; letter-spacing: .02em;
+  padding: 1px 6px; border-radius: 2px; white-space: nowrap;
+  border: 1px solid transparent;
+}
+.dc-right_truncated {
+  color: var(--ceiling); border-color: currentColor; font-weight: 600;
+}
+.dc-normal      { color: var(--ok); border-color: currentColor; }
+.dc-right_skewed,
+.dc-non_normal,
+.dc-multimodal  { color: var(--muted); border-color: var(--rule); }
+.dc-zero_inflated,
+.dc-undetermined { color: var(--muted); opacity: .62; }
+
 /* the signature: the fitted curve on a fixed −4σ…+4σ axis, with the slice the
    observations actually cover filled in. Three states of one curve — dotted
    below `min` (modelled, never seen), solid+filled across the observed window,
@@ -662,17 +680,28 @@ const MB_PER_SHARD = 0.22;
 const RENDER_LIMIT = 800;
 
 // Compact column set shown by default; the rest appear under "All columns".
+/* The default column set. "All columns" appends everything else in the table's
+   own order *after* these, so turning it on never moves a column you were
+   already reading — it only adds to the right. */
 const COMPACT_COLS = [
-  "truncationindex", "ti_fourparam_sigma_dist", "n_obs",
-  "x0", "w", "mean", "std", "right"
+  "truncationindex", "ti_fourparam_sigma_dist", "mean", "std",
+  "rightheight", "maxheight"
 ];
+
+/* dist_class does not live in the fourparam tables — it comes from qc/, joined
+   by gene index rather than by a column. It is a virtual column id so the rest
+   of the pipeline (visibility, sorting, headers) can treat it like any other,
+   while `statCols()` — which drives the CSV export off manifest.columns —
+   never sees it and the export stays byte-identical to extract_genes.py. */
+const DIST_COL = "__dist_class";
 
 const SHORT_LABEL = {
   truncationindex: "TI",
   ti_fourparam_sigma_dist: "σ-dist",
   sumsquarevalue: "SSR",
   n_obs: "n",
-  fit_success: "fit"
+  fit_success: "fit",
+  [DIST_COL]: "class"
 };
 
 // Columns where more decimal places actually matter.
@@ -889,6 +918,54 @@ async function getTable(tissue, kind) {
   } finally {
     $("progress").hidden = true;
   }
+}
+
+/* ---------------------------------------------------------------------
+   Distribution class (qc/)
+
+   One character per gene, in genes.tsv order — so a whole tissue's verdicts
+   are ~73 KB and the lookup is `text[gi]`, with no join and nothing to parse.
+   The QC tables themselves are ~14 MB each; fetching one to fill a single
+   column would roughly double what the page already downloads per tissue.
+
+   A tissue with no QC table yet is a normal state, not an error: only the
+   tissues in manifest.qc.files have been computed, and the column shows "—"
+   for the rest.
+   --------------------------------------------------------------------- */
+const qcCache = new Map();          // "tissue|kind" -> string | null
+
+function qcKindId(kind) {
+  const ids = manifest.qc && manifest.qc.kind_ids;
+  return (ids && ids[kind]) || kind;
+}
+
+async function getQcClasses(tissue, kind) {
+  const key = `${tissue}|${kind}`;
+  if (qcCache.has(key)) return qcCache.get(key);
+
+  const qc = manifest.qc;
+  const name = qc && qc.available && qc.files[tissue]
+    && qc.files[tissue][qcKindId(kind)];
+  if (!name) { qcCache.set(key, null); return null; }
+
+  try {
+    const res = await fetch(`${qc.base_url}/${name}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    // A short file means the gene index and the QC table disagree, which would
+    // silently shift every verdict. Drop it rather than mislabel genes.
+    qcCache.set(key, text.length >= GID.length ? text : null);
+  } catch (err) {
+    qcCache.set(key, null);
+  }
+  return qcCache.get(key);
+}
+
+function distClassOf(row) {
+  const text = qcCache.get(`${row.tissue}|${row.kind}`);
+  if (!text) return null;
+  const name = manifest.qc.classes[text[row.gi]];
+  return name || null;
 }
 
 /* ---------------------------------------------------------------------
@@ -1192,8 +1269,12 @@ function shapeCell(row, colIdx) {
 function visibleStatCols(header, all) {
   const skip = new Set(["gene", "genename", "hist", "hist_max"]);
   const stats = header.filter((c) => !skip.has(c));
-  if (all) return stats;
-  return COMPACT_COLS.filter((c) => stats.includes(c));
+  const compact = COMPACT_COLS.filter((c) => stats.includes(c)).concat(DIST_COL);
+  if (!all) return compact;
+  // Compact block keeps its position and order; the remainder follows in the
+  // table's own order. Toggling "All columns" therefore only ever appends.
+  const shown = new Set(compact);
+  return compact.concat(stats.filter((c) => !shown.has(c)));
 }
 
 function kindLabelOf(kind) {
@@ -1342,6 +1423,13 @@ async function loadTables() {
         done++;
       }
     }
+    /* Class strings are tiny and independent of the route, so they are fetched
+       once per tissue after the rows are in. render() reads them synchronously,
+       which is why this is awaited here rather than inside the cell. A failure
+       resolves to null and the column shows "—"; it never blocks the table. */
+    await Promise.all(
+      Array.from(new Set(rows.map((r) => r.tissue)))
+        .map((t) => getQcClasses(t, kind)));
   } finally {
     loading = false;
     $("cancelLoad").hidden = true;
@@ -1373,8 +1461,31 @@ async function loadTables() {
    ===================================================================== */
 function rowKey(r) { return `${r.tissue}|${r.kind}|${NOVER[r.gi]}`; }
 
+/* Ranked so sorting walks from "this is a truncation candidate" to "there was
+   nothing to test", which is the order the column is actually read in.
+   Alphabetical would interleave `normal` and `non_normal`. */
+const DIST_RANK = {
+  right_truncated: 0, right_skewed: 1, non_normal: 2, multimodal: 3,
+  normal: 4, zero_inflated: 5, undetermined: 6
+};
+const DIST_LABEL = {
+  right_truncated: "truncated", right_skewed: "R-skew", non_normal: "non-normal",
+  multimodal: "multimodal", normal: "normal", zero_inflated: "zero-infl",
+  undetermined: "undet."
+};
+
 function sortRows(rows, col, dir, colIdx) {
   const out = rows.slice();
+  if (col === DIST_COL) {
+    // Rows with no QC table sink, the same way blank metrics do below.
+    const rank = (r) => {
+      const c = distClassOf(r);
+      return c ? (DIST_RANK[c] ?? 90) : 99;
+    };
+    out.sort((a, b) => (rank(a) - rank(b)) * dir ||
+                       (SYM[a.gi] || "").localeCompare(SYM[b.gi] || ""));
+    return out;
+  }
   if (col === "__tissue") {
     out.sort((a, b) => a.tissue.localeCompare(b.tissue) * dir ||
                        (SYM[a.gi] || "").localeCompare(SYM[b.gi] || ""));
@@ -1452,6 +1563,12 @@ function render() {
     const key = rowKey(r);
     const picked = workingSet.has(key);
     const cells = cols.map((c) => {
+      if (c === DIST_COL) {
+        const cls = distClassOf(r);
+        return cls
+          ? `<td class="tl"><span class="dc dc-${cls}">${escapeHtml(DIST_LABEL[cls] || cls)}</span></td>`
+          : '<td class="tl"><span class="nil" title="No QC table for this tissue yet">—</span></td>';
+      }
       if (c === "fit_success") {
         return ok ? '<td><span style="color:var(--ok)">ok</span></td>'
                   : '<td><span class="badge-fail">no fit</span></td>';
@@ -1766,7 +1883,14 @@ function renderWorkingSet() {
   }
 
   const all = statCols();
-  const cols = wsShowAllCols ? all : COMPACT_COLS.filter((c) => all.includes(c));
+  // Same rule as the selection tab: the compact block keeps its place and the
+  // rest is appended, so "All columns" only ever adds to the right. dist_class
+  // is absent here by design — the working set stores what the CSV exports, and
+  // that stays byte-identical to extract_genes.py.
+  const compact = COMPACT_COLS.filter((c) => all.includes(c));
+  const cols = wsShowAllCols
+    ? compact.concat(all.filter((c) => !compact.includes(c)))
+    : compact;
   const rows = wsRows();
 
   const sortableHead = (c, label, cls) => {

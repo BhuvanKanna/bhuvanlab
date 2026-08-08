@@ -105,5 +105,28 @@
       "raw": "raw",
       "excluded": "excluded_at_or_below_-1"
     }
+  },
+  "qc": {
+    "available": true,
+    "base_url": "qc",
+    "classes": {
+      "n": "normal",
+      "t": "right_truncated",
+      "s": "right_skewed",
+      "x": "non_normal",
+      "m": "multimodal",
+      "z": "zero_inflated",
+      "u": "undetermined"
+    },
+    "missing_char": ".",
+    "files": {
+      "kidney_cortex": {
+        "raw": "v11_log2_kidney_cortex_qc.txt",
+        "excluded_at_or_below_-1": "v11_log2_kidney_cortex_qc_excluded_at_or_below_-1.txt"
+      },
+      "muscle_skeletal": {
+        "raw": "v11_log2_muscle_skeletal_qc.txt"
+      }
+    }
   }
 }
