@@ -76,6 +76,23 @@ Both are reported per gene alongside the fit parameters and summary statistics.
 The full column list is in
 [`fourparamsacrosstissues/CLAUDE.md`](fourparamsacrosstissues/CLAUDE.md).
 
+## Distribution QC
+
+Neither truncation metric means anything if the gene was never Gaussian or the
+fit was degenerate, and both are common: in kidney cortex **63%** of genes are
+zero-inflated, **23.5%** of converged fits place the peak `x0` outside the
+observed data, and **96.4%** of `truncationindex` values are exactly 0.
+
+[`qc/`](fourparamsacrosstissues/qc/) carries one row per gene classifying the
+distribution (`zero_inflated`, `multimodal`, `right_truncated`, `right_skewed`,
+`non_normal`, `normal`) and flagging whether the fit is usable at all. It joins
+to `outputs/` on `gene`.
+
+The truncation call is made against a **simulated null**, not a textbook cutoff:
+because the ceiling is fixed at the observed maximum, a `ΔAIC > 2` rule fires on
+41% of data drawn from a true Gaussian. See
+[`fourparamsacrosstissues/CLAUDE.md`](fourparamsacrosstissues/CLAUDE.md#distribution-qc-qc-compute_qcpy-normalitypy).
+
 ## Distribution sheets
 
 [`fourparamsacrosstissues/diagrams/`](fourparamsacrosstissues/diagrams/) holds one

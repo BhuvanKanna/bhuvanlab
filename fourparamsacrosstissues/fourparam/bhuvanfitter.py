@@ -19,8 +19,8 @@ encode_histogram(data, bins)           -- quantised 40-bin histogram for the
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import curve_fit
-from scipy.stats import gaussian_kde, skew, kurtosis
+from scipy.optimize import curve_fit, minimize
+from scipy.stats import gaussian_kde, skew, kurtosis, norm
 from scipy.signal import find_peaks
 
 
@@ -33,6 +33,11 @@ HIST_LEVELS = 63
 HIST_ALPHABET = ("ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                  "abcdefghijklmnopqrstuvwxyz"
                  "0123456789+/")
+
+# Finite stand-in for an impossible likelihood. Large enough that no real fit
+# competes with it, small enough that the simplex can still measure a gradient
+# away from it -- returning inf collapses Nelder-Mead instead of steering it.
+_NLL_PENALTY = 1e12
 
 
 def encode_histogram(data, bins: int = HIST_BINS):
@@ -61,6 +66,80 @@ def encode_histogram(data, bins: int = HIST_BINS):
         return "", 0
     levels = np.rint(counts * (HIST_LEVELS / hist_max)).astype(int)
     return "".join(HIST_ALPHABET[v] for v in levels), hist_max
+
+
+def _truncated_gaussian_nll(theta, data, x_max):
+    """
+    Negative log-likelihood of a **right-truncated** Gaussian.
+
+        f(x) = phi((x - mu)/sigma) / (sigma * Phi((x_max - mu)/sigma))   for x <= x_max
+
+    ``theta`` is ``(mu, log_sigma)``. Optimising log(sigma) rather than sigma
+    keeps sigma > 0 without box constraints, so an unconstrained simplex can be
+    used and never proposes a negative width.
+
+    The normaliser ``Phi((x_max - mu)/sigma)`` is the mass surviving the ceiling.
+    As mu runs far above x_max that term underflows, so the log-CDF is used
+    directly (``norm.logcdf``, which is accurate deep into the tail) and a
+    non-finite result returns a large finite penalty rather than inf -- inf makes
+    Nelder-Mead's simplex collapse instead of stepping away from the bad region.
+    """
+    mu, log_sigma = theta
+    sigma = np.exp(log_sigma)
+    if not np.isfinite(sigma) or sigma <= 0:
+        return _NLL_PENALTY
+
+    log_Z = norm.logcdf((x_max - mu) / sigma)
+    if not np.isfinite(log_Z) or log_Z < -700.0:
+        return _NLL_PENALTY
+
+    z = (data - mu) / sigma
+    ll = -0.5 * z ** 2 - log_sigma - 0.5 * np.log(2.0 * np.pi) - log_Z
+    total = float(np.sum(ll))
+    return -total if np.isfinite(total) else _NLL_PENALTY
+
+
+def _fit_mle_truncated(data, x_max):
+    """
+    Maximum-likelihood fit of a right-truncated Gaussian to raw values.
+
+    Returns ``(mu, sigma, nll, converged)``. The untruncated sample moments seed
+    the search; Nelder-Mead runs first because the likelihood surface is flat in
+    mu once the truncation point sits far into the upper tail, and BFGS stalls
+    there. BFGS is then tried as a fallback and kept only if it genuinely
+    improves the objective, so a failed fallback can never make the answer worse.
+
+    Unlike the 4-parameter fit, this models the missing tail explicitly, so mu
+    and sigma estimate the **untruncated** distribution rather than the observed
+    one.
+    """
+    arr = np.asarray(data, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if arr.size < 2:
+        return float("nan"), float("nan"), float("nan"), False
+
+    sigma0 = float(np.std(arr, ddof=1))
+    if not np.isfinite(sigma0) or sigma0 <= 0:
+        return float("nan"), float("nan"), float("nan"), False
+    theta0 = np.array([float(arr.mean()), np.log(sigma0)])
+
+    best = minimize(_truncated_gaussian_nll, theta0, args=(arr, x_max),
+                    method="Nelder-Mead",
+                    options=dict(maxiter=2000, fatol=1e-10, xatol=1e-10))
+    try:
+        alt = minimize(_truncated_gaussian_nll, theta0, args=(arr, x_max),
+                       method="BFGS", options=dict(maxiter=500))
+        if np.isfinite(alt.fun) and alt.fun < best.fun:
+            best = alt
+    except (ValueError, FloatingPointError):
+        pass
+
+    mu = float(best.x[0])
+    sigma = float(np.exp(best.x[1]))
+    nll = float(best.fun)
+    ok = bool(np.isfinite(mu) and np.isfinite(sigma) and sigma > 0
+              and np.isfinite(nll) and nll < _NLL_PENALTY)
+    return mu, sigma, nll, ok
 
 
 def _fourparam_gaussian(x, y0, A, x0, w):
@@ -180,7 +259,8 @@ class BhuvanFitter:
     """
 
     BINS = 40
-    _FIT_REGISTRY = {"fourparam": "_fit_fourparam", "kde": "_fit_kde"}
+    _FIT_REGISTRY = {"fourparam": "_fit_fourparam", "kde": "_fit_kde",
+                     "mle": "_fit_mle"}
 
     def __init__(self, data, gene_name: str, x_max=None):
         self.gene_name = gene_name
@@ -213,6 +293,11 @@ class BhuvanFitter:
         self.kde_density = None
         self.kde_peaks = None
         self.kde_bw_method = None
+
+        # mle result storage (right-truncated Gaussian on the raw values)
+        self.mle_mu = None
+        self.mle_sigma = None
+        self.mle_nll = None
 
     # -- Simple statistics -----------------------------------------------------
 
@@ -419,6 +504,79 @@ class BhuvanFitter:
             "n_obs": int(arr.size),
             "fit_success": fit_ok,
         }
+
+    # -- mle fit ---------------------------------------------------------------
+
+    def _fit_mle(self) -> dict:
+        """
+        Fit a right-truncated Gaussian to the **raw values** by maximum
+        likelihood, and score it against a plain Gaussian on the same data.
+
+        Where the 4-parameter fit regresses a curve onto already-truncated bin
+        counts -- and so inherits the truncation as bias -- this models the
+        missing tail explicitly, so ``mle_mu`` / ``mle_sigma`` estimate the
+        distribution before the ceiling was applied.
+
+        ``d_aic`` is ``AIC_normal - AIC_truncated``; positive favours truncation.
+        Both models have two free parameters (the ceiling is fixed at ``x_max``,
+        not estimated), so the penalty cancels and ``d_aic`` reduces to twice the
+        log-likelihood difference.
+
+        **``d_aic`` is not calibrated on its own.** Fixing the ceiling at the
+        observed maximum is data-dependent and favours the truncated model even
+        for genuinely normal data -- at n=104 a ``d_aic > 2`` rule fires on ~41%
+        of true normals. Compare against ``calibrate_null`` in ``normality.py``,
+        never against a fixed cutoff.
+
+        Returns
+        -------
+        dict
+            gene, mle_mu, mle_sigma, mle_sigma_dist, nll_truncated, nll_normal,
+            d_aic, right, n_obs, fit_success
+        """
+        arr = self._data
+        mu, sigma, nll_t, ok = _fit_mle_truncated(arr, self._x_max)
+
+        self.mle_mu = mu if ok else None
+        self.mle_sigma = sigma if ok else None
+        self.mle_nll = nll_t if ok else None
+        self.active_fits["mle"] = bool(ok)
+
+        sigma_dist = (self._x_max - mu) / sigma if ok else float("nan")
+
+        # Plain-normal reference at its own MLE (sample mean / population sd --
+        # the ML estimator uses ddof=0, and using ddof=1 here would hand the
+        # truncated model a small unearned advantage).
+        nll_n = float("nan")
+        if arr.size > 1:
+            s_n = float(np.std(arr, ddof=0))
+            if np.isfinite(s_n) and s_n > 0:
+                nll_n = -float(np.sum(norm.logpdf(arr, float(arr.mean()), s_n)))
+
+        d_aic = 2.0 * (nll_n - nll_t) if (ok and np.isfinite(nll_n)) else float("nan")
+
+        return {
+            "gene": self.gene_name,
+            "mle_mu": mu,
+            "mle_sigma": sigma,
+            "mle_sigma_dist": float(sigma_dist),
+            "nll_truncated": nll_t,
+            "nll_normal": nll_n,
+            "d_aic": float(d_aic),
+            "right": self._x_max,
+            "n_obs": int(arr.size),
+            "fit_success": bool(ok),
+        }
+
+    def mle_function(self, x):
+        """Truncated-Gaussian density at ``x`` (zero above the ceiling)."""
+        if not self.active_fits.get("mle"):
+            raise RuntimeError("mle fit has not been run. Call fit('mle') first.")
+        x = np.asarray(x, dtype=float)
+        z = (x - self.mle_mu) / self.mle_sigma
+        Z = norm.cdf((self._x_max - self.mle_mu) / self.mle_sigma)
+        dens = norm.pdf(z) / (self.mle_sigma * Z)
+        return np.where(x <= self._x_max, dens, 0.0)
 
     # -- Truncation-index metrics ----------------------------------------------
 

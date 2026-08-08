@@ -22,7 +22,9 @@ The expression matrices have already been downloaded and transformed (see
 ```
 CLAUDE.md                     <- this file
 fourparam/                    <- all the code (kept separate from the data)
-  bhuvanfitter.py             <- the fit library (4-param Gaussian + metrics); single source of truth
+  bhuvanfitter.py             <- the fit library (4-param Gaussian, KDE, truncated MLE + metrics); single source of truth
+  normality.py                <- distribution-classification cascade + calibrated thresholds
+  compute_qc.py               <- generate ONE qc table from ONE matrix (raw or excluded)
   generate_fourparam.py       <- generate ONE fourparam table from ONE matrix (raw or excluded)
   generate_all.py             <- driver: both tables for every tissue -> 108 tables
   run_cluster.py              <- same 108 tables, spread over several machines
@@ -39,6 +41,8 @@ data/                         <- the 54 input matrices (nothing else)
 outputs/                      <- the generated tables go here (starts empty)
   v11_log2_<tissue>_fourparam.csv                              <- raw
   v11_log2_<tissue>_fourparam_excluded_at_or_below_-1.csv      <- excluded <= -1
+qc/                           <- distribution class + fit-validity, joined on `gene`
+  v11_log2_<tissue>_qc[_excluded_at_or_below_-1].csv
 gene_major/                   <- the same rows re-oriented for the browser
   shard_NNNN.csv              <- 16 genes x all 54 tissues x both filters
 diagrams/                     <- one 5-histogram summary sheet per table
@@ -264,6 +268,156 @@ linear axis; each choice is load-bearing:
 - `sumsquarevalue`, `mean`, `std` get an adaptive linear window: the narrower of
   the 6×IQR fences and the p0.5–p99.5 span that hides ≤ 2%, falling back to
   whichever hides less. The hidden count is stamped on the panel.
+
+## Distribution QC (`qc/`, `compute_qc.py`, `normality.py`)
+
+Answers two questions the fourparam tables cannot: **is this gene's distribution
+even Gaussian**, and **is this particular fit usable**. One row per gene, joined
+to `outputs/` on `gene`.
+
+```bash
+cd fourparam
+python compute_qc.py --input ../data/v11_log2_kidney_cortex.csv.gz \
+    --id-col Name --name-col Description --jobs 8              # raw
+python compute_qc.py --input ../data/v11_log2_kidney_cortex.csv.gz \
+    --id-col Name --name-col Description --threshold -1 --jobs 8  # excluded
+```
+
+Skips existing output unless `--force`. ~16 MB and a few minutes per table.
+
+**This deliberately does not add columns to `outputs/`.** Those tables are
+mirrored into 4,665 gene_major shards, pinned by four hardcoded column lists,
+and carry a byte-identity guarantee with `extract_genes.py`. A separate table
+joined on `gene` costs none of that.
+
+### The cascade (`normality.py`)
+
+One p-value is not an answer, because "not normal" covers zero-inflation,
+bimodality, right skew and right-truncation, and only the last is this project's
+hypothesis. Each stage only sees what survives the one before:
+
+| stage | function | rules out |
+|---|---|---|
+| 0 | `classify_support` | ≥20% of donors at the −1 floor — a spike plus a smear, not a failed Gaussian |
+
+| 1 | `count_modes` | >1 KDE mode (reuses `gene_peaks`) — wants a mixture, not a truncated Gaussian |
+| 2 | `run_tests` | Shapiro–Wilk, D'Agostino–Pearson, Anderson–Darling |
+| 3 | skew direction | right-truncation removes the **upper** tail, so it makes skew **negative** |
+| 4 | `fit_truncated` + `calibrate_null` | truncated-Gaussian MLE vs plain Gaussian, against a simulated null |
+| 5 | `classify` | one `dist_class` label |
+
+**Kolmogorov–Smirnov is deliberately absent** — against parameters estimated from
+the same sample its null distribution is wrong, and Lilliefors is still weaker
+than Shapiro–Wilk here.
+
+**`FLOOR` is −0.75, but the excluded table cuts at −1.0, and that gap is
+deliberate.** Values in `(−1, −0.75]` survive the exclusion filter and still
+count toward `frac_at_floor`, so 59.6% of genes stay `zero_inflated` in the
+excluded kidney-cortex table. That is correct, not a leak: the band maps to
+`0 < TPM ≤ 0.19`, which is trace expression, and a gene made up of it is no more
+Gaussian than one made of exact zeros. It matches `has_minus_one_peak` in the
+notebook. Genes where *every* donor was at TPM=0 come back `undetermined`
+(n_obs = 0 after filtering), which is 14.1% of the excluded table.
+
+### `calibrate_null` is the load-bearing piece — do not replace it with a constant
+
+The truncation point is fixed at the **observed maximum**, which is
+data-dependent and therefore biased toward the truncated model. Measured against
+2,000 samples drawn from a true Gaussian at n=104:
+
+```
+dAIC > 2      fires on 41.4% of genuinely normal data   <-- unusable
+dAIC > 5.87   is the calibrated 95th percentile          <-- correct at n=104
+skew noise    +/-0.37 at n=104                           <-- |skew| below this is nothing
+```
+
+So `d_aic` and `skew` are **always** judged against `calibrate_null(n)`, never a
+literal. `d_aic` is a likelihood ratio between two location-scale families and
+`skew` is standardised, so both are scale-free — one calibration per sample size
+serves every gene in a tissue, and it is `lru_cache`d for exactly that reason.
+`tests/test_normality.py` pins both the ~5% flag rate on held-out null data and
+the fact that the naive threshold is wrong.
+
+**Power is the real limit.** At n=104 a ceiling at 0.5σ or 1σ is detectable; at
+2σ or 3σ it is not, because too little mass is missing to see. Read a null result
+in a small tissue as "underpowered", not "no truncation". Kidney cortex has 104
+donors and ranks 49th of 54; muscle skeletal has 818.
+
+### QC gates are absolute, not percentile-based
+
+A percentile rule flags a fixed fraction however good the fits are. These are
+derived quantities with meaning, so they get real thresholds:
+
+| gate | keep | catches (kidney cortex, raw) |
+|---|---|---|
+| `sigma_span_ratio = (abs(w)/√2)/(max−min)` | 0.05 – 1.0 | **~25%** collapsed spikes below, **3.3%** APP-mode above |
+| `x0_in_range` | `x0` ∈ `[min, max]` | **23.5%** — peak never observed |
+| `n_obs` | ≥ 30 | thin excluded-table rows |
+| `frac_at_floor` | < 0.20 | **63%** zero-inflated |
+
+Two opposite degeneracies both report `fit_success = True`: `w → 0` collapses the
+Gaussian onto one bin (DDX11L1: `w ≈ 1e-6`, `sigma_dist = −17,676`), and `w → ∞`
+fits a shallow slice off the top of an enormous one (APP: `w = 22.7`, σ = 16.0
+against a 3.95-unit span, `sigma_dist = 0.124` reading as maximal truncation).
+Neither is biology.
+
+**`r_squared` replaces `sumsquarevalue` for any cross-gene comparison.** The
+stored SSR is unnormalised — it scales with n and peak height, so p50 = 58 says
+nothing about whether one fit is good. Expect low values regardless: 40 bins over
+~104 donors is ~2.6 donors per bin, and real genes land around R² 0.2–0.4.
+
+### What the first two tissues actually showed — read this before trusting a candidate list
+
+Judge the `right_truncated` rate against the **joint** null of the compound rule
+(skew below the band **and** `d_aic` past the threshold). The two criteria are
+positively correlated — left skew is exactly what makes the truncated model fit
+better — so the joint rate is nowhere near `0.05 x 0.05`. Measured by simulation:
+**2.00% at n=104**, **0.67% at n=818**.
+
+| tissue | n | observed (of testable) | joint null | vs chance |
+|---|---|---|---|---|
+| kidney_cortex | 104 | 0.59% (111/18,819) | 2.00% | **0.29x** |
+| muscle_skeletal | 818 | 2.08% (5,000-gene sample) | 0.67% | **3.10x** |
+
+**Power was the limiting factor, and the plan's suspicion was right.** At n=104
+there is no excess at all. At n=818 there is a real one, three times chance.
+Do not read a null result in a small tissue as absence of truncation — 20 of the
+54 tissues have n < 200.
+
+**But the excess is very likely compositional, not lethality.** The candidates
+are each tissue's own highly-expressed identity genes, and the two lists do not
+overlap at all:
+
+```
+kidney_cortex    NPHS2 NPHS1 WT1 SLC22A6 SLC22A8 SLC5A2 SLC6A19 SLC13A3 ANPEP + 11 MT-*
+muscle_skeletal  ATP2A1 TNNC1 CASQ2 MYOM3 FHL1 SPEG PPP1R3C RCAN2 TMEM143
+```
+
+Both sit at the **92nd-93rd percentile of expression** in their tissue, and MT
+genes are **60x enriched** among kidney-cortex candidates (10% vs 0.17%).
+
+Donor-to-donor variation in tissue composition and RNA quality produces exactly
+this: a biopsy with less pure cortex has less podocyte and tubule signal, a
+degraded sample has less mitochondrial content, and either drags a subset of
+donors downward into a long **left** tail. Sample heterogeneity and a biological
+expression ceiling are indistinguishable to this statistic.
+
+A dosage-lethality signal should be at least partly **shared** across tissues,
+since dosage-sensitive genes tend to be broadly dosage-sensitive. Getting each
+tissue's own marker genes back instead is the signature of an artefact.
+
+**Before treating any of these as biology**, regress the candidates against GTEx
+sample covariates (RIN, ischemic time, `SMTSISCH`) or a cell-type deconvolution,
+and check whether the left tail survives. Those covariates are not in this repo —
+they come from the GTEx sample attributes file.
+
+### `dist_class` values
+
+`zero_inflated` · `multimodal` · `right_truncated` · `right_skewed` ·
+`non_normal` · `normal` · `undetermined`
+
+`right_truncated` requires **both** skew below the null band and `d_aic` past the
+calibrated threshold. Either alone is common noise.
 
 ## The browser GUI (`docs/`, GitHub Pages)
 
