@@ -15,6 +15,18 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
 
+# A killed job does not always take its process tree with it: the shell wrapper
+# dies, compute_qc.py keeps running, and starting this script again puts two
+# runners on the same tissue list. output_lock() catches the case where they
+# collide on one table, but the second runner still burns cores redoing work.
+# Refuse to start while a previous run is alive, and say which pids to clear.
+others="$(pgrep -f 'compute_qc\.py' 2>/dev/null | grep -v "^$$\$" || true)"
+if [ -n "$others" ]; then
+  echo "compute_qc.py is already running (pid(s): $(echo "$others" | tr '\n' ' '))."
+  echo "Wait for it, or: kill $(echo "$others" | tr '\n' ' ')"
+  exit 1
+fi
+
 JOBS="${JOBS:-10}"          # 12 cores here; leave a couple for everything else
 FLUSH="${FLUSH:-1000}"
 
