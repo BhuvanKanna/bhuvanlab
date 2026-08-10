@@ -32,6 +32,7 @@ fourparam/                    <- all the code (kept separate from the data)
   download_data.py            <- (reference) how data/ was produced
   extract_genes.py            <- pull a gene set out of the tables -> one tidy CSV
   build_gene_major.py         <- re-orient outputs/ into gene_major/ shards
+  build_hist_major.py         <- mirror hist/hist_max into hist_major/ shards
   build_gui_data.py           <- regenerate the browser GUI's static inputs
   make_diagrams.py            <- 5-histogram summary sheet per table -> diagrams/
   verify_hist_columns.py      <- check hist/hist_max invariants in outputs/
@@ -45,6 +46,8 @@ qc/                           <- distribution class + fit-validity, joined on `g
   v11_log2_<tissue>_qc[_excluded_at_or_below_-1].csv
 gene_major/                   <- the same rows re-oriented for the browser
   shard_NNNN.csv              <- 16 genes x all 54 tissues x both filters
+hist_major/                   <- just hist/hist_max, sharded the same way
+  shard_NNNN.csv              <- one gene's histograms for ~5 KB
 diagrams/                     <- one 5-histogram summary sheet per table
   v11_log2_<tissue>_fourparam[_excluded_at_or_below_-1].png
 genelists/                    <- reusable gene sets, one token per line
@@ -479,21 +482,19 @@ Four things about it are load-bearing:
 1. **The whole across-tissue half is one fetch.** A gene-major shard already
    holds 16 genes × 54 tissues × both filters in ~220 KB, so the page costs one
    request, not 54. Do not make it walk `outputs/`.
-2. **`hist` lives only in the tissue-major table**, which the gene-major route
-   never downloads — and only 4 of the 108 tables carry the column at all. The
-   bars are the point of the panel, so when `manifest.hist` says the focus
-   tissue's table has the column, the page **fetches that ~8 MB table by itself**
-   rather than offering a button.
+2. **The histogram is one 40-character string, and it is fetched as one.**
+   Clicking a gene names the gene, the tissue and the filter, so exactly which
+   histogram is needed is already known. `hist` lives only in the tissue-major
+   tables, though, and reaching into one costs ~8 MB to read 43 bytes — so the
+   two columns are mirrored into `hist_major/` (see below) and the page fetches
+   a **~5 KB shard**, in parallel with the gene-major shard rather than after
+   it. There is no large download anywhere in this path and nothing to press.
 
-   That is not a hole in the elsewhere-explicit loading rule, it is why the
-   manifest field exists: the fetch is only ever issued once the manifest has
-   confirmed it will come back with bars, so it cannot be the half-gigabyte
-   accident the Load button guards against, and tissues without the column cost
-   nothing because nothing is requested. A tissue that has no `hist` says so and
-   offers a one-click jump to one that does; a fetch that fails leaves a retry
-   button. Neither is an error state. Do not "tidy" the auto-fetch into a button
-   without also removing the manifest gate — ungated, it *would* be that
-   accident.
+   A tissue whose table has no `hist` yet says so and offers a one-click jump to
+   one that does; a failed fetch leaves a retry. Neither is an error state. If
+   a whole tissue table happens to be cached from a Load on the selection tab,
+   its own `hist` is used instead — the two carry the identical string, which
+   `build_hist_major.py --verify` pins.
 3. **The description and the general phenotype list are fetched live from
    mygene.info and rest.ensembl.org** and are the only things on the page not
    from this repository. Both are optional — a blocked, offline or slow request
@@ -504,6 +505,35 @@ Four things about it are load-bearing:
    sentence says how many tissues share the value rather than implying a
    position. The σ-distance bars clip to ±6σ (degenerate fits reach 10⁵) and
    clipped bars carry a caret — the printed number is never clipped.
+
+### `hist_major/` — the histograms on their own
+
+```bash
+cd fourparam
+python build_hist_major.py            # 4,665 shards, ~24 MB, seconds
+python build_hist_major.py --verify   # re-reads a sample against outputs/
+```
+
+`shard_NNNN.csv` is `tissue,table,gene,hist,hist_max`, sharded with **the same
+rule and the same shard numbers** as `gene_major/`, so `docs/genes.tsv`'s third
+column addresses both and the browser needs no second index. Only tables that
+actually carry `hist` contribute rows, so the sidecar is sized by what has been
+generated (4 tables → 285,933 rows, ~5 KB per shard) rather than by the gene set.
+Genes with `n_obs = 0` have no histogram and are simply absent.
+
+**Why a sidecar and not two more columns on `gene_major/`:** that directory is
+2.46 GB and every shard would be rewritten to carry columns that are empty for
+104 of the 108 tables — a ~1 GB push to publish ~24 MB of real data. It would
+also mean touching `SHARD_HEADER`, one of the four hardcoded column lists that
+must agree and the one underwriting byte-identity with `extract_genes.py`. The
+sidecar adds nothing to that contract.
+
+`min` / `max` are deliberately **not** repeated here. They are the histogram's
+bin edges, but the gene page already has them from the gene-major row, and a
+second copy is a second thing to disagree.
+
+Rebuild it whenever you regenerate a table that carries `hist`, then re-run
+`build_gui_data.py` so `manifest.hist.gene_major` counts the shards.
 
 `docs/overexpression_phenotypes.tsv` is a curated 58-row / 51-gene table
 (`tier`, `driver_confidence`, `mechanism`, `disorder_name`, `phenotype_mim`,

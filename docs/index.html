@@ -2409,7 +2409,7 @@ const histOpts = {
 
 let phenoByEnsg = null;            // curated over-expression table, lazily read
 const annoCache = new Map();       // unversioned id -> {info, phenotypes}
-let histFetching = null;           // "tissue|kind" whose table is being fetched
+let histFetching = null;           // gene index whose histogram shard is in flight
 
 /* ---------------------------------------------------------------------
    Small numeric helpers
@@ -2514,11 +2514,13 @@ function openDetail(gi, tissue, kind, opts) {
 async function refreshDetail(token) {
   detailBusy = true;
   renderDistPanel(); renderMeanPanel(); renderTiPanel();
+  // ~5 KB against the gene-major shard's ~220 KB, and neither waits on the
+  // other: the histogram is usually on screen before the tissue bars are.
+  ensureHistTable(token);
   await loadDetailRows(token);
   if (token !== detailToken) return;
   detailBusy = false;
   renderDistPanel(); renderMeanPanel(); renderTiPanel();
-  ensureHistTable(token);
 
   const gi = detailGI;
   renderAnnoPanel(); renderPhenoPanel();
@@ -2584,10 +2586,14 @@ async function loadDetailRows(token) {
   if (detailRows.size) detailSource = "cached tables";
 }
 
-/* The focus tissue's row, preferring the tissue-major table when it is already
-   in hand: that is the only orientation carrying `hist`, so it is the only one
-   that can draw real bars. */
+/* The focus tissue's row, plus its histogram from wherever one can be had:
+   the ~5 KB hist_major shard first, then a whole tissue table if one happens to
+   be cached from a Load on the selection tab. Both carry the identical string —
+   build_hist_major.py --verify pins that — so the picture does not depend on
+   which route supplied it. */
 function focusRow() {
+  const shardHist = histFromShard(detailTissue, detailKind);
+
   const tbl = tableCache.get(`${detailTissue}|${detailKind}`);
   if (tbl) {
     const line = tbl.map.get(NOVER[detailGI]);
@@ -2595,15 +2601,24 @@ function focusRow() {
       const fields = line.split(",");
       const hIdx = tbl.colIdx.hist, mIdx = tbl.colIdx.hist_max;
       const hm = mIdx === undefined ? 0 : Number(fields[mIdx]);
+      const tableHist = hIdx === undefined ? "" : (fields[hIdx] || "");
       return {
         fields, colIdx: tbl.colIdx,
-        hist: hIdx === undefined ? "" : (fields[hIdx] || ""),
-        histMax: Number.isFinite(hm) ? hm : 0
+        hist: tableHist || (shardHist ? shardHist.hist : ""),
+        histMax: tableHist ? (Number.isFinite(hm) ? hm : 0)
+                           : (shardHist ? shardHist.histMax : 0)
       };
     }
   }
+
   const f = detailRows && detailRows.get(detailTissue);
-  if (f) return { fields: f, colIdx: detailColIdx, hist: "", histMax: 0 };
+  if (f) {
+    return {
+      fields: f, colIdx: detailColIdx,
+      hist: shardHist ? shardHist.hist : "",
+      histMax: shardHist ? shardHist.histMax : 0
+    };
+  }
   return null;
 }
 
@@ -2617,28 +2632,82 @@ function histTissues(kind) {
   return (h && Array.isArray(h[kind])) ? h[kind] : [];
 }
 
-/* The histogram is the point of this panel, so it loads itself rather than
-   waiting to be asked — but only once `manifest.hist` has confirmed the table
-   actually carries the column. That is what keeps the elsewhere-explicit
-   loading rule intact: this fetch can never come back empty-handed, so it is
-   never the half-gigabyte accident the Load button exists to prevent. Tissues
-   without the column cost nothing, because nothing is requested. */
-async function ensureHistTable(token) {
-  const tissue = detailTissue, kind = detailKind;
-  const key = `${tissue}|${kind}`;
-  if (!histPublished(tissue, kind) || tableCache.has(key) || histFetching === key) {
-    return;
+function histMajor() {
+  const h = manifest.hist && manifest.hist.gene_major;
+  return h && h.available ? h : null;
+}
+
+/* ---------------------------------------------------------------------
+   Histogram shards (hist_major/)
+
+   Clicking a gene names the gene, the tissue and the filter, so the histogram
+   it needs is one 40-character string. `hist` lives only in the tissue-major
+   tables, though, and reaching into one costs ~8 MB to read 43 bytes — so the
+   two columns are mirrored on their own, sharded by the same rule and the same
+   shard numbers as gene_major/. The fetch is ~5 KB.
+
+   Bin edges are not here on purpose: they are linspace(min, max, 41), and both
+   ends already arrived with the gene-major row.
+   --------------------------------------------------------------------- */
+const histShardCache = new Map();   // shard id -> Map "gene|tissue|kind" -> {hist, histMax}
+
+async function getHistShard(shard) {
+  if (histShardCache.has(shard)) return histShardCache.get(shard);
+
+  const spec = histMajor();
+  const name = spec.file_pattern.replace("{shard:04d}", String(shard).padStart(4, "0"));
+  const res = await fetch(`${spec.base_url}/${name}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
+
+  const map = new Map();
+  const lines = text.split("\n");
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].replace(/\r$/, "");
+    if (!line) continue;
+    // tissue,table,gene,hist,hist_max — `hist` can never contain a comma, which
+    // is exactly why it is one character per bin.
+    const p = line.split(",");
+    if (p.length < 5) continue;
+    const hm = Number(p[4]);
+    map.set(`${stripVersion(p[2])}|${p[0]}|${p[1]}`,
+            { hist: p[3], histMax: Number.isFinite(hm) ? hm : 0 });
   }
-  histFetching = key;
+  histShardCache.set(shard, map);
+  while (histShardCache.size > MAX_CACHED_SHARDS) {
+    histShardCache.delete(histShardCache.keys().next().value);
+  }
+  return map;
+}
+
+/* One fetch covers this gene in every tissue and both filters, so it runs once
+   per gene page rather than once per focus change. */
+async function ensureHistTable(token) {
+  const gi = detailGI;
+  const spec = histMajor();
+  if (!spec || gi === null || SHARD[gi] < 0) return;
+  if (histShardCache.has(SHARD[gi]) || histFetching === gi) return;
+
+  histFetching = gi;
   renderDistPanel();
   try {
-    await getTable(tissue, kind);
+    await getHistShard(SHARD[gi]);
   } catch (err) {
-    /* leave the manual button as the fallback */
+    /* leaves the retry button */
   } finally {
-    if (histFetching === key) histFetching = null;
+    if (histFetching === gi) histFetching = null;
   }
   if (token === detailToken) renderDistPanel();
+}
+
+function histFromShard(tissue, kind) {
+  const spec = histMajor();
+  if (!spec || detailGI === null || SHARD[detailGI] < 0) return null;
+  const map = histShardCache.get(SHARD[detailGI]);
+  if (!map) return null;
+  const kindId = (spec.kind_ids && spec.kind_ids[kind]) || kind;
+  const hit = map.get(`${NOVER[detailGI]}|${tissue}|${kindId}`);
+  return hit && hit.hist && hit.histMax > 0 ? hit : null;
 }
 
 /* ---------------------------------------------------------------------
@@ -2904,7 +2973,7 @@ function renderDistPanel() {
        ${histOpts[key] ? "checked" : ""}><span class="swatch2 ${cls}"></span>
        <span>${escapeHtml(label)}</span></label>`).join("");
 
-  const busyBar = histFetching === `${detailTissue}|${detailKind}`
+  const busyBar = histFetching === detailGI
     ? `<div class="progress"><i></i></div>` : "";
 
   el.innerHTML = head +
@@ -2941,10 +3010,9 @@ function histAvailabilityNote() {
   const tName = escapeHtml(tissueLabel(detailTissue));
   const key = `${detailTissue}|${detailKind}`;
 
-  if (histFetching === key) {
-    return `Fetching the ~8&nbsp;MB ${tName} table so the 40 bins can be drawn —
-      <code>hist</code> lives only in the tissue-major table, not in the gene
-      shard the rest of this page came from. The curve below is already final.`;
+  if (histFetching === detailGI) {
+    return `Fetching this gene's histograms — one ~5&nbsp;KB shard covers every
+      tissue and both filters. The curve below is already final.`;
   }
 
   if (!histPublished(detailTissue, detailKind)) {
@@ -2960,8 +3028,9 @@ function histAvailabilityNote() {
       The rest need regenerating; everything else on this page is unaffected.`;
   }
 
-  // Only reachable when the automatic fetch failed, so it is a retry.
-  return `The ${tName} table carries real histograms but could not be fetched.
+  // Published for this tissue, but neither route produced it: the shard fetch
+  // failed, or hist_major/ has not been built.
+  return `${tName} has histograms but they could not be loaded.
     <button class="btn" id="histLoad" type="button">Try again</button>`;
 }
 

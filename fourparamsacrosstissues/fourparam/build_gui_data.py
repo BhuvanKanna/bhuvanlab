@@ -52,6 +52,8 @@ DATA_BASE = f"{RAW_BASE}/{REPO_SUBDIR}/outputs"
 GENE_MAJOR_BASE = f"{RAW_BASE}/{REPO_SUBDIR}/gene_major"
 
 DEFAULT_GENE_MAJOR = HERE.parent / "gene_major"
+DEFAULT_HIST_MAJOR = HERE.parent / "hist_major"
+HIST_MAJOR_BASE = f"{RAW_BASE}/{REPO_SUBDIR}/hist_major"
 
 
 # One curated row per (gene, disorder) where OMIM/G2P name **over-expression**
@@ -98,6 +100,8 @@ def main(argv=None) -> int:
     ap.add_argument("--docs", type=Path, default=DEFAULT_DOCS)
     ap.add_argument("--gene-major", type=Path, default=DEFAULT_GENE_MAJOR,
                     help="Directory of gene-major shards (default: ../gene_major).")
+    ap.add_argument("--hist-major", type=Path, default=DEFAULT_HIST_MAJOR,
+                    help="Directory of histogram shards (default: ../hist_major).")
     ap.add_argument("--reference", type=str, default=None,
                    help="Tissue whose raw table supplies manifest.columns "
                         "(default: first alphabetically). During a partial "
@@ -207,6 +211,27 @@ def main(argv=None) -> int:
     if n_hist == 0:
         print("  (the gene page will draw fitted curves only, with no bars)",
               file=sys.stderr)
+
+    # The sidecar is what makes a single gene's histogram a ~5 KB fetch instead
+    # of an ~8 MB one, so the gene page prefers it and only falls back to a whole
+    # tissue table when it is absent.
+    hist_shards = sorted(args.hist_major.glob("shard_*.csv")) \
+        if args.hist_major.is_dir() else []
+    hist_tissues["gene_major"] = {
+        "available": bool(hist_shards),
+        "base_url": HIST_MAJOR_BASE,
+        "file_pattern": "shard_{shard:04d}.csv",
+        "n_shards": len(hist_shards),
+        "kind_ids": {"raw": RAW_KIND, "excluded": EXCLUDED_KIND},
+    }
+    if hist_shards:
+        hist_size = sum(p.stat().st_size for p in hist_shards)
+        print(f"Histogram shards: {len(hist_shards):,}, {hist_size / 1e6:.1f} MB "
+              f"({hist_size / len(hist_shards) / 1024:.1f} KB each)", file=sys.stderr)
+    elif n_hist:
+        print(f"  WARNING: {n_hist} table(s) carry hist but {args.hist_major} is "
+              f"empty - run build_hist_major.py, or the gene page falls back to "
+              f"fetching whole ~8 MB tissue tables.", file=sys.stderr)
 
     if not (args.docs / PHENOTYPES_FILE).is_file():
         print(f"  WARNING: {PHENOTYPES_FILE} not in {args.docs} - the gene page's "

@@ -25,7 +25,9 @@ Two tabs:
 
 **Click any gene name** in either table to open that gene on its own page: its
 donor histogram in the tissue you were looking at — 40 real bins, drawn as soon
-as the page opens wherever the table carries them — with the fitted Gaussian, a
+as the page opens, because clicking already named the gene, the tissue and the
+filter, so the fetch is a **~5 KB** slice of `hist_major/` rather than the ~8 MB
+table those columns live in — with the fitted Gaussian, a
 moment-matched normal, `x₀`, `x_max` and the σ marks each on a checkbox; its mean
 expression and its truncation index as ranked bar charts across all 54 tissues,
 each with the rank spelled out in words; what the gene actually is; and any
@@ -181,6 +183,7 @@ fourparamsacrosstissues/
   genelists/                  <- reusable gene sets
   outputs/                    <- the 108 generated tables (tissue-major)
   gene_major/                 <- the same rows, gene-major: 4,665 shards
+  hist_major/                 <- just the histograms, same sharding: ~5 KB each
   diagrams/                   <- 108 distribution sheets, 5 histograms each
   results/                    <- extracted gene subsets
 ```
@@ -193,6 +196,7 @@ Requires Python with `numpy`, `pandas`, `scipy`, `matplotlib`.
 cd fourparamsacrosstissues/fourparam
 python generate_all.py          # all 108 tables; resumable, skips existing
 python build_gene_major.py      # re-orient them into gene_major/ (~80 s)
+python build_hist_major.py      # mirror the histograms into hist_major/
 python build_gui_data.py        # refresh the GUI's manifest + gene index
 python make_diagrams.py         # 108 distribution sheets -> diagrams/
 ```
