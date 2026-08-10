@@ -480,13 +480,20 @@ Four things about it are load-bearing:
    holds 16 genes × 54 tissues × both filters in ~220 KB, so the page costs one
    request, not 54. Do not make it walk `outputs/`.
 2. **`hist` lives only in the tissue-major table**, which the gene-major route
-   never downloads — and only 4 of the 108 tables carry the column at all. So
-   the histogram degrades in two distinct ways and says which: *this table has
-   no `hist` yet* (curves only, naming the tissues that do) versus *this table
-   has one but it is in the ~8 MB file*, offering a button to fetch it. Neither
-   is an error state. `manifest.hist` is what lets that call be made **before**
-   committing to the download; it is written by `build_gui_data.py` from the
-   table headers.
+   never downloads — and only 4 of the 108 tables carry the column at all. The
+   bars are the point of the panel, so when `manifest.hist` says the focus
+   tissue's table has the column, the page **fetches that ~8 MB table by itself**
+   rather than offering a button.
+
+   That is not a hole in the elsewhere-explicit loading rule, it is why the
+   manifest field exists: the fetch is only ever issued once the manifest has
+   confirmed it will come back with bars, so it cannot be the half-gigabyte
+   accident the Load button guards against, and tissues without the column cost
+   nothing because nothing is requested. A tissue that has no `hist` says so and
+   offers a one-click jump to one that does; a fetch that fails leaves a retry
+   button. Neither is an error state. Do not "tidy" the auto-fetch into a button
+   without also removing the manifest gate — ungated, it *would* be that
+   accident.
 3. **The description and the general phenotype list are fetched live from
    mygene.info and rest.ensembl.org** and are the only things on the page not
    from this repository. Both are optional — a blocked, offline or slow request

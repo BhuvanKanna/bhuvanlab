@@ -2409,6 +2409,7 @@ const histOpts = {
 
 let phenoByEnsg = null;            // curated over-expression table, lazily read
 const annoCache = new Map();       // unversioned id -> {info, phenotypes}
+let histFetching = null;           // "tissue|kind" whose table is being fetched
 
 /* ---------------------------------------------------------------------
    Small numeric helpers
@@ -2517,6 +2518,7 @@ async function refreshDetail(token) {
   if (token !== detailToken) return;
   detailBusy = false;
   renderDistPanel(); renderMeanPanel(); renderTiPanel();
+  ensureHistTable(token);
 
   const gi = detailGI;
   renderAnnoPanel(); renderPhenoPanel();
@@ -2610,6 +2612,35 @@ function histPublished(tissue, kind) {
   return !!(h && Array.isArray(h[kind]) && h[kind].includes(tissue));
 }
 
+function histTissues(kind) {
+  const h = manifest.hist;
+  return (h && Array.isArray(h[kind])) ? h[kind] : [];
+}
+
+/* The histogram is the point of this panel, so it loads itself rather than
+   waiting to be asked — but only once `manifest.hist` has confirmed the table
+   actually carries the column. That is what keeps the elsewhere-explicit
+   loading rule intact: this fetch can never come back empty-handed, so it is
+   never the half-gigabyte accident the Load button exists to prevent. Tissues
+   without the column cost nothing, because nothing is requested. */
+async function ensureHistTable(token) {
+  const tissue = detailTissue, kind = detailKind;
+  const key = `${tissue}|${kind}`;
+  if (!histPublished(tissue, kind) || tableCache.has(key) || histFetching === key) {
+    return;
+  }
+  histFetching = key;
+  renderDistPanel();
+  try {
+    await getTable(tissue, kind);
+  } catch (err) {
+    /* leave the manual button as the fallback */
+  } finally {
+    if (histFetching === key) histFetching = null;
+  }
+  if (token === detailToken) renderDistPanel();
+}
+
 /* ---------------------------------------------------------------------
    Frame: identity, tissue picker, filter toggle
    --------------------------------------------------------------------- */
@@ -2648,6 +2679,7 @@ function setFocusTissue(t) {
   $("detailTissueSel").value = t;
   syncHash();
   renderDistPanel(); renderMeanPanel(); renderTiPanel();
+  ensureHistTable(detailToken);
 }
 
 /* ---------------------------------------------------------------------
@@ -2872,8 +2904,11 @@ function renderDistPanel() {
        ${histOpts[key] ? "checked" : ""}><span class="swatch2 ${cls}"></span>
        <span>${escapeHtml(label)}</span></label>`).join("");
 
+  const busyBar = histFetching === `${detailTissue}|${detailKind}`
+    ? `<div class="progress"><i></i></div>` : "";
+
   el.innerHTML = head +
-    `<p class="sub">${note}</p>` +
+    `<p class="sub">${note}</p>${busyBar}` +
     `<dl class="statgrid">${stats}</dl>` + chart +
     `<div class="optrow"><span class="opt-label">Model overlays</span>${toggles}</div>`;
 
@@ -2883,14 +2918,18 @@ function renderDistPanel() {
       renderDistPanel();
     });
   });
+  el.querySelectorAll("[data-jump]").forEach((b) => {
+    b.addEventListener("click", () => {
+      setFocusTissue(b.dataset.jump);
+      $("distPanel").scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  });
+
   const btn = $("histLoad");
   if (btn) {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", () => {
       btn.disabled = true;
-      btn.textContent = "Fetching…";
-      const token = detailToken;
-      try { await getTable(detailTissue, detailKind); } catch (err) { /* reported below */ }
-      if (token === detailToken) renderDistPanel();
+      ensureHistTable(detailToken);
     });
   }
 }
@@ -2900,19 +2939,30 @@ function renderDistPanel() {
    it is rather than showing an empty frame. */
 function histAvailabilityNote() {
   const tName = escapeHtml(tissueLabel(detailTissue));
-  if (!histPublished(detailTissue, detailKind)) {
-    const h = manifest.hist;
-    const have = h && h[detailKind] ? h[detailKind].length : 0;
-    return `Curves only — the ${tName} table does not carry the <code>hist</code>
-      column yet, so there are no bars to draw. ${have
-        ? `${have} of ${manifest.tissues.length} tissues currently do
-           (${h[detailKind].map((t) => escapeHtml(tissueLabel(t))).join(", ")});`
-        : "No tissue currently does;"}
-      the rest need regenerating. Everything below is unaffected.`;
+  const key = `${detailTissue}|${detailKind}`;
+
+  if (histFetching === key) {
+    return `Fetching the ~8&nbsp;MB ${tName} table so the 40 bins can be drawn —
+      <code>hist</code> lives only in the tissue-major table, not in the gene
+      shard the rest of this page came from. The curve below is already final.`;
   }
-  return `The ${tName} table does carry real histograms, but they live in the
-    ~8&nbsp;MB tissue table rather than the gene shard this page loaded.
-    <button class="btn" id="histLoad" type="button">Fetch it and draw the bars</button>`;
+
+  if (!histPublished(detailTissue, detailKind)) {
+    const have = histTissues(detailKind);
+    const jumps = have.map((t) =>
+      `<button class="linkbtn" type="button" data-jump="${escapeHtml(t)}">` +
+      `${escapeHtml(tissueLabel(t))}</button>`).join(" · ");
+    return `Curves only — the ${tName} table does not carry the <code>hist</code>
+      column yet, so there are no bars to draw. ${have.length
+        ? `${have.length} of ${manifest.tissues.length} tissues currently do, and
+           switch instantly: ${jumps}.`
+        : "No tissue currently does."}
+      The rest need regenerating; everything else on this page is unaffected.`;
+  }
+
+  // Only reachable when the automatic fetch failed, so it is a retry.
+  return `The ${tName} table carries real histograms but could not be fetched.
+    <button class="btn" id="histLoad" type="button">Try again</button>`;
 }
 
 /* ---------------------------------------------------------------------

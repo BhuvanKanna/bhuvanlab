@@ -24,7 +24,8 @@ Two tabs:
   queries as you like, filterable and exportable to CSV.
 
 **Click any gene name** in either table to open that gene on its own page: its
-donor histogram in the tissue you were looking at, with the fitted Gaussian, a
+donor histogram in the tissue you were looking at — 40 real bins, drawn as soon
+as the page opens wherever the table carries them — with the fitted Gaussian, a
 moment-matched normal, `x₀`, `x_max` and the σ marks each on a checkbox; its mean
 expression and its truncation index as ranked bar charts across all 54 tissues,
 each with the rank spelled out in words; what the gene actually is; and any
