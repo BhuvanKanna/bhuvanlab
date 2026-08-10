@@ -23,6 +23,16 @@ Two tabs:
 - **Working set** — everything ticked so far, gathered across as many separate
   queries as you like, filterable and exportable to CSV.
 
+**Click any gene name** in either table to open that gene on its own page: its
+donor histogram in the tissue you were looking at, with the fitted Gaussian, a
+moment-matched normal, `x₀`, `x_max` and the σ marks each on a checkbox; its mean
+expression and its truncation index as ranked bar charts across all 54 tissues,
+each with the rank spelled out in words; what the gene actually is; and any
+associated phenotype — starting with the curated set where OMIM or G2P name
+**over-expression itself** as the disease mechanism, which is the hypothesis this
+whole repository exists to test. Every panel is one gene-major fetch, and Back
+(the button, `Escape`, or the browser's own) returns to your table untouched.
+
 - Type-ahead over all **74,628** genes (`ALDH2`, `ENSG00000111275`) and all 54
   tissues (`whole blood` matches `whole_blood`)
 - **Ensembl versions are ignored**, so ids from an older annotation still resolve
@@ -153,6 +163,8 @@ docs/                         <- the GitHub Pages site (the Truncation Browser)
   index.html                  <- the whole GUI, self-contained
   manifest.json               <- tissue list + column list
   genes.tsv                   <- gene index for type-ahead
+  overexpression_phenotypes.tsv <- 51 curated over-expression driver genes
+  qc/                         <- one distribution class per gene, per tissue
 fourparamsacrosstissues/
   CLAUDE.md                   <- full spec: columns, filters, how tables are made
   data/                       <- 54 input matrices (Git LFS pointers, see below)

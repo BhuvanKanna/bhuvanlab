@@ -205,7 +205,7 @@ One row per gene. Columns, in order:
 | `maxheight`, `rightheight` | curve height at the peak / at `x_max`, above the curve's interval-minimum baseline (`truncationindex = rightheight/maxheight`) |
 | `n_obs` | number of finite values fit (after any exclusion) |
 | `fit_success` | `True` if the fit converged with `n_obs >= 10`, else `False` (metrics `NaN`) |
-| `hist` | 40-character thumbnail histogram, one character per bin from `A-Za-z0-9+/` (= 0–63), each `round(count * 63 / hist_max)`. **Not analysis data** — quantised and lossy to 1/63 of the peak. Written for a browser thumbnail that no longer exists: the Shape cell now draws the fitted curve, and `outputs/` never carried these two columns in the first place, so nothing currently reads them. Empty when `n_obs = 0`. Written whenever `n_obs >= 1`, **independent of `fit_success`**, so a gene whose fit failed still shows its real distribution. Bin edges are not stored: they are `linspace(min, max, 41)`, and numpy widens a zero-width range to `[min-0.5, max+0.5]` |
+| `hist` | 40-character thumbnail histogram, one character per bin from `A-Za-z0-9+/` (= 0–63), each `round(count * 63 / hist_max)`. **Not analysis data** — quantised and lossy to 1/63 of the peak. Read by the browser's **gene page**, which decodes it into real bars and overlays the fitted curve on the same count axis. Not by the table's Shape cells, which draw the fitted curve alone. Empty when `n_obs = 0`. Written whenever `n_obs >= 1`, **independent of `fit_success`**, so a gene whose fit failed still shows its real distribution. Bin edges are not stored: they are `linspace(min, max, 41)`, and numpy widens a zero-width range to `[min-0.5, max+0.5]` |
 | `hist_max` | exact count in the tallest bin; `0` when there is no histogram (never `NaN` — one `NaN` in the column makes pandas write every other row's value as a float) |
 
 Fitting details (in `bhuvanfitter.py`, the single source of truth): the histogram
@@ -447,7 +447,8 @@ calibrated threshold. Either alone is common noise.
 ## The browser GUI (`docs/`, GitHub Pages)
 
 `docs/index.html` is a self-contained page published at
-<https://bhuvankanna.github.io/bhuvanlab/>. It has two tabs:
+<https://bhuvankanna.github.io/bhuvanlab/>. It has two tabs and, behind them, a
+per-gene page:
 
 - **Gene selection** — type-ahead multi-select over genes *and* tissues (both
   boxes work the same way; tissue matching is underscore-insensitive so "whole
@@ -457,6 +458,51 @@ calibrated threshold. Either alone is common noise.
   units, one on a fixed sigma axis (see "The two shape columns" below).
 - **Working set** — rows ticked on the first tab, accumulated across any number
   of separate queries, filterable, and exported as one CSV.
+
+### The gene page
+
+Clicking a gene name in **either** table opens one gene, everywhere it was
+measured. It is not a third tab: it replaces the tab bar, and Back (the button,
+`Escape`, or the browser's own Back — they are the same history entry) returns
+to whichever tab you came from with its table intact.
+
+| panel | source | notes |
+|---|---|---|
+| Distribution in the focus tissue | `hist` / `hist_max` decoded against `min`/`max` | 40 real bars plus toggleable overlays: the 4-param fit, a moment-matched normal from `mean`/`std`, `y0`, `x0`, `x_max`, `min`, ±1σ/±2σ |
+| `mean` across all 54 tissues | gene-major shard | zero-anchored bars + a ranking sentence |
+| `truncationindex` / `ti_fourparam_sigma_dist` across all 54 tissues | gene-major shard | same, with a metric toggle |
+| What this gene is | **mygene.info**, live | name, summary, aliases, locus |
+| Associated phenotypes | `docs/overexpression_phenotypes.tsv` + **Ensembl**, live | curated over-expression drivers first, then every Ensembl association |
+
+Four things about it are load-bearing:
+
+1. **The whole across-tissue half is one fetch.** A gene-major shard already
+   holds 16 genes × 54 tissues × both filters in ~220 KB, so the page costs one
+   request, not 54. Do not make it walk `outputs/`.
+2. **`hist` lives only in the tissue-major table**, which the gene-major route
+   never downloads — and only 4 of the 108 tables carry the column at all. So
+   the histogram degrades in two distinct ways and says which: *this table has
+   no `hist` yet* (curves only, naming the tissues that do) versus *this table
+   has one but it is in the ~8 MB file*, offering a button to fetch it. Neither
+   is an error state. `manifest.hist` is what lets that call be made **before**
+   committing to the download; it is written by `build_gui_data.py` from the
+   table headers.
+3. **The description and the general phenotype list are fetched live from
+   mygene.info and rest.ensembl.org** and are the only things on the page not
+   from this repository. Both are optional — a blocked, offline or slow request
+   (9 s timeout) leaves that panel saying so and changes nothing else. They are
+   labelled as external wherever they appear.
+4. **Ties are named, not hidden.** `truncationindex` is exactly 0 for most genes
+   in most tissues, so "25th of 54" is usually a 30-way draw; the ranking
+   sentence says how many tissues share the value rather than implying a
+   position. The σ-distance bars clip to ±6σ (degenerate fits reach 10⁵) and
+   clipped bars carry a caret — the printed number is never clipped.
+
+`docs/overexpression_phenotypes.tsv` is a curated 58-row / 51-gene table
+(`tier`, `driver_confidence`, `mechanism`, `disorder_name`, `phenotype_mim`,
+`cytoband`, `scope`, `evidence_quote`) of OMIM and G2P entries where **too much**
+gene product is the named disease mechanism — the exact hypothesis the truncation
+index tests, which is why a hit there is shown above the general Ensembl list.
 
 ### The two shape columns
 
@@ -611,6 +657,18 @@ python build_gui_data.py     # writes ../../docs/manifest.json and ../../docs/ge
 `genes.tsv` is built from a single table because the gene set is byte-identical
 across all 108; `build_gui_data.py` verifies that and aborts if it ever stops
 being true.
+
+It also writes two blocks the gene page depends on: `manifest.hist`, which lists
+per filter the tissues whose table carries `hist`/`hist_max` (read from the
+header of each of the 108 tables, one line apiece), and `manifest.phenotypes`,
+which points at `docs/overexpression_phenotypes.tsv` if it is there.
+
+**It rewrites `manifest.json` wholesale but now carries the `qc` block over**
+from whatever is already on disk, because that block is owned by
+`build_qc_class.py`. Before, rebuilding the manifest silently deleted the
+published QC index, and the only repair — re-running `build_qc_class.py` — is
+unsafe while a `compute_qc.py` run is live, since `qc/` then holds half-written
+tables.
 
 **`--reference <tissue>` picks the table that supplies `manifest.columns`.**
 It defaults to the alphabetically first raw table, which is wrong mid-migration:

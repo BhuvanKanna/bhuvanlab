@@ -54,10 +54,41 @@ GENE_MAJOR_BASE = f"{RAW_BASE}/{REPO_SUBDIR}/gene_major"
 DEFAULT_GENE_MAJOR = HERE.parent / "gene_major"
 
 
+# One curated row per (gene, disorder) where OMIM/G2P name **over-expression**
+# as the driving mechanism. Small enough to publish verbatim; the browser's gene
+# page shows it as that gene's phenotype panel.
+PHENOTYPES_FILE = "overexpression_phenotypes.tsv"
+
+
 def gene_column_digest(path: Path) -> str:
     """md5 of the gene column, used to prove the gene set matches across tables."""
     col = pd.read_csv(path, usecols=["gene"], dtype=str)["gene"].fillna("")
     return hashlib.md5("\n".join(col).encode("utf-8")).hexdigest()
+
+
+def header_of(path: Path) -> list[str]:
+    """First line of a CSV, split on commas. Reads one line, not the file."""
+    with path.open("r", encoding="utf-8") as fh:
+        return fh.readline().rstrip("\r\n").split(",")
+
+
+def hist_availability(raw_tables, exc_tables) -> dict:
+    """
+    Which tables actually carry ``hist`` / ``hist_max``.
+
+    They were added after the first full generation, so most of ``outputs/`` is
+    still without them and a regeneration is ~852 MB of push. The browser's gene
+    page draws the real 40-bin histogram when they are there and says so plainly
+    when they are not — but it can only make that call *before* committing to an
+    ~8 MB fetch if the manifest tells it. Reads one line per table.
+    """
+    def carries(path: Path) -> bool:
+        cols = header_of(path)
+        return "hist" in cols and "hist_max" in cols
+
+    raw = [p.name[len(PREFIX):-len(RAW_SUFFIX)] for p in raw_tables if carries(p)]
+    exc = [p.name[len(PREFIX):-len(EXCLUDED_SUFFIX)] for p in exc_tables if carries(p)]
+    return {"raw": raw, "excluded": exc}
 
 
 def main(argv=None) -> int:
@@ -169,6 +200,18 @@ def main(argv=None) -> int:
     # ---- manifest -----------------------------------------------------------
     columns = list(pd.read_csv(reference, nrows=0).columns)
 
+    hist_tissues = hist_availability(raw_tables, exc_tables)
+    n_hist = len(hist_tissues["raw"]) + len(hist_tissues["excluded"])
+    print(f"Histogram cols : {n_hist}/{len(raw_tables) + len(exc_tables)} tables "
+          f"carry hist/hist_max", file=sys.stderr)
+    if n_hist == 0:
+        print("  (the gene page will draw fitted curves only, with no bars)",
+              file=sys.stderr)
+
+    if not (args.docs / PHENOTYPES_FILE).is_file():
+        print(f"  WARNING: {PHENOTYPES_FILE} not in {args.docs} - the gene page's "
+              f"phenotype panel will be empty.", file=sys.stderr)
+
     manifest = {
         "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "data_base_url": DATA_BASE,
@@ -194,8 +237,31 @@ def main(argv=None) -> int:
             "file_pattern": "shard_{shard:04d}.csv",
             "kind_ids": {"raw": RAW_KIND, "excluded": EXCLUDED_KIND},
         },
+        # Per-table, because hist/hist_max landed after the first full run.
+        "hist": hist_tissues,
+        # Curated over-expression phenotypes, published beside the page itself.
+        "phenotypes": {
+            "available": (args.docs / PHENOTYPES_FILE).is_file(),
+            "file": PHENOTYPES_FILE,
+        },
     }
     manifest_path = args.docs / "manifest.json"
+
+    # `qc` is owned by build_qc_class.py, which patches this file in place. This
+    # script rewrites it wholesale, so without carrying that block forward the
+    # published QC index vanishes whenever the manifest is rebuilt — and the only
+    # way back is to re-run build_qc_class.py, which is not safe mid-run (a live
+    # compute_qc.py leaves half-written tables in qc/). Preserve it instead.
+    if manifest_path.is_file():
+        try:
+            previous = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            previous = {}
+        if isinstance(previous.get("qc"), dict):
+            manifest["qc"] = previous["qc"]
+            n_qc = len(previous["qc"].get("files", {}))
+            print(f"Carried over   : qc block, {n_qc} tissue(s)", file=sys.stderr)
+
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"Wrote {manifest_path.name}: {len(tissues)} tissues, "
           f"{len(columns)} columns", file=sys.stderr)

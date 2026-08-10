@@ -20,8 +20,9 @@ width, and never put a comma in it.
 Writes `docs/qc/<same stem as the CSV>.txt` and patches the `qc` block of
 `docs/manifest.json` in place, leaving every other key untouched.
 
-Re-run this after `build_gui_data.py` (which rewrites manifest.json wholesale)
-and after generating any new QC table.
+Re-run this after generating any new QC table. `build_gui_data.py` rewrites
+manifest.json wholesale but carries over whatever `qc` block it finds, so the two
+no longer have to run in a particular order.
 """
 from __future__ import annotations
 

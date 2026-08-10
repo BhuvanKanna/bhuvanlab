@@ -506,6 +506,237 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
   font: inherit; line-height: 1; padding: 2px 6px; border-radius: 2px;
 }
 .rowdel:hover { color: var(--ceiling); background: var(--sunken); }
+
+/* ==========================================================================
+   Gene page
+
+   Two more inks are introduced here and nowhere else. --curve2 is the
+   moment-matched normal, which has to sit on the same axes as the fitted curve
+   without being mistaken for it. --anno is annotation: text this repository did
+   not compute. Neither is ever --ceiling: vermilion stays reserved for x_max.
+   ========================================================================== */
+:root { --curve2: #7a4fa3; --anno: #8a5b12; --anno-wash: #f6efe2; }
+@media (prefers-color-scheme: dark) {
+  :root { --curve2: #b58ee0; --anno: #d9a851; --anno-wash: #2a2113; }
+}
+:root[data-theme="dark"] { --curve2: #b58ee0; --anno: #d9a851; --anno-wash: #2a2113; }
+:root[data-theme="light"] { --curve2: #7a4fa3; --anno: #8a5b12; --anno-wash: #f6efe2; }
+
+/* the gene name, wherever it appears in a table, is the way in */
+.genelink {
+  display: block; width: 100%; text-align: left;
+  border: 0; background: transparent; padding: 0; margin: 0;
+  font: inherit; color: inherit; cursor: pointer; border-radius: 2px;
+}
+.genelink .c-sym { color: var(--accent); text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  text-underline-offset: 2px; }
+.genelink:hover .c-sym { text-decoration-color: currentColor; }
+.genelink:hover .c-id { color: var(--ink); }
+
+/* ---------- page frame ---------- */
+.detail-top {
+  display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-start;
+  margin-bottom: 14px;
+}
+.backbtn {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--mono); font-size: .74rem; font-weight: 500;
+  letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); background: var(--surface);
+  border: 1px solid var(--rule); border-radius: var(--r);
+  padding: 8px 13px; cursor: pointer; white-space: nowrap;
+}
+.backbtn:hover { color: var(--accent); border-color: var(--accent); }
+.backbtn .arr { font-size: 1rem; line-height: 1; }
+
+.gene-id-block { flex: 1 1 320px; min-width: 0; }
+.gene-id-block h2 {
+  font-family: var(--mono); font-weight: 600; letter-spacing: -.03em;
+  font-size: clamp(1.35rem, 3.2vw, 1.9rem); line-height: 1.1; margin: 0 0 3px;
+}
+.gene-id-block .ensg { font-family: var(--mono); font-size: .78rem; color: var(--muted); }
+.gene-id-block .full { margin: 4px 0 0; font-size: .9rem; color: var(--ink); }
+.gene-id-block .full.pending { color: var(--muted); font-style: italic; }
+
+.detail-controls {
+  display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end;
+}
+.detail-controls .field { min-width: 190px; }
+.detail-controls select { min-width: 210px; }
+
+/* ---------- panel grid ---------- */
+.dgrid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; align-items: start; }
+.dgrid .wide { grid-column: 1 / -1; }
+@media (max-width: 1000px) { .dgrid { grid-template-columns: 1fr; } }
+
+.dpanel { padding: 16px 18px 18px; }
+.dpanel > h3 {
+  font-family: var(--mono); font-size: .68rem; font-weight: 600;
+  letter-spacing: .13em; text-transform: uppercase; color: var(--muted);
+  margin: 0 0 3px;
+}
+.dpanel > .sub {
+  margin: 0 0 14px; font-size: .82rem; color: var(--muted); max-width: 78ch;
+}
+.dpanel > .sub code { font-size: .95em; }
+
+/* ---------- key numbers ---------- */
+.statgrid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 10px 14px; margin: 0 0 16px;
+  padding-bottom: 14px; border-bottom: 1px solid var(--rule-soft);
+}
+.statgrid dt {
+  font-family: var(--mono); font-size: .6rem; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted); margin: 0 0 2px;
+}
+.statgrid dd {
+  margin: 0; font-family: var(--mono); font-size: .95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- the distribution chart ---------- */
+.chart { display: block; width: 100%; height: auto; }
+.chart .hbar { fill: var(--curve); fill-opacity: .17; stroke: var(--curve);
+  stroke-opacity: .45; stroke-width: .8; }
+.chart .hbar:hover { fill-opacity: .34; }
+.chart .axis { stroke: var(--rule); stroke-width: 1; }
+.chart .grid { stroke: var(--rule-soft); stroke-width: 1; }
+.chart text { font-family: var(--mono); font-size: 10px; fill: var(--muted); }
+.chart text.alab { font-size: 10px; letter-spacing: .06em; }
+.chart .fitline { fill: none; stroke: var(--curve); stroke-width: 2; stroke-linejoin: round; }
+.chart .normline { fill: none; stroke: var(--curve2); stroke-width: 1.8;
+  stroke-dasharray: 5 3; stroke-linejoin: round; }
+.chart .baseline { stroke: var(--curve); stroke-width: 1; stroke-dasharray: 2 3; opacity: .7; }
+.chart .vceiling { stroke: var(--ceiling); stroke-width: 1.6; }
+.chart .vpeak { stroke: var(--curve); stroke-width: 1.2; stroke-dasharray: 4 3; opacity: .8; }
+.chart .vfloor { stroke: var(--muted); stroke-width: 1.1; stroke-dasharray: 2 2; opacity: .75; }
+.chart .vsigma { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 1 3; opacity: .6; }
+.chart .flag { font-size: 9.5px; letter-spacing: .04em; }
+.chart .flag.c { fill: var(--ceiling); }
+.chart .flag.p { fill: var(--curve); }
+
+/* ---------- overlay checkboxes ---------- */
+.optrow {
+  display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--rule-soft);
+}
+.optrow .opt-label {
+  font-family: var(--mono); font-size: .6rem; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted); flex: 0 0 100%;
+  margin-bottom: 2px;
+}
+.opt { display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  font-size: .82rem; white-space: nowrap; }
+.opt input { flex: none; }
+.opt .swatch2 { width: 17px; height: 0; flex: none; border-top: 2px solid var(--curve); }
+.opt .swatch2.n { border-top: 2px dashed var(--curve2); }
+.opt .swatch2.b { border-top: 2px dotted var(--curve); }
+.opt .swatch2.c { border-top: 0; border-left: 2px solid var(--ceiling); width: 0; height: 13px; }
+.opt .swatch2.p { border-top: 0; border-left: 2px dashed var(--curve); width: 0; height: 13px; }
+.opt .swatch2.f { border-top: 0; border-left: 2px dashed var(--muted); width: 0; height: 13px; }
+.opt .swatch2.s { border-top: 0; border-left: 2px dotted var(--muted); width: 0; height: 13px; }
+
+/* ---------- across-tissue bars ---------- */
+.barhead {
+  display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+  margin-bottom: 10px;
+}
+.barhead .spacer { flex: 1 1 auto; }
+.segmented.mini button { padding: 5px 10px; font-size: .74rem; }
+
+.barscroll { max-height: 430px; overflow-y: auto; overscroll-behavior: contain;
+  margin: 0 -6px; padding: 0 6px; }
+.tbrow {
+  display: grid; grid-template-columns: 128px 1fr 74px;
+  gap: 9px; align-items: center; width: 100%;
+  border: 0; background: transparent; padding: 2px 4px; cursor: pointer;
+  border-radius: 2px; font: inherit; color: inherit; text-align: left;
+}
+.tbrow:hover { background: var(--sunken); }
+.tbrow.is-focus { background: var(--accent-wash); }
+.tbname {
+  font-size: .74rem; color: var(--muted); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.tbrow.is-focus .tbname { color: var(--accent); font-weight: 600; }
+.tbtrack { position: relative; height: 13px; background: var(--sunken);
+  border-radius: 1px; overflow: hidden; }
+.tbzero { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--rule); }
+.tbfill { position: absolute; top: 1px; bottom: 1px; background: var(--curve);
+  opacity: .62; border-radius: 1px; min-width: 1px; }
+.tbrow.is-focus .tbfill { opacity: 1; }
+.tbfill.neg { background: var(--muted); }
+.tbclip { position: absolute; top: 0; bottom: 0; font-family: var(--mono);
+  font-size: 9px; color: var(--curve); line-height: 13px; }
+.tbval {
+  font-family: var(--mono); font-size: .72rem; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.tbval.nil { color: var(--muted); opacity: .55; }
+
+.rankline {
+  margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--rule-soft);
+  font-size: .86rem; line-height: 1.55; max-width: 74ch;
+}
+.rankline strong { font-family: var(--mono); font-weight: 600; }
+.rankline .rank-big {
+  font-family: var(--mono); font-size: 1.5rem; font-weight: 600;
+  color: var(--accent); letter-spacing: -.02em; display: block; margin-bottom: 2px;
+}
+.rankline .quiet { color: var(--muted); }
+
+/* ---------- annotation + phenotype ---------- */
+.summary { margin: 0 0 12px; font-size: .89rem; line-height: 1.62; max-width: 78ch; }
+.factlist { display: flex; flex-wrap: wrap; gap: 5px 8px; margin: 0 0 12px; padding: 0; }
+.factlist li { list-style: none; }
+.tag {
+  display: inline-block; font-family: var(--mono); font-size: .7rem;
+  background: var(--sunken); border: 1px solid var(--rule); border-radius: 2px;
+  padding: 2px 7px; color: var(--muted);
+}
+.tag b { color: var(--ink); font-weight: 500; }
+.outlinks { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .8rem; margin-top: 4px; }
+.outlinks a { color: var(--accent); }
+
+.phcard {
+  border: 1px solid var(--rule); border-left: 3px solid var(--anno);
+  border-radius: var(--r); padding: 11px 13px; margin-bottom: 9px;
+  background: var(--sunken);
+}
+.phcard h4 { margin: 0 0 5px; font-size: .89rem; font-weight: 600; line-height: 1.35; }
+.phcard .meta { display: flex; flex-wrap: wrap; gap: 4px 7px; margin-bottom: 7px; }
+.phcard .quote {
+  margin: 0; font-size: .81rem; line-height: 1.55; color: var(--muted);
+  border-left: 2px solid var(--rule); padding-left: 10px;
+}
+.tag.driver { background: var(--anno-wash); border-color: var(--anno); color: var(--anno); }
+.tag.driver b { color: var(--anno); font-weight: 600; }
+
+.phlist { margin: 0; padding: 0; }
+.phlist li {
+  list-style: none; display: flex; gap: 9px; align-items: baseline;
+  padding: 5px 0; border-bottom: 1px solid var(--rule-soft); font-size: .84rem;
+}
+.phlist li:last-child { border-bottom: 0; }
+.phlist .src {
+  font-family: var(--mono); font-size: .66rem; color: var(--muted);
+  flex: 0 0 92px; text-transform: lowercase;
+}
+.phlist .desc { flex: 1 1 auto; min-width: 0; }
+
+.quietnote { font-size: .84rem; color: var(--muted); margin: 0; max-width: 74ch; }
+.quietnote .btn { margin-top: 10px; }
+.skel {
+  height: 11px; border-radius: 2px; background: var(--rule-soft);
+  margin-bottom: 8px; max-width: 100%;
+}
+.skel.s2 { width: 78%; } .skel.s3 { width: 54%; }
+@media (prefers-reduced-motion: no-preference) {
+  .skel { animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+}
 </style>
 </head>
 <body>
@@ -529,7 +760,7 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
 </header>
 
 <main>
-  <div class="tabs" role="tablist" aria-label="Views">
+  <div class="tabs" role="tablist" aria-label="Views" id="tabBar">
     <button type="button" id="tabSelect" role="tab" aria-selected="true"
             aria-controls="panelSelect">Gene selection</button>
     <button type="button" id="tabWorking" role="tab" aria-selected="false"
@@ -628,6 +859,40 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
       <div class="banner" id="wsBanner" hidden></div>
       <div id="wsArea"></div>
     </section>
+  </div>
+
+  <!-- One gene, everywhere it was measured. Entered by clicking any gene name;
+       leaves by the Back button or the browser's own back, which are wired to
+       the same history entry. -->
+  <div class="tabpanel" id="panelDetail" role="region" aria-label="Gene page" hidden>
+    <div class="detail-top">
+      <button class="backbtn" id="detailBack" type="button">
+        <span class="arr" aria-hidden="true">←</span> <span id="detailBackLabel">Back</span>
+      </button>
+      <div class="gene-id-block">
+        <h2 id="detailSym">—</h2>
+        <span class="ensg" id="detailEnsg"></span>
+        <p class="full pending" id="detailFullName">Looking up gene description…</p>
+      </div>
+      <div class="detail-controls">
+        <div class="field">
+          <label class="field-label" for="detailTissueSel">Tissue in focus</label>
+          <select id="detailTissueSel"></select>
+        </div>
+        <div class="field">
+          <span class="field-label" id="detailKindLabel">Values included</span>
+          <div class="segmented" role="group" aria-labelledby="detailKindLabel" id="detailKindGroup"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dgrid">
+      <section class="panel dpanel wide" id="distPanel" aria-label="Expression distribution"></section>
+      <section class="panel dpanel" id="meanPanel" aria-label="Mean expression across tissues"></section>
+      <section class="panel dpanel" id="tiPanel" aria-label="Truncation index across tissues"></section>
+      <section class="panel dpanel" id="annoPanel" aria-label="Gene description"></section>
+      <section class="panel dpanel" id="phenoPanel" aria-label="Associated phenotypes"></section>
+    </div>
   </div>
 </main>
 
@@ -1581,8 +1846,12 @@ function render() {
       <td class="col-check"><input type="checkbox" ${picked ? "checked" : ""}
         aria-label="Add ${escapeHtml(SYM[gi] || GID[gi])} in ${escapeHtml(tissueLabel(r.tissue))} to the working set"></td>
       <td class="col-gene">
-        <div class="c-sym">${escapeHtml(SYM[gi] || "—")}</div>
-        <div class="c-id">${escapeHtml(GID[gi])}</div>
+        <button class="genelink" type="button" data-gi="${gi}"
+          data-tissue="${escapeHtml(r.tissue)}" data-kind="${escapeHtml(r.kind)}"
+          title="Open the gene page for ${escapeHtml(SYM[gi] || GID[gi])}">
+          <div class="c-sym">${escapeHtml(SYM[gi] || "—")}</div>
+          <div class="c-id">${escapeHtml(GID[gi])}</div>
+        </button>
       </td>
       <td class="tl c-tissue">${escapeHtml(tissueLabel(r.tissue))}</td>
       <td class="c-shape">${fittedCurveCell(fields, loadedColIdx)}</td>
@@ -1607,6 +1876,12 @@ function render() {
       if (sortCol === c) sortDir = -sortDir; else { sortCol = c; sortDir = 1; }
       render();
     });
+  });
+
+  area.querySelector("tbody").addEventListener("click", (e) => {
+    const link = e.target.closest(".genelink");
+    if (!link) return;
+    openDetail(Number(link.dataset.gi), link.dataset.tissue, link.dataset.kind);
   });
 
   const byKey = new Map(rows.map((r) => [rowKey(r), r]));
@@ -1919,8 +2194,12 @@ function renderWorkingSet() {
       <td class="col-check"><button class="rowdel" type="button"
         aria-label="Remove ${escapeHtml(e.sym || e.gid)} in ${escapeHtml(tissueLabel(e.t))}">×</button></td>
       <td class="col-gene">
-        <div class="c-sym">${escapeHtml(e.sym || "—")}</div>
-        <div class="c-id">${escapeHtml(e.gid)}</div>
+        <button class="genelink" type="button" data-gene="${escapeHtml(e.g)}"
+          data-tissue="${escapeHtml(e.t)}" data-kind="${escapeHtml(e.k)}"
+          title="Open the gene page for ${escapeHtml(e.sym || e.gid)}">
+          <div class="c-sym">${escapeHtml(e.sym || "—")}</div>
+          <div class="c-id">${escapeHtml(e.gid)}</div>
+        </button>
       </td>
       <td class="tl c-tissue">${escapeHtml(tissueLabel(e.t))}</td>
       <td class="tl c-tissue">${escapeHtml(kindShort(e.k))}</td>
@@ -1941,6 +2220,12 @@ function renderWorkingSet() {
   });
 
   area.querySelector("tbody").addEventListener("click", (e) => {
+    const link = e.target.closest(".genelink");
+    if (link) {
+      const gi = geneIndexByNover.get(link.dataset.gene);
+      if (gi !== undefined) openDetail(gi, link.dataset.tissue, link.dataset.kind);
+      return;
+    }
     const btn = e.target.closest(".rowdel");
     if (!btn) return;
     wsRemove(btn.closest("tr").dataset.key);
@@ -2083,17 +2368,1009 @@ function exportWorkingSet() {
 }
 
 /* =====================================================================
+   The gene page
+
+   One gene, everywhere it was measured. Reached by clicking a gene name in
+   either table. The across-tissue half is answered by exactly one gene-major
+   shard — 16 genes x 54 tissues x both filters in ~220 KB — which is why this
+   view costs a single fetch rather than 54.
+   ===================================================================== */
+const HIST_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
+                      "abcdefghijklmnopqrstuvwxyz0123456789+/";
+const HIST_LEVELS = 63;
+const HIST_LEVEL_OF = new Map(
+  Array.from(HIST_ALPHABET).map((c, i) => [c, i]));
+
+const MYGENE_URL  = "https://mygene.info/v3/gene";
+const ENSEMBL_URL = "https://rest.ensembl.org/phenotype/gene/homo_sapiens";
+const ANNO_TIMEOUT_MS = 9000;
+
+/* sigma-distance is unbounded and degenerate fits reach 1e5, so the bar axis is
+   clipped and the clipped rows say so. The printed number is never clipped. */
+const SIGMA_BAR_CLAMP = 6;
+
+let detailGI = null;               // gene index, or null when the page is closed
+let detailTissue = null;
+let detailKind = null;
+let detailRows = null;             // tissue -> fields[], every tissue at once
+let detailColIdx = null;
+let detailSource = null;           // "gene-major" | "cached tables" | null
+let detailReturn = "select";       // which tab Back goes to
+let detailPushed = false;          // did we push a history entry to come here?
+let detailToken = 0;               // invalidates an in-flight render
+let detailBusy = false;
+
+let meanSort = "value", tiSort = "value";
+let tiMetric = "truncationindex";
+const histOpts = {
+  fit: true, normal: false, baseline: false,
+  peak: true, ceiling: true, floor: false, sigma: false
+};
+
+let phenoByEnsg = null;            // curated over-expression table, lazily read
+const annoCache = new Map();       // unversioned id -> {info, phenotypes}
+
+/* ---------------------------------------------------------------------
+   Small numeric helpers
+   --------------------------------------------------------------------- */
+function numOf(fields, colIdx, col) {
+  if (!fields || !colIdx) return NaN;
+  const i = colIdx[col];
+  if (i === undefined) return NaN;
+  const v = Number(fields[i]);
+  return Number.isFinite(v) ? v : NaN;
+}
+
+function sig(n, places) {
+  if (!Number.isFinite(n)) return "—";
+  const a = Math.abs(n);
+  if (n === 0) return "0";
+  if (a >= 1e5 || a < 1e-3) return n.toExponential(2);
+  return n.toFixed(places === undefined ? 3 : places);
+}
+
+function ordinal(n) {
+  const t = n % 100;
+  if (t >= 11 && t <= 13) return `${n}th`;
+  return n + (["th", "st", "nd", "rd"][n % 10] || "th");
+}
+
+/* Competition ranking: ties share the best rank. The tie count comes back with
+   it because ties are the normal case here — `truncationindex` is exactly 0 for
+   most genes in most tissues, and "25th of 54" alone would read as a position
+   when it is really a 30-way draw. */
+function rankOf(values, v, descending) {
+  let better = 0, tied = 0;
+  for (const x of values) {
+    if (x === v) tied++;
+    else if (descending ? x > v : x < v) better++;
+  }
+  return { rank: better + 1, better, tied: tied - 1 };
+}
+
+function median(sorted) {
+  if (!sorted.length) return NaN;
+  const m = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[m] : (sorted[m - 1] + sorted[m]) / 2;
+}
+
+function niceTicks(lo, hi, count) {
+  const span = hi - lo;
+  if (!(span > 0)) return [lo];
+  const mag = Math.pow(10, Math.floor(Math.log10(span / count)));
+  const norm = (span / count) / mag;
+  const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag;
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) {
+    out.push(Math.abs(v) < step * 1e-9 ? 0 : v);
+  }
+  return out;
+}
+
+/* ---------------------------------------------------------------------
+   Opening and closing
+   --------------------------------------------------------------------- */
+function defaultTissue() {
+  return manifest.tissues.includes("liver") ? "liver" : manifest.tissues[0];
+}
+
+function openDetail(gi, tissue, kind, opts) {
+  const o = opts || {};
+  if (gi === undefined || gi === null || gi < 0 || gi >= GID.length) return;
+
+  // Remember where we came from only on the way in, so hopping between genes
+  // inside the page does not rewrite the exit.
+  if ($("panelDetail").hidden) {
+    detailReturn = $("panelWorking").hidden ? "select" : "working";
+    detailPushed = false;
+  }
+
+  detailGI = gi;
+  detailTissue = tissue && manifest.tissues.includes(tissue) ? tissue : defaultTissue();
+  detailKind = kind && manifest.table_kinds.some((k) => k.id === kind) ? kind : currentKind;
+
+  $("tabBar").hidden = true;
+  $("panelSelect").hidden = true;
+  $("panelWorking").hidden = true;
+  $("panelDetail").hidden = false;
+  $("detailBackLabel").textContent =
+    detailReturn === "working" ? "Back to working set" : "Back to gene selection";
+
+  if (o.push !== false) {
+    detailPushed = true;
+    lastWrittenHash = "#" + buildHash();
+    history.pushState(null, "", lastWrittenHash);
+  } else {
+    syncHash();
+  }
+  if (o.scroll !== false) window.scrollTo({ top: 0, behavior: "auto" });
+
+  const token = ++detailToken;
+  renderDetailFrame();
+  refreshDetail(token);
+}
+
+async function refreshDetail(token) {
+  detailBusy = true;
+  renderDistPanel(); renderMeanPanel(); renderTiPanel();
+  await loadDetailRows(token);
+  if (token !== detailToken) return;
+  detailBusy = false;
+  renderDistPanel(); renderMeanPanel(); renderTiPanel();
+
+  const gi = detailGI;
+  renderAnnoPanel(); renderPhenoPanel();
+  loadAnnotations(gi).then(() => {
+    if (token === detailToken) { renderAnnoPanel(); renderPhenoPanel(); }
+  });
+  loadPhenotypeTable().then(() => {
+    if (token === detailToken) renderPhenoPanel();
+  });
+}
+
+function closeDetail(writeHash) {
+  detailToken++;
+  detailGI = null;
+  detailRows = null;
+  detailBusy = false;
+  $("panelDetail").hidden = true;
+  $("tabBar").hidden = false;
+  showTab(detailReturn);
+  if (writeHash !== false) syncHash();
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function detailBack() {
+  // Prefer unwinding the entry we pushed, so the page's Back and the browser's
+  // Back are the same button. A link opened straight into a gene page has no
+  // such entry, and closing directly is the only thing that keeps the user here.
+  if (detailPushed) { history.back(); return; }
+  closeDetail(true);
+}
+
+/* ---------------------------------------------------------------------
+   Data: every tissue for this one gene
+   --------------------------------------------------------------------- */
+async function loadDetailRows(token) {
+  detailRows = new Map();
+  detailColIdx = null;
+  detailSource = null;
+  const gi = detailGI;
+  const kindId = geneMajor && geneMajor.kind_ids && geneMajor.kind_ids[detailKind];
+
+  if (geneMajor && kindId && SHARD[gi] >= 0) {
+    try {
+      const sh = await getShard(SHARD[gi]);
+      if (token !== detailToken) return;
+      detailColIdx = sh.colIdx;
+      for (const t of manifest.tissues) {
+        const line = sh.map.get(`${NOVER[gi]}|${t}|${kindId}`);
+        if (line) detailRows.set(t, line.split(","));
+      }
+      if (detailRows.size) { detailSource = "gene-major"; return; }
+    } catch (err) { /* fall through to whatever is already cached */ }
+  }
+
+  for (const t of manifest.tissues) {
+    const tbl = tableCache.get(`${t}|${detailKind}`);
+    if (!tbl) continue;
+    const line = tbl.map.get(NOVER[gi]);
+    if (!line) continue;
+    detailColIdx = tbl.colIdx;
+    detailRows.set(t, line.split(","));
+  }
+  if (detailRows.size) detailSource = "cached tables";
+}
+
+/* The focus tissue's row, preferring the tissue-major table when it is already
+   in hand: that is the only orientation carrying `hist`, so it is the only one
+   that can draw real bars. */
+function focusRow() {
+  const tbl = tableCache.get(`${detailTissue}|${detailKind}`);
+  if (tbl) {
+    const line = tbl.map.get(NOVER[detailGI]);
+    if (line) {
+      const fields = line.split(",");
+      const hIdx = tbl.colIdx.hist, mIdx = tbl.colIdx.hist_max;
+      const hm = mIdx === undefined ? 0 : Number(fields[mIdx]);
+      return {
+        fields, colIdx: tbl.colIdx,
+        hist: hIdx === undefined ? "" : (fields[hIdx] || ""),
+        histMax: Number.isFinite(hm) ? hm : 0
+      };
+    }
+  }
+  const f = detailRows && detailRows.get(detailTissue);
+  if (f) return { fields: f, colIdx: detailColIdx, hist: "", histMax: 0 };
+  return null;
+}
+
+function histPublished(tissue, kind) {
+  const h = manifest.hist;
+  return !!(h && Array.isArray(h[kind]) && h[kind].includes(tissue));
+}
+
+/* ---------------------------------------------------------------------
+   Frame: identity, tissue picker, filter toggle
+   --------------------------------------------------------------------- */
+function renderDetailFrame() {
+  const gi = detailGI;
+  $("detailSym").textContent = SYM[gi] || GID[gi];
+  $("detailEnsg").textContent = GID[gi];
+
+  const sel = $("detailTissueSel");
+  sel.innerHTML = manifest.tissues.map((t) =>
+    `<option value="${escapeHtml(t)}"${t === detailTissue ? " selected" : ""}>` +
+    `${escapeHtml(tissueLabel(t))}</option>`).join("");
+
+  const group = $("detailKindGroup");
+  group.innerHTML = "";
+  for (const spec of manifest.table_kinds) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = spec.id === "raw" ? "Raw" : "Excluded ≤ −1";
+    b.title = spec.label;
+    b.setAttribute("aria-pressed", spec.id === detailKind);
+    b.addEventListener("click", () => {
+      if (detailKind === spec.id) return;
+      detailKind = spec.id;
+      renderDetailFrame();
+      syncHash();
+      refreshDetail(++detailToken);
+    });
+    group.appendChild(b);
+  }
+}
+
+function setFocusTissue(t) {
+  if (!t || t === detailTissue || !manifest.tissues.includes(t)) return;
+  detailTissue = t;
+  $("detailTissueSel").value = t;
+  syncHash();
+  renderDistPanel(); renderMeanPanel(); renderTiPanel();
+}
+
+/* ---------------------------------------------------------------------
+   Panel 1: the distribution in the focus tissue
+
+   The 40 bars are `hist` decoded against `hist_max`; the bin edges are
+   linspace(min, max, 41), which is why min/max travel with the column. Every
+   overlay is drawn on the same count axis the curve was fitted to, so the
+   fitted Gaussian and the moment-matched normal are directly comparable to the
+   bars and to each other.
+   --------------------------------------------------------------------- */
+const D_W = 780, D_H = 340;
+const D_PAD = { t: 16, r: 18, b: 36, l: 54 };
+
+function decodeHist(hist, histMax) {
+  if (!hist || !(histMax > 0)) return null;
+  const out = [];
+  for (const ch of hist) {
+    const level = HIST_LEVEL_OF.get(ch);
+    if (level === undefined) return null;
+    out.push(level * histMax / HIST_LEVELS);
+  }
+  return out.length ? out : null;
+}
+
+function distributionSvg(row) {
+  const { fields, colIdx } = row;
+  const n = (c) => numOf(fields, colIdx, c);
+  const y0 = n("y0"), A = n("A"), x0 = n("x0"), w = n("w");
+  const mean = n("mean"), sd = n("std"), nObs = n("n_obs"), ceiling = n("right");
+  let lo = n("min"), hi = n("max");
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+  // numpy widens a zero-width range rather than dividing by zero; mirror it so
+  // a gene sitting at one value still draws.
+  if (!(hi > lo)) { lo = lo - 0.5; hi = hi + 0.5; }
+
+  const counts = decodeHist(row.hist, row.histMax);
+  const bins = counts ? counts.length : 40;
+  const binw = (hi - lo) / bins;
+
+  const haveFit = [y0, A, x0, w].every(Number.isFinite) && w !== 0;
+  const haveNorm = Number.isFinite(mean) && Number.isFinite(sd) && sd > 0 &&
+                   Number.isFinite(nObs) && nObs > 0;
+  if (!counts && !haveFit) return null;
+
+  const span = hi - lo;
+  const xLo = lo - 0.05 * span, xHi = hi + 0.10 * span;
+  const f = (x) => y0 + A * Math.exp(-Math.pow((x - x0) / w, 2));
+  const g = (x) => nObs * binw * Math.exp(-0.5 * Math.pow((x - mean) / sd, 2)) /
+                   (sd * Math.sqrt(2 * Math.PI));
+
+  let top = 0;
+  if (counts) for (const c of counts) top = Math.max(top, c);
+  const SAMPLES = 320;
+  const at = (k) => xLo + (xHi - xLo) * k / SAMPLES;
+  // The fitted curve counts toward the ceiling whether or not it is currently
+  // drawn, so ticking a checkbox never rescales the axis under the bars.
+  if (haveFit) {
+    for (let k = 0; k <= SAMPLES; k++) top = Math.max(top, f(at(k)));
+  }
+  if (haveNorm && histOpts.normal) {
+    for (let k = 0; k <= SAMPLES; k++) top = Math.max(top, g(at(k)));
+  }
+  if (!(top > 0)) return null;
+  top *= 1.12;
+
+  const PW = D_W - D_PAD.l - D_PAD.r, PH = D_H - D_PAD.t - D_PAD.b;
+  const sx = (x) => D_PAD.l + ((x - xLo) / (xHi - xLo)) * PW;
+  const sy = (v) => D_PAD.t + PH - (Math.max(0, Math.min(v, top)) / top) * PH;
+  const base = D_PAD.t + PH;
+
+  // -- bars ------------------------------------------------------------
+  let bars = "";
+  if (counts) {
+    for (let i = 0; i < counts.length; i++) {
+      const bx0 = lo + i * binw, bx1 = bx0 + binw;
+      const c = counts[i];
+      if (c <= 0) continue;
+      const x = sx(bx0), wpx = Math.max(0.7, sx(bx1) - sx(bx0) - 0.6);
+      const y = sy(c);
+      bars += `<rect class="hbar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" ` +
+        `width="${wpx.toFixed(1)}" height="${(base - y).toFixed(1)}">` +
+        `<title>${bx0.toFixed(2)} to ${bx1.toFixed(2)} — about ` +
+        `${Math.round(c)} donor${Math.round(c) === 1 ? "" : "s"}</title></rect>`;
+    }
+  }
+
+  // -- axes -------------------------------------------------------------
+  let axes = `<line class="axis" x1="${D_PAD.l}" y1="${base}" x2="${D_PAD.l + PW}" y2="${base}"/>` +
+             `<line class="axis" x1="${D_PAD.l}" y1="${D_PAD.t}" x2="${D_PAD.l}" y2="${base}"/>`;
+  for (const t of niceTicks(xLo, xHi, 7)) {
+    const x = sx(t);
+    if (x < D_PAD.l - 0.5 || x > D_PAD.l + PW + 0.5) continue;
+    axes += `<line class="axis" x1="${x.toFixed(1)}" y1="${base}" x2="${x.toFixed(1)}" y2="${base + 4}"/>` +
+            `<text x="${x.toFixed(1)}" y="${base + 15}" text-anchor="middle">${t.toFixed(1)}</text>`;
+  }
+  for (const t of niceTicks(0, top, 5)) {
+    const y = sy(t);
+    if (y < D_PAD.t - 0.5) continue;
+    axes += `<line class="grid" x1="${D_PAD.l}" y1="${y.toFixed(1)}" x2="${(D_PAD.l + PW).toFixed(1)}" y2="${y.toFixed(1)}"/>` +
+            `<text x="${D_PAD.l - 7}" y="${(y + 3.5).toFixed(1)}" text-anchor="end">${Math.round(t)}</text>`;
+  }
+  axes += `<text class="alab" x="${(D_PAD.l + PW / 2).toFixed(1)}" y="${D_H - 2}" text-anchor="middle">` +
+          `expression, log2(TPM+1) − 1</text>`;
+  axes += `<text class="alab" transform="rotate(-90 12 ${(D_PAD.t + PH / 2).toFixed(1)})" ` +
+          `x="12" y="${(D_PAD.t + PH / 2).toFixed(1)}" text-anchor="middle">donors per bin</text>`;
+
+  // -- overlays ---------------------------------------------------------
+  const path = (fn) => {
+    const pts = [];
+    for (let k = 0; k <= SAMPLES; k++) {
+      const x = at(k);
+      const v = fn(x);
+      if (!Number.isFinite(v)) continue;
+      pts.push(`${pts.length ? "L" : "M"}${sx(x).toFixed(1)} ${sy(v).toFixed(1)}`);
+    }
+    return pts.join("");
+  };
+  const vline = (cls, x, label, labelCls) => {
+    const px = sx(x);
+    if (px < D_PAD.l - 0.5 || px > D_PAD.l + PW + 0.5) return "";
+    let s = `<line class="${cls}" x1="${px.toFixed(1)}" y1="${D_PAD.t}" ` +
+            `x2="${px.toFixed(1)}" y2="${base}"/>`;
+    if (label) {
+      const anchor = px > D_PAD.l + PW - 40 ? "end" : "start";
+      const dx = anchor === "end" ? -4 : 4;
+      s += `<text class="flag ${labelCls || ""}" x="${(px + dx).toFixed(1)}" ` +
+           `y="${D_PAD.t + 9}" text-anchor="${anchor}">${escapeHtml(label)}</text>`;
+    }
+    return s;
+  };
+
+  let over = "";
+  if (haveFit && histOpts.baseline) {
+    over += `<line class="baseline" x1="${D_PAD.l}" y1="${sy(y0).toFixed(1)}" ` +
+            `x2="${(D_PAD.l + PW).toFixed(1)}" y2="${sy(y0).toFixed(1)}"/>`;
+  }
+  if (haveFit && histOpts.sigma) {
+    const sigma = Math.abs(w) / Math.SQRT2;
+    for (const k of [-2, -1, 1, 2]) over += vline("vsigma", x0 + k * sigma, "");
+  }
+  if (histOpts.floor && Number.isFinite(lo)) over += vline("vfloor", lo, "min", "");
+  if (haveFit && histOpts.peak) over += vline("vpeak", x0, "x₀", "p");
+  if (haveNorm && histOpts.normal) over += `<path class="normline" d="${path(g)}"/>`;
+  if (haveFit && histOpts.fit) over += `<path class="fitline" d="${path(f)}"/>`;
+  if (histOpts.ceiling && Number.isFinite(ceiling)) {
+    over += vline("vceiling", ceiling, "x_max", "c");
+  }
+
+  return `<svg class="chart" viewBox="0 0 ${D_W} ${D_H}" role="img"
+      aria-label="Expression histogram for ${escapeHtml(SYM[detailGI] || GID[detailGI])} in ${escapeHtml(tissueLabel(detailTissue))}">
+    ${axes}${bars}${over}
+  </svg>`;
+}
+
+const HIST_TOGGLES = [
+  ["fit", "4-param Gaussian fit", ""],
+  ["normal", "Normal from mean / std", "n"],
+  ["baseline", "Baseline y₀", "b"],
+  ["ceiling", "Ceiling x_max", "c"],
+  ["peak", "Peak x₀", "p"],
+  ["floor", "Data floor min", "f"],
+  ["sigma", "±1σ, ±2σ from peak", "s"]
+];
+
+function renderDistPanel() {
+  const el = $("distPanel");
+  const tName = tissueLabel(detailTissue);
+  const head = `<h3>Distribution across donors — ${escapeHtml(tName)}</h3>`;
+
+  if (detailBusy && !detailRows) {
+    el.innerHTML = head +
+      `<p class="sub">Fetching this gene's rows…</p>
+       <div class="skel"></div><div class="skel s2"></div><div class="skel s3"></div>`;
+    return;
+  }
+
+  const row = focusRow();
+  if (!row) {
+    el.innerHTML = head + `<p class="quietnote">No row for
+      <strong>${escapeHtml(SYM[detailGI] || GID[detailGI])}</strong> in
+      ${escapeHtml(tName)} under ${escapeHtml(kindShort(detailKind))}.</p>`;
+    return;
+  }
+
+  const n = (c) => numOf(row.fields, row.colIdx, c);
+  const ok = String(row.fields[row.colIdx.fit_success]).trim().toLowerCase() === "true";
+  const sigma = Math.abs(n("w")) / Math.SQRT2;
+
+  const stats = [
+    ["donors", Number.isFinite(n("n_obs")) ? Math.round(n("n_obs")).toLocaleString() : "—"],
+    ["mean", sig(n("mean"))],
+    ["std", sig(n("std"))],
+    ["peak x₀", sig(n("x0"))],
+    ["σ = w/√2", sig(sigma)],
+    ["x_max", sig(n("right"))],
+    ["TI", sig(n("truncationindex"), 4)],
+    ["σ-dist", sig(n("ti_fourparam_sigma_dist"))],
+    ["fit", ok ? '<span style="color:var(--ok)">ok</span>'
+               : '<span class="badge-fail">no fit</span>']
+  ].map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("");
+
+  const svg = distributionSvg(row);
+  const bars = decodeHist(row.hist, row.histMax);
+
+  let chart, note;
+  if (svg) {
+    chart = svg;
+    note = bars
+      ? `40 bins over the observed range, decoded from the table's <code>hist</code>
+         column. Bar heights are quantised to 1/63 of the tallest bin
+         (<strong>${Math.round(row.histMax)}</strong> donors) — the curve was fitted to the
+         exact counts, not to these.`
+      : histAvailabilityNote();
+  } else {
+    chart = "";
+    note = `Nothing to draw: this row has neither a histogram nor a usable fit.`;
+  }
+
+  const toggles = HIST_TOGGLES.map(([key, label, cls]) =>
+    `<label class="opt"><input type="checkbox" data-opt="${key}"
+       ${histOpts[key] ? "checked" : ""}><span class="swatch2 ${cls}"></span>
+       <span>${escapeHtml(label)}</span></label>`).join("");
+
+  el.innerHTML = head +
+    `<p class="sub">${note}</p>` +
+    `<dl class="statgrid">${stats}</dl>` + chart +
+    `<div class="optrow"><span class="opt-label">Model overlays</span>${toggles}</div>`;
+
+  el.querySelectorAll("input[data-opt]").forEach((box) => {
+    box.addEventListener("change", () => {
+      histOpts[box.dataset.opt] = box.checked;
+      renderDistPanel();
+    });
+  });
+  const btn = $("histLoad");
+  if (btn) {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "Fetching…";
+      const token = detailToken;
+      try { await getTable(detailTissue, detailKind); } catch (err) { /* reported below */ }
+      if (token === detailToken) renderDistPanel();
+    });
+  }
+}
+
+/* Only the fitted curve is drawable without `hist`, and whether that column
+   exists is a property of the table, not of this gene — so say which of the two
+   it is rather than showing an empty frame. */
+function histAvailabilityNote() {
+  const tName = escapeHtml(tissueLabel(detailTissue));
+  if (!histPublished(detailTissue, detailKind)) {
+    const h = manifest.hist;
+    const have = h && h[detailKind] ? h[detailKind].length : 0;
+    return `Curves only — the ${tName} table does not carry the <code>hist</code>
+      column yet, so there are no bars to draw. ${have
+        ? `${have} of ${manifest.tissues.length} tissues currently do
+           (${h[detailKind].map((t) => escapeHtml(tissueLabel(t))).join(", ")});`
+        : "No tissue currently does;"}
+      the rest need regenerating. Everything below is unaffected.`;
+  }
+  return `The ${tName} table does carry real histograms, but they live in the
+    ~8&nbsp;MB tissue table rather than the gene shard this page loaded.
+    <button class="btn" id="histLoad" type="button">Fetch it and draw the bars</button>`;
+}
+
+/* ---------------------------------------------------------------------
+   Panels 2 and 3: one metric, all 54 tissues
+
+   Bars are anchored at zero rather than at the minimum, because `mean` is
+   log2(TPM+1)−1 and genuinely goes negative — a min-anchored bar would draw a
+   silent floor.
+   --------------------------------------------------------------------- */
+function acrossValues(col) {
+  const out = [];
+  if (!detailRows) return out;
+  for (const t of manifest.tissues) {
+    const f = detailRows.get(t);
+    if (!f) { out.push({ t, v: NaN, why: "not in table" }); continue; }
+    const ok = String(f[detailColIdx.fit_success]).trim().toLowerCase() === "true";
+    const v = numOf(f, detailColIdx, col);
+    out.push({
+      t, v,
+      n: numOf(f, detailColIdx, "n_obs"),
+      why: Number.isFinite(v) ? null : (ok ? "no value" : "no fit")
+    });
+  }
+  return out;
+}
+
+function barsBlock(rows, opts) {
+  const finite = rows.filter((r) => Number.isFinite(r.v));
+  if (!finite.length) {
+    return `<p class="quietnote">No tissue has a finite
+      <code>${escapeHtml(opts.col)}</code> for this gene.</p>`;
+  }
+
+  const clamp = opts.clamp || Infinity;
+  const cv = (v) => Math.max(-clamp, Math.min(clamp, v));
+  let dLo = 0, dHi = 0;
+  for (const r of finite) { dLo = Math.min(dLo, cv(r.v)); dHi = Math.max(dHi, cv(r.v)); }
+  if (!(dHi > dLo)) dHi = dLo + 1;
+  const range = dHi - dLo;
+  const zeroPct = ((0 - dLo) / range) * 100;
+
+  const ordered = rows.slice().sort((a, b) => {
+    if (opts.sort === "name") return a.t.localeCompare(b.t);
+    const fa = Number.isFinite(a.v), fb = Number.isFinite(b.v);
+    if (fa !== fb) return fa ? -1 : 1;
+    if (!fa) return a.t.localeCompare(b.t);
+    return opts.descending ? b.v - a.v : a.v - b.v;
+  });
+
+  const body = ordered.map((r) => {
+    const focus = r.t === detailTissue;
+    let track = `<span class="tbzero" style="left:${zeroPct.toFixed(2)}%"></span>`;
+    let val = '<span class="tbval nil">—</span>';
+    if (Number.isFinite(r.v)) {
+      const v = cv(r.v);
+      const wPct = (Math.abs(v) / range) * 100;
+      const left = v >= 0 ? zeroPct : zeroPct - wPct;
+      track += `<span class="tbfill${v < 0 ? " neg" : ""}" style="left:${left.toFixed(2)}%;` +
+               `width:${Math.max(wPct, 0.35).toFixed(2)}%"></span>`;
+      if (r.v > clamp) track += `<span class="tbclip" style="right:2px">▸</span>`;
+      if (r.v < -clamp) track += `<span class="tbclip" style="left:2px">◂</span>`;
+      val = `<span class="tbval">${escapeHtml(sig(r.v, opts.places))}</span>`;
+    }
+    const title = Number.isFinite(r.v)
+      ? `${tissueLabel(r.t)} — ${sig(r.v, opts.places)}` +
+        (Number.isFinite(r.n) ? `, ${Math.round(r.n).toLocaleString()} donors` : "")
+      : `${tissueLabel(r.t)} — ${r.why}`;
+    return `<button class="tbrow${focus ? " is-focus" : ""}" type="button"
+        data-tissue="${escapeHtml(r.t)}" title="${escapeHtml(title)}">
+      <span class="tbname">${escapeHtml(tissueLabel(r.t))}</span>
+      <span class="tbtrack">${track}</span>${val}</button>`;
+  }).join("");
+
+  return `<div class="barscroll">${body}</div>` + rankLine(rows, finite, opts);
+}
+
+function rankLine(rows, finite, opts) {
+  const here = rows.find((r) => r.t === detailTissue);
+  const values = finite.map((r) => r.v);
+  const sorted = values.slice().sort((a, b) => a - b);
+  const best = opts.descending ? sorted[sorted.length - 1] : sorted[0];
+  const worst = opts.descending ? sorted[0] : sorted[sorted.length - 1];
+  const bestT = finite.find((r) => r.v === best), worstT = finite.find((r) => r.v === worst);
+  const N = finite.length;
+
+  const tail =
+    `<span class="quiet">Across ${N} of ${manifest.tissues.length} tissues with a
+     value: ${opts.topWord} <strong>${escapeHtml(tissueLabel(bestT.t))}</strong>
+     ${escapeHtml(sig(best, opts.places))} ·
+     median ${escapeHtml(sig(median(sorted), opts.places))} ·
+     ${opts.bottomWord} <strong>${escapeHtml(tissueLabel(worstT.t))}</strong>
+     ${escapeHtml(sig(worst, opts.places))}.</span>`;
+
+  if (!here || !Number.isFinite(here.v)) {
+    return `<p class="rankline"><strong>${escapeHtml(tissueLabel(detailTissue))}</strong>
+      has no ${escapeHtml(opts.shortName)} to rank${here && here.why ? ` (${escapeHtml(here.why)})` : ""}.
+      ${tail}</p>`;
+  }
+
+  const { rank, better, tied } = rankOf(values, here.v, opts.descending);
+  const standing = tied
+    ? `tied with <strong>${tied}</strong> other tissue${tied === 1 ? "" : "s"} at that value,
+       behind ${better === 0 ? "none" : `<strong>${better}</strong>`}`
+    : `${opts.rankSense} than <strong>${N - rank}</strong> of the other
+       ${N - 1} tissue${N === 2 ? "" : "s"}`;
+  return `<p class="rankline">
+    <span class="rank-big">${ordinal(rank)} of ${N}</span>
+    <strong>${escapeHtml(tissueLabel(detailTissue))}</strong>, by
+    ${escapeHtml(opts.shortName)} — <strong>${escapeHtml(sig(here.v, opts.places))}</strong>${opts.unit || ""},
+    ${standing}. ${tail}</p>`;
+}
+
+function sortControl(id, state) {
+  return `<div class="segmented mini" role="group" aria-label="Sort order" id="${id}">
+    <button type="button" data-sort="value" aria-pressed="${state === "value"}">By value</button>
+    <button type="button" data-sort="name" aria-pressed="${state === "name"}">A–Z</button>
+  </div>`;
+}
+
+function wireBars(el, onSort) {
+  el.querySelectorAll(".tbrow").forEach((b) => {
+    b.addEventListener("click", () => setFocusTissue(b.dataset.tissue));
+  });
+  el.querySelectorAll("[data-sort]").forEach((b) => {
+    b.addEventListener("click", () => onSort(b.dataset.sort));
+  });
+  const focus = el.querySelector(".tbrow.is-focus");
+  if (focus) focus.scrollIntoView({ block: "nearest" });
+}
+
+function pendingPanel(el, title, sub) {
+  el.innerHTML = `<h3>${title}</h3><p class="sub">${sub}</p>
+    <div class="skel"></div><div class="skel s2"></div><div class="skel s3"></div>`;
+}
+
+function renderMeanPanel() {
+  const el = $("meanPanel");
+  const title = `Mean expression across ${manifest.tissues.length} tissues`;
+  if (detailBusy || !detailRows) {
+    pendingPanel(el, title, "Loading this gene in every tissue…");
+    return;
+  }
+  const rows = acrossValues("mean");
+  el.innerHTML = `<h3>${title}</h3>
+    <p class="sub">Mean of <code>log2(TPM+1) − 1</code> over that tissue's donors,
+      ${escapeHtml(kindShort(detailKind))}. <strong>−1</strong> is TPM&nbsp;0.
+      Click a tissue to bring it into focus above.</p>
+    <div class="barhead"><span class="spacer"></span>${sortControl("meanSortCtl", meanSort)}</div>` +
+    barsBlock(rows, {
+      col: "mean", sort: meanSort, descending: true, places: 3,
+      shortName: "mean expression", unit: " log2 units", rankSense: "higher",
+      topWord: "highest", bottomWord: "lowest"
+    });
+  wireBars(el, (s) => { meanSort = s; renderMeanPanel(); });
+}
+
+const TI_METRICS = {
+  truncationindex: {
+    label: "TI (height ratio)", descending: true, places: 4, clamp: null,
+    shortName: "truncation index", unit: "", rankSense: "more truncated",
+    topWord: "most truncated", bottomWord: "least truncated",
+    blurb: `<code>f(x_max)/f(peak)</code> with the curve's own baseline removed —
+            bounded [0,&nbsp;1], <strong>higher = more truncated</strong>.`
+  },
+  ti_fourparam_sigma_dist: {
+    label: "σ-distance", descending: false, places: 3, clamp: SIGMA_BAR_CLAMP,
+    shortName: "σ-distance", unit: "σ", rankSense: "more truncated",
+    topWord: "most truncated", bottomWord: "least truncated",
+    blurb: `<code>(x_max − x₀)/σ</code> — how many σ the ceiling sits above the
+            peak, <strong>lower = more truncated</strong>. The axis is clipped to
+            ±${SIGMA_BAR_CLAMP}σ (degenerate fits reach 10⁵); clipped bars carry a
+            caret and the printed number is always the real one.`
+  }
+};
+
+function renderTiPanel() {
+  const el = $("tiPanel");
+  const title = `Truncation index across ${manifest.tissues.length} tissues`;
+  if (detailBusy || !detailRows) {
+    pendingPanel(el, title, "Loading this gene in every tissue…");
+    return;
+  }
+  const m = TI_METRICS[tiMetric];
+  const metricCtl = `<div class="segmented mini" role="group" aria-label="Metric" id="tiMetricCtl">` +
+    Object.entries(TI_METRICS).map(([id, spec]) =>
+      `<button type="button" data-metric="${id}" aria-pressed="${id === tiMetric}">` +
+      `${escapeHtml(spec.label)}</button>`).join("") + `</div>`;
+
+  el.innerHTML = `<h3>${title}</h3>
+    <p class="sub">${m.blurb}</p>
+    <div class="barhead">${metricCtl}<span class="spacer"></span>${sortControl("tiSortCtl", tiSort)}</div>` +
+    barsBlock(acrossValues(tiMetric), {
+      col: tiMetric, sort: tiSort, descending: m.descending, places: m.places,
+      clamp: m.clamp, shortName: m.shortName, unit: m.unit,
+      rankSense: m.rankSense, topWord: m.topWord, bottomWord: m.bottomWord
+    });
+  wireBars(el, (s) => { tiSort = s; renderTiPanel(); });
+  el.querySelectorAll("[data-metric]").forEach((b) => {
+    b.addEventListener("click", () => {
+      if (tiMetric === b.dataset.metric) return;
+      tiMetric = b.dataset.metric;
+      renderTiPanel();
+    });
+  });
+}
+
+/* ---------------------------------------------------------------------
+   Description and phenotypes
+
+   Nothing in this repository describes what a gene *is*, so the description and
+   the general phenotype list are fetched live from mygene.info and Ensembl.
+   Both are optional: a blocked or offline request leaves the panel saying so and
+   changes nothing else on the page.
+   --------------------------------------------------------------------- */
+async function fetchJson(url, timeout) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeout || ANNO_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } finally { clearTimeout(timer); }
+}
+
+async function loadAnnotations(gi) {
+  const key = NOVER[gi];
+  if (annoCache.has(key)) return annoCache.get(key);
+
+  const entry = { info: null, phenotypes: null, infoFailed: false, phenoFailed: false };
+  annoCache.set(key, entry);
+
+  const fields = "symbol,name,alias,summary,type_of_gene,map_location," +
+                 "entrezgene,HGNC,MIM,other_names";
+  await Promise.all([
+    fetchJson(`${MYGENE_URL}/${encodeURIComponent(key)}?fields=${fields}`)
+      .then((j) => { entry.info = j; })
+      .catch(() => { entry.infoFailed = true; }),
+    fetchJson(`${ENSEMBL_URL}/${encodeURIComponent(key)}?content-type=application/json`)
+      .then((j) => { entry.phenotypes = Array.isArray(j) ? j : []; })
+      .catch(() => { entry.phenoFailed = true; })
+  ]);
+  return entry;
+}
+
+async function loadPhenotypeTable() {
+  if (phenoByEnsg) return phenoByEnsg;
+  phenoByEnsg = new Map();
+  const spec = manifest.phenotypes;
+  if (!spec || !spec.available || !spec.file) return phenoByEnsg;
+  try {
+    const res = await fetch(spec.file);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const lines = (await res.text()).split("\n");
+    const head = lines[0].replace(/\r$/, "").split("\t");
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].replace(/\r$/, "");
+      if (!line) continue;
+      const parts = line.split("\t");
+      const rec = {};
+      head.forEach((h, k) => { rec[h] = (parts[k] || "").trim(); });
+      const id = stripVersion(rec.ensembl_gene_id || "");
+      if (!id) continue;
+      if (!phenoByEnsg.has(id)) phenoByEnsg.set(id, []);
+      phenoByEnsg.get(id).push(rec);
+    }
+  } catch (err) { /* the panel simply reports nothing curated */ }
+  return phenoByEnsg;
+}
+
+function renderAnnoPanel() {
+  const el = $("annoPanel");
+  const gi = detailGI;
+  if (gi === null) return;
+  const key = NOVER[gi];
+  const entry = annoCache.get(key);
+  const sym = SYM[gi] || GID[gi];
+
+  const links = `<div class="outlinks">
+    <a href="https://www.ensembl.org/Homo_sapiens/Gene/Summary?g=${encodeURIComponent(key)}"
+       target="_blank" rel="noopener">Ensembl</a>
+    <a href="https://gtexportal.org/home/gene/${encodeURIComponent(key)}"
+       target="_blank" rel="noopener">GTEx portal</a>
+    <a href="https://www.genecards.org/cgi-bin/carddisp.pl?gene=${encodeURIComponent(sym)}"
+       target="_blank" rel="noopener">GeneCards</a>
+    ${entry && entry.info && entry.info.entrezgene
+      ? `<a href="https://www.ncbi.nlm.nih.gov/gene/${encodeURIComponent(entry.info.entrezgene)}"
+           target="_blank" rel="noopener">NCBI Gene</a>` : ""}
+  </div>`;
+
+  if (!entry || (!entry.info && !entry.infoFailed)) {
+    el.innerHTML = `<h3>What this gene is</h3>
+      <div class="skel"></div><div class="skel"></div><div class="skel s2"></div>${links}`;
+    $("detailFullName").textContent = "Looking up gene description…";
+    $("detailFullName").className = "full pending";
+    return;
+  }
+
+  const info = entry.info;
+  if (!info) {
+    el.innerHTML = `<h3>What this gene is</h3>
+      <p class="quietnote">Could not reach <a href="https://mygene.info"
+        target="_blank" rel="noopener">mygene.info</a> for a description — it is
+        fetched live and is the only part of this page that is not from this
+        repository. Everything else above is unaffected.</p>${links}`;
+    $("detailFullName").textContent = "";
+    $("detailFullName").className = "full";
+    return;
+  }
+
+  const name = info.name || "";
+  $("detailFullName").textContent = name;
+  $("detailFullName").className = "full";
+
+  const aliases = []
+    .concat(info.alias || [])
+    .filter((a) => a && a.toUpperCase() !== (SYM[gi] || "").toUpperCase())
+    .slice(0, 12);
+
+  const facts = [
+    info.type_of_gene ? `<li><span class="tag">type <b>${escapeHtml(info.type_of_gene)}</b></span></li>` : "",
+    info.map_location ? `<li><span class="tag">locus <b>${escapeHtml(info.map_location)}</b></span></li>` : "",
+    info.MIM ? `<li><span class="tag">OMIM <b>${escapeHtml(String(info.MIM))}</b></span></li>` : "",
+    info.HGNC ? `<li><span class="tag">HGNC <b>${escapeHtml(String(info.HGNC))}</b></span></li>` : ""
+  ].join("");
+
+  el.innerHTML = `<h3>What this gene is</h3>
+    ${name ? `<p class="sub" style="margin-bottom:10px"><strong>${escapeHtml(name)}</strong></p>` : ""}
+    ${facts ? `<ul class="factlist">${facts}</ul>` : ""}
+    ${info.summary
+      ? `<p class="summary">${escapeHtml(info.summary)}</p>`
+      : `<p class="quietnote">No prose summary is published for this gene.</p>`}
+    ${aliases.length
+      ? `<ul class="factlist"><li><span class="tag">also known as</span></li>` +
+        aliases.map((a) => `<li><span class="tag"><b>${escapeHtml(a)}</b></span></li>`).join("") +
+        `</ul>` : ""}
+    <p class="quietnote" style="margin-top:10px">Description from
+      <a href="https://mygene.info" target="_blank" rel="noopener">mygene.info</a>,
+      fetched live. Not part of this repository's data.</p>${links}`;
+}
+
+function renderPhenoPanel() {
+  const el = $("phenoPanel");
+  const gi = detailGI;
+  if (gi === null) return;
+  const key = NOVER[gi];
+  const entry = annoCache.get(key);
+  const curated = phenoByEnsg ? (phenoByEnsg.get(key) || []) : null;
+
+  // The curated block first: it is this project's own hypothesis — genes where
+  // OMIM says too MUCH of the product causes the disease — so a hit here is the
+  // single most relevant fact on the page.
+  let head = `<h3>Associated phenotypes</h3>`;
+  let curatedHtml;
+  if (curated === null) {
+    curatedHtml = `<div class="skel"></div><div class="skel s2"></div>`;
+  } else if (!curated.length) {
+    curatedHtml = `<p class="sub">Not in the curated over-expression set — the
+      ${phenoByEnsg.size} genes where OMIM or G2P name <em>too much</em> gene
+      product as the disease mechanism.</p>`;
+  } else {
+    curatedHtml = `<p class="sub">In the curated <strong>over-expression
+      driver</strong> set: OMIM or G2P name too much of this gene's product as the
+      disease mechanism — the exact hypothesis the truncation index tests.</p>` +
+      curated.map((r) => {
+        const tags = [
+          r.tier ? `<span class="tag driver">tier <b>${escapeHtml(r.tier)}</b></span>` : "",
+          r.driver_confidence ? `<span class="tag">confidence <b>${escapeHtml(r.driver_confidence)}</b></span>` : "",
+          r.mechanism ? `<span class="tag">mechanism <b>${escapeHtml(r.mechanism)}</b></span>` : "",
+          r.cytoband ? `<span class="tag">locus <b>${escapeHtml(r.cytoband)}</b></span>` : "",
+          r.scope ? `<span class="tag">scope <b>${escapeHtml(r.scope)}</b></span>` : "",
+          r.phenotype_mim
+            ? `<span class="tag">OMIM <b><a href="https://www.omim.org/entry/${encodeURIComponent(r.phenotype_mim)}"
+                 target="_blank" rel="noopener">${escapeHtml(r.phenotype_mim)}</a></b></span>` : ""
+        ].join("");
+        return `<div class="phcard">
+          <h4>${escapeHtml(r.disorder_name || "—")}</h4>
+          <div class="meta">${tags}</div>
+          ${r.evidence_quote ? `<p class="quote">${escapeHtml(r.evidence_quote)}</p>` : ""}
+        </div>`;
+      }).join("");
+  }
+
+  // Then everything Ensembl associates with the gene, however caused.
+  let liveHtml;
+  if (!entry || (!entry.phenotypes && !entry.phenoFailed)) {
+    liveHtml = `<div class="skel"></div><div class="skel s2"></div>`;
+  } else if (entry.phenoFailed) {
+    liveHtml = `<p class="quietnote">Could not reach the Ensembl phenotype API.</p>`;
+  } else {
+    const seen = new Set(), items = [];
+    for (const p of entry.phenotypes) {
+      const desc = (p.description || "").trim();
+      if (!desc || desc.toUpperCase() === "ANNOTATED") continue;
+      const k = desc.toUpperCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      items.push({ desc, source: p.source || "—", mim: p.attributes && p.attributes.external_id });
+    }
+    if (!items.length) {
+      liveHtml = `<p class="quietnote">Ensembl lists no phenotype associations for
+        this gene.</p>`;
+    } else {
+      const SHOW = 8;
+      const line = (it) => `<li><span class="src">${escapeHtml(it.source)}</span>
+        <span class="desc">${escapeHtml(it.desc)}</span></li>`;
+      liveHtml =
+        `<ul class="phlist">${items.slice(0, SHOW).map(line).join("")}</ul>` +
+        (items.length > SHOW
+          ? `<ul class="phlist" id="phRest" hidden>${items.slice(SHOW).map(line).join("")}</ul>
+             <button class="linkbtn" id="phMore" type="button" style="margin-top:8px">
+               Show the other ${items.length - SHOW}</button>` : "");
+    }
+  }
+
+  el.innerHTML = head + curatedHtml +
+    `<h3 style="margin-top:18px">All Ensembl phenotype associations</h3>
+     <p class="sub">Every disease Ensembl links to this gene, by any mechanism —
+       loss of function included. Fetched live from
+       <a href="https://rest.ensembl.org" target="_blank" rel="noopener">rest.ensembl.org</a>.</p>` +
+    liveHtml;
+
+  const more = $("phMore");
+  if (more) {
+    more.addEventListener("click", () => {
+      $("phRest").hidden = false;
+      more.remove();
+    });
+  }
+}
+
+/* =====================================================================
    Shareable URL state
    ===================================================================== */
 let lastWrittenHash = "";
 
-function syncHash() {
+function buildHash() {
   const parts = [`table=${encodeURIComponent(currentKind)}`];
   // "all" keeps a 54-tissue link short and survives new tissues being added.
   if (selectedTissues.length === manifest.tissues.length) parts.unshift("tissues=all");
   else if (selectedTissues.length) parts.unshift(`tissues=${selectedTissues.join(",")}`);
   if (selected.length) parts.push(`genes=${selected.map((i) => NOVER[i]).join(",")}`);
-  lastWrittenHash = "#" + parts.join("&");
+  // The open gene page rides along, so a gene page is linkable and the browser's
+  // own Back unwinds it.
+  if (detailGI !== null) {
+    parts.push(`focus=${NOVER[detailGI]}`, `ft=${detailTissue}`, `fk=${detailKind}`);
+  }
+  return parts.join("&");
+}
+
+/* The query half of the hash, so a hashchange can tell "the gene page opened or
+   closed" apart from "somebody pasted a different query". */
+function queryKey(params) {
+  return [params.get("tissues") || "", params.get("tissue") || "",
+          params.get("table") || "", params.get("genes") || ""].join("");
+}
+
+function syncHash() {
+  lastWrittenHash = "#" + buildHash();
   history.replaceState(null, "", lastWrittenHash);
 }
 
@@ -2133,6 +3410,13 @@ function showTab(which) {
   $("tabWorking").setAttribute("aria-selected", !onSelect);
   $("panelSelect").hidden = !onSelect;
   $("panelWorking").hidden = onSelect;
+  // Switching tabs while a gene page is open leaves it; the tab bar is hidden
+  // then, so this only fires from closeDetail() or a keyboard shortcut.
+  if (detailGI !== null && !$("panelDetail").hidden) {
+    $("panelDetail").hidden = true;
+    $("tabBar").hidden = false;
+    detailGI = null;
+  }
   if (!onSelect) renderWorkingSet();
 }
 
@@ -2199,6 +3483,7 @@ async function boot() {
   $("statGenes").textContent = GID.length.toLocaleString();
 
   const hadHash = location.hash.length > 1;
+  const bootParams = new URLSearchParams(location.hash.replace(/^#/, ""));
   readHash();
   wsLoad();
   buildKindGroup();
@@ -2321,11 +3606,42 @@ async function boot() {
     render();
   });
 
+  // --- gene page ---
+  $("detailBack").addEventListener("click", detailBack);
+  $("detailTissueSel").addEventListener("change", (e) => setFocusTissue(e.target.value));
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || $("panelDetail").hidden) return;
+    if (e.target.closest("input, select, textarea")) return;
+    detailBack();
+  });
+
   // A pasted link while the page is already open only changes the hash, which
   // does not reload the document — pick the new state up explicitly. Hashes we
   // wrote ourselves are ignored so this never fights with syncHash().
   window.addEventListener("hashchange", () => {
     if (location.hash === lastWrittenHash) return;
+    const p = new URLSearchParams(location.hash.replace(/^#/, ""));
+    const focus = p.get("focus");
+    const focusGi = focus ? geneIndexByNover.get(stripVersion(focus)) : undefined;
+
+    /* Opening or closing the gene page changes only the `focus` half of the
+       hash, and that is exactly what the browser's Back does after a pushState.
+       Treat it as navigation within the same query rather than as a new one —
+       otherwise Back out of a gene page silently discards the loaded table. */
+    const sameQuery = queryKey(p) ===
+      queryKey(new URLSearchParams(lastWrittenHash.replace(/^#/, "")));
+    if (sameQuery) {
+      lastWrittenHash = location.hash;
+      if (focusGi === undefined) {
+        if (detailGI !== null) closeDetail(false);
+      } else {
+        detailPushed = false;      // this entry is where we already are
+        openDetail(focusGi, p.get("ft"), p.get("fk"), { push: false });
+      }
+      return;
+    }
+
+    if (detailGI !== null) closeDetail(false);
     readHash();
     buildKindGroup();
     renderChips();
@@ -2333,6 +3649,9 @@ async function boot() {
     loadedRows = [];
     resultsStale = false;
     render();
+    if (focusGi !== undefined) {
+      openDetail(focusGi, p.get("ft"), p.get("fk"), { push: false });
+    }
   });
 
   $("copyLink").addEventListener("click", async () => {
@@ -2350,6 +3669,16 @@ async function boot() {
   // A shared link already names its genes and tissues, so honour it rather than
   // making the recipient press Load to see what they were sent.
   if (hadHash && selected.length && selectedTissues.length) loadTables();
+
+  /* A link straight to a gene page opens on it. `push: false` is what makes the
+     in-page Back close the page instead of leaving the site — there is no entry
+     behind this one to unwind. */
+  const bootFocus = bootParams.get("focus");
+  const bootGi = bootFocus ? geneIndexByNover.get(stripVersion(bootFocus)) : undefined;
+  if (bootGi !== undefined) {
+    openDetail(bootGi, bootParams.get("ft"), bootParams.get("fk"),
+               { push: false, scroll: false });
+  }
 }
 
 boot();
