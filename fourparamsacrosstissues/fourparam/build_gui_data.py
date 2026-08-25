@@ -61,6 +61,10 @@ HIST_MAJOR_BASE = f"{RAW_BASE}/{REPO_SUBDIR}/hist_major"
 # page shows it as that gene's phenotype panel.
 PHENOTYPES_FILE = "overexpression_phenotypes.tsv"
 
+# Manifest blocks owned by another script, which patches manifest.json in place.
+# This script rewrites the file wholesale and must carry these forward verbatim.
+PATCHED_BLOCKS = ("qc", "r2")
+
 
 def gene_column_digest(path: Path) -> str:
     """md5 of the gene column, used to prove the gene set matches across tables."""
@@ -272,20 +276,27 @@ def main(argv=None) -> int:
     }
     manifest_path = args.docs / "manifest.json"
 
-    # `qc` is owned by build_qc_class.py, which patches this file in place. This
-    # script rewrites it wholesale, so without carrying that block forward the
-    # published QC index vanishes whenever the manifest is rebuilt — and the only
-    # way back is to re-run build_qc_class.py, which is not safe mid-run (a live
-    # compute_qc.py leaves half-written tables in qc/). Preserve it instead.
+    # `qc` and `r2` are owned by build_qc_class.py and build_r2.py, which patch
+    # this file in place. This script rewrites it wholesale, so without carrying
+    # those blocks forward the published indexes vanish whenever the manifest is
+    # rebuilt — and the only way back is to re-run the owning script, which is
+    # not safe mid-run (a live compute_qc.py / compute_r2.py leaves half-written
+    # tables behind). Preserve them instead.
+    #
+    # Any future side-car that patches this file belongs in this tuple. A block
+    # that is not listed here is silently dropped on the next rebuild.
     if manifest_path.is_file():
         try:
             previous = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             previous = {}
-        if isinstance(previous.get("qc"), dict):
-            manifest["qc"] = previous["qc"]
-            n_qc = len(previous["qc"].get("files", {}))
-            print(f"Carried over   : qc block, {n_qc} tissue(s)", file=sys.stderr)
+        for key in PATCHED_BLOCKS:
+            block = previous.get(key)
+            if isinstance(block, dict):
+                manifest[key] = block
+                n = len(block.get("files", {}))
+                print(f"Carried over   : {key} block, {n} tissue(s)",
+                      file=sys.stderr)
 
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"Wrote {manifest_path.name}: {len(tissues)} tissues, "

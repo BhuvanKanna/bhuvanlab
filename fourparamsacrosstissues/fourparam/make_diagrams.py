@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Render a 5-histogram summary sheet for every fourparam table.
 
-One PNG per table in ``outputs/`` -> ``diagrams/``, so 54 tissues x 2 filters =
+One PNG per table in ``outputs/``: raw sheets to ``diagrams/`` and excluded
+(<= -1) sheets to ``excluded_diagrams/``, so 54 tissues x 2 filters =
 108 images, each holding five histograms over the ~74,628 genes in that table:
 
     truncationindex   sumsquarevalue   mean   std   ti_fourparam_sigma_dist
@@ -62,6 +63,10 @@ from matplotlib.ticker import FuncFormatter
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUTPUTS = HERE.parent / "outputs"
 DEFAULT_DIAGRAMS = HERE.parent / "diagrams"
+# The two filters are answers to different questions and are almost never read
+# side by side, so they get separate directories rather than one folder of 108
+# sheets in which the pairs interleave alphabetically.
+DEFAULT_EXCLUDED_DIAGRAMS = HERE.parent / "excluded_diagrams"
 
 PREFIX = "v11_log2_"
 RAW_SUFFIX = "_fourparam.csv"
@@ -385,7 +390,11 @@ def main(argv=None) -> int:
         description="Render a 5-histogram summary sheet for every fourparam table.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--outputs", type=Path, default=DEFAULT_OUTPUTS)
-    ap.add_argument("--diagrams", type=Path, default=DEFAULT_DIAGRAMS)
+    ap.add_argument("--diagrams", type=Path, default=DEFAULT_DIAGRAMS,
+                    help="Destination for raw-table sheets.")
+    ap.add_argument("--excluded-diagrams", type=Path,
+                    default=DEFAULT_EXCLUDED_DIAGRAMS,
+                    help="Destination for excluded (<= -1) sheets.")
     ap.add_argument("--tissues", default=None,
                     help="Comma-separated tissue names (default: all).")
     ap.add_argument("--dpi", type=int, default=130)
@@ -403,9 +412,14 @@ def main(argv=None) -> int:
         ap.error(f"no tables matching {PREFIX}*_fourparam*.csv in {args.outputs}")
 
     args.diagrams.mkdir(parents=True, exist_ok=True)
+    args.excluded_diagrams.mkdir(parents=True, exist_ok=True)
     jobs, skipped = [], 0
     for tissue, kind_label, path in tables:
-        dest = args.diagrams / (path.stem + ".png")
+        # Route by the table's own suffix, not by kind_label -- the label is
+        # display text and changing its wording must not silently relocate files.
+        into = (args.excluded_diagrams if path.name.endswith(EXCLUDED_SUFFIX)
+                else args.diagrams)
+        dest = into / (path.stem + ".png")
         if dest.exists() and not args.force:
             skipped += 1
             continue
@@ -416,7 +430,8 @@ def main(argv=None) -> int:
           file=sys.stderr)
     print(f"Already done : {skipped}" + ("  (use --force to redo)" if skipped else ""),
           file=sys.stderr)
-    print(f"To render    : {len(jobs)}  -> {args.diagrams}", file=sys.stderr)
+    print(f"To render    : {len(jobs)}  -> {args.diagrams} / "
+          f"{args.excluded_diagrams}", file=sys.stderr)
     if not jobs:
         return 0
 

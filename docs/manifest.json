@@ -169,5 +169,180 @@
         "excluded_at_or_below_-1": "v11_log2_whole_blood_qc_excluded_at_or_below_-1.txt"
       }
     }
+  },
+  "r2": {
+    "available": true,
+    "base_url": "r2",
+    "width": 6,
+    "decimals": 3,
+    "clamp": 9.999,
+    "kind_ids": {
+      "raw": "raw",
+      "excluded": "excluded_at_or_below_-1"
+    },
+    "files": {
+      "adipose_subcutaneous": {
+        "excluded_at_or_below_-1": "v11_log2_adipose_subcutaneous_r2_excluded_at_or_below_-1.txt"
+      },
+      "adipose_visceral_omentum": {
+        "excluded_at_or_below_-1": "v11_log2_adipose_visceral_omentum_r2_excluded_at_or_below_-1.txt"
+      },
+      "adrenal_gland": {
+        "excluded_at_or_below_-1": "v11_log2_adrenal_gland_r2_excluded_at_or_below_-1.txt"
+      },
+      "artery_aorta": {
+        "excluded_at_or_below_-1": "v11_log2_artery_aorta_r2_excluded_at_or_below_-1.txt"
+      },
+      "artery_coronary": {
+        "excluded_at_or_below_-1": "v11_log2_artery_coronary_r2_excluded_at_or_below_-1.txt"
+      },
+      "artery_tibial": {
+        "excluded_at_or_below_-1": "v11_log2_artery_tibial_r2_excluded_at_or_below_-1.txt"
+      },
+      "bladder": {
+        "excluded_at_or_below_-1": "v11_log2_bladder_r2_excluded_at_or_below_-1.txt"
+      },
+      "brain_amygdala": {
+        "excluded_at_or_below_-1": "v11_log2_brain_amygdala_r2_excluded_at_or_below_-1.txt"
+      },
+      "brain_anterior_cingulate_cortex_ba24": {
+        "excluded_at_or_below_-1": "v11_log2_brain_anterior_cingulate_cortex_ba24_r2_excluded_at_or_below_-1.txt"
+      },
+      "brain_caudate_basal_ganglia": {
+        "excluded_at_or_below_-1": "v11_log2_brain_caudate_basal_ganglia_r2_excluded_at_or_below_-1.txt"
+      },
+      "brain_cerebellar_hemisphere": {
+        "excluded_at_or_below_-1": "v11_log2_brain_cerebellar_hemisphere_r2_excluded_at_or_below_-1.txt"
+      },
+      "brain_cerebellum": {
+        "excluded_at_or_below_-1": "v11_log2_brain_cerebellum_r2_excluded_at_or_below_-1.txt"
+      },
+      "brain_cortex": {
+        "excluded_at_or_below_-1": "v11_log2_brain_cortex_r2_excluded_at_or_below_-1.txt"
+      },
+      "brain_frontal_cortex_ba9": {
+        "excluded_at_or_below_-1": "v11_log2_brain_frontal_cortex_ba9_r2_excluded_at_or_below_-1.txt"
+      },
+      "brain_hippocampus": {
+        "excluded_at_or_below_-1": "v11_log2_brain_hippocampus_r2_excluded_at_or_below_-1.txt"
+      },
+      "brain_hypothalamus": {
+        "excluded_at_or_below_-1": "v11_log2_brain_hypothalamus_r2_excluded_at_or_below_-1.txt"
+      },
+      "brain_nucleus_accumbens_basal_ganglia": {
+        "excluded_at_or_below_-1": "v11_log2_brain_nucleus_accumbens_basal_ganglia_r2_excluded_at_or_below_-1.txt"
+      },
+      "brain_putamen_basal_ganglia": {
+        "excluded_at_or_below_-1": "v11_log2_brain_putamen_basal_ganglia_r2_excluded_at_or_below_-1.txt"
+      },
+      "brain_spinal_cord_cervical_c-1": {
+        "excluded_at_or_below_-1": "v11_log2_brain_spinal_cord_cervical_c-1_r2_excluded_at_or_below_-1.txt"
+      },
+      "brain_substantia_nigra": {
+        "excluded_at_or_below_-1": "v11_log2_brain_substantia_nigra_r2_excluded_at_or_below_-1.txt"
+      },
+      "breast_mammary_tissue": {
+        "excluded_at_or_below_-1": "v11_log2_breast_mammary_tissue_r2_excluded_at_or_below_-1.txt"
+      },
+      "cells_cultured_fibroblasts": {
+        "excluded_at_or_below_-1": "v11_log2_cells_cultured_fibroblasts_r2_excluded_at_or_below_-1.txt"
+      },
+      "cells_ebv-transformed_lymphocytes": {
+        "excluded_at_or_below_-1": "v11_log2_cells_ebv-transformed_lymphocytes_r2_excluded_at_or_below_-1.txt"
+      },
+      "cervix_ectocervix": {
+        "excluded_at_or_below_-1": "v11_log2_cervix_ectocervix_r2_excluded_at_or_below_-1.txt"
+      },
+      "cervix_endocervix": {
+        "excluded_at_or_below_-1": "v11_log2_cervix_endocervix_r2_excluded_at_or_below_-1.txt"
+      },
+      "colon_sigmoid": {
+        "excluded_at_or_below_-1": "v11_log2_colon_sigmoid_r2_excluded_at_or_below_-1.txt"
+      },
+      "colon_transverse": {
+        "excluded_at_or_below_-1": "v11_log2_colon_transverse_r2_excluded_at_or_below_-1.txt"
+      },
+      "esophagus_gastroesophageal_junction": {
+        "excluded_at_or_below_-1": "v11_log2_esophagus_gastroesophageal_junction_r2_excluded_at_or_below_-1.txt"
+      },
+      "esophagus_mucosa": {
+        "excluded_at_or_below_-1": "v11_log2_esophagus_mucosa_r2_excluded_at_or_below_-1.txt"
+      },
+      "esophagus_muscularis": {
+        "excluded_at_or_below_-1": "v11_log2_esophagus_muscularis_r2_excluded_at_or_below_-1.txt"
+      },
+      "fallopian_tube": {
+        "excluded_at_or_below_-1": "v11_log2_fallopian_tube_r2_excluded_at_or_below_-1.txt"
+      },
+      "heart_atrial_appendage": {
+        "excluded_at_or_below_-1": "v11_log2_heart_atrial_appendage_r2_excluded_at_or_below_-1.txt"
+      },
+      "heart_left_ventricle": {
+        "excluded_at_or_below_-1": "v11_log2_heart_left_ventricle_r2_excluded_at_or_below_-1.txt"
+      },
+      "kidney_cortex": {
+        "excluded_at_or_below_-1": "v11_log2_kidney_cortex_r2_excluded_at_or_below_-1.txt"
+      },
+      "kidney_medulla": {
+        "excluded_at_or_below_-1": "v11_log2_kidney_medulla_r2_excluded_at_or_below_-1.txt"
+      },
+      "liver": {
+        "excluded_at_or_below_-1": "v11_log2_liver_r2_excluded_at_or_below_-1.txt"
+      },
+      "lung": {
+        "excluded_at_or_below_-1": "v11_log2_lung_r2_excluded_at_or_below_-1.txt"
+      },
+      "minor_salivary_gland": {
+        "excluded_at_or_below_-1": "v11_log2_minor_salivary_gland_r2_excluded_at_or_below_-1.txt"
+      },
+      "muscle_skeletal": {
+        "excluded_at_or_below_-1": "v11_log2_muscle_skeletal_r2_excluded_at_or_below_-1.txt"
+      },
+      "nerve_tibial": {
+        "excluded_at_or_below_-1": "v11_log2_nerve_tibial_r2_excluded_at_or_below_-1.txt"
+      },
+      "ovary": {
+        "excluded_at_or_below_-1": "v11_log2_ovary_r2_excluded_at_or_below_-1.txt"
+      },
+      "pancreas": {
+        "excluded_at_or_below_-1": "v11_log2_pancreas_r2_excluded_at_or_below_-1.txt"
+      },
+      "pituitary": {
+        "excluded_at_or_below_-1": "v11_log2_pituitary_r2_excluded_at_or_below_-1.txt"
+      },
+      "prostate": {
+        "excluded_at_or_below_-1": "v11_log2_prostate_r2_excluded_at_or_below_-1.txt"
+      },
+      "skin_not_sun_exposed_suprapubic": {
+        "excluded_at_or_below_-1": "v11_log2_skin_not_sun_exposed_suprapubic_r2_excluded_at_or_below_-1.txt"
+      },
+      "skin_sun_exposed_lower_leg": {
+        "excluded_at_or_below_-1": "v11_log2_skin_sun_exposed_lower_leg_r2_excluded_at_or_below_-1.txt"
+      },
+      "small_intestine_terminal_ileum": {
+        "excluded_at_or_below_-1": "v11_log2_small_intestine_terminal_ileum_r2_excluded_at_or_below_-1.txt"
+      },
+      "spleen": {
+        "excluded_at_or_below_-1": "v11_log2_spleen_r2_excluded_at_or_below_-1.txt"
+      },
+      "stomach": {
+        "excluded_at_or_below_-1": "v11_log2_stomach_r2_excluded_at_or_below_-1.txt"
+      },
+      "testis": {
+        "excluded_at_or_below_-1": "v11_log2_testis_r2_excluded_at_or_below_-1.txt"
+      },
+      "thyroid": {
+        "excluded_at_or_below_-1": "v11_log2_thyroid_r2_excluded_at_or_below_-1.txt"
+      },
+      "uterus": {
+        "excluded_at_or_below_-1": "v11_log2_uterus_r2_excluded_at_or_below_-1.txt"
+      },
+      "vagina": {
+        "excluded_at_or_below_-1": "v11_log2_vagina_r2_excluded_at_or_below_-1.txt"
+      },
+      "whole_blood": {
+        "excluded_at_or_below_-1": "v11_log2_whole_blood_r2_excluded_at_or_below_-1.txt"
+      }
+    }
   }
 }

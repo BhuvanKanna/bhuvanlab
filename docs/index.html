@@ -960,13 +960,22 @@ const COMPACT_COLS = [
    never sees it and the export stays byte-identical to extract_genes.py. */
 const DIST_COL = "__dist_class";
 
+/* r_squared is the same kind of virtual column, joined from r2/ by gene index.
+   It is deliberately not a column of the fourparam tables: SSR is stored there
+   but the total sum of squares never was, and adding it would mean rewriting
+   ~981 MB of tables plus the 2.4 GB gene-major mirror. Read it *instead of*
+   `sumsquarevalue` whenever comparing fits — the stored SSR is unnormalised and
+   tracks donor count (ρ = 0.99 across tissues), so it cannot rank two genes. */
+const R2_COL = "__r_squared";
+
 const SHORT_LABEL = {
   truncationindex: "TI",
   ti_fourparam_sigma_dist: "σ-dist",
   sumsquarevalue: "SSR",
   n_obs: "n",
   fit_success: "fit",
-  [DIST_COL]: "class"
+  [DIST_COL]: "class",
+  [R2_COL]: "R²"
 };
 
 // Columns where more decimal places actually matter.
@@ -1231,6 +1240,57 @@ function distClassOf(row) {
   if (!text) return null;
   const name = manifest.qc.classes[text[row.gi]];
   return name || null;
+}
+
+/* ---------------------------------------------------------------------
+   Fit quality (r2/)
+
+   Same trade as qc/ above, one field wider: R² is a number, so each gene gets
+   `manifest.r2.width` characters of "%6.3f" in genes.tsv order — ~437 KB for a
+   whole tissue — and the lookup is a fixed-offset slice, with no join and
+   nothing to parse. A blank field is "no R² for this gene", which is what a
+   failed fit or an all-one-bin histogram produces.
+
+   A tissue with no R² table yet is a normal state, not an error.
+   --------------------------------------------------------------------- */
+const r2Cache = new Map();          // "tissue|kind" -> string | null
+
+function r2KindId(kind) {
+  const ids = manifest.r2 && manifest.r2.kind_ids;
+  return (ids && ids[kind]) || kind;
+}
+
+async function getR2Values(tissue, kind) {
+  const key = `${tissue}|${kind}`;
+  if (r2Cache.has(key)) return r2Cache.get(key);
+
+  const r2 = manifest.r2;
+  const name = r2 && r2.available && r2.files[tissue]
+    && r2.files[tissue][r2KindId(kind)];
+  if (!name) { r2Cache.set(key, null); return null; }
+
+  try {
+    const res = await fetch(`${r2.base_url}/${name}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    // A short file means the gene index and the R² table disagree, which would
+    // silently shift every value onto the wrong gene. Drop it rather than lie.
+    const want = (r2.width || 6) * GID.length;
+    r2Cache.set(key, text.length >= want ? text : null);
+  } catch (err) {
+    r2Cache.set(key, null);
+  }
+  return r2Cache.get(key);
+}
+
+function rSquaredOf(row) {
+  const text = r2Cache.get(`${row.tissue}|${row.kind}`);
+  if (!text) return null;
+  const w = (manifest.r2 && manifest.r2.width) || 6;
+  const field = text.substr(row.gi * w, w);
+  if (!field.trim()) return null;
+  const v = Number(field);
+  return Number.isFinite(v) ? v : null;
 }
 
 /* ---------------------------------------------------------------------
@@ -1534,7 +1594,8 @@ function shapeCell(row, colIdx) {
 function visibleStatCols(header, all) {
   const skip = new Set(["gene", "genename", "hist", "hist_max"]);
   const stats = header.filter((c) => !skip.has(c));
-  const compact = COMPACT_COLS.filter((c) => stats.includes(c)).concat(DIST_COL);
+  const compact = COMPACT_COLS.filter((c) => stats.includes(c))
+    .concat(DIST_COL, R2_COL);
   if (!all) return compact;
   // Compact block keeps its position and order; the remainder follows in the
   // table's own order. Toggling "All columns" therefore only ever appends.
@@ -1694,7 +1755,7 @@ async function loadTables() {
        resolves to null and the column shows "—"; it never blocks the table. */
     await Promise.all(
       Array.from(new Set(rows.map((r) => r.tissue)))
-        .map((t) => getQcClasses(t, kind)));
+        .flatMap((t) => [getQcClasses(t, kind), getR2Values(t, kind)]));
   } finally {
     loading = false;
     $("cancelLoad").hidden = true;
@@ -1741,6 +1802,20 @@ const DIST_LABEL = {
 
 function sortRows(rows, col, dir, colIdx) {
   const out = rows.slice();
+  if (col === R2_COL) {
+    // Blanks sink whichever way the sort points, matching the metric columns.
+    out.sort((a, b) => {
+      const x = rSquaredOf(a), y = rSquaredOf(b);
+      if (x === null && y === null) {
+        return (SYM[a.gi] || "").localeCompare(SYM[b.gi] || "");
+      }
+      if (x === null) return 1;
+      if (y === null) return -1;
+      return (x - y) * dir ||
+             (SYM[a.gi] || "").localeCompare(SYM[b.gi] || "");
+    });
+    return out;
+  }
   if (col === DIST_COL) {
     // Rows with no QC table sink, the same way blank metrics do below.
     const rank = (r) => {
@@ -1833,6 +1908,12 @@ function render() {
         return cls
           ? `<td class="tl"><span class="dc dc-${cls}">${escapeHtml(DIST_LABEL[cls] || cls)}</span></td>`
           : '<td class="tl"><span class="nil" title="No QC table for this tissue yet">—</span></td>';
+      }
+      if (c === R2_COL) {
+        const v = rSquaredOf(r);
+        return v === null
+          ? '<td><span class="nil" title="No R² for this gene">—</span></td>'
+          : `<td>${v.toFixed(3)}</td>`;
       }
       if (c === "fit_success") {
         return ok ? '<td><span style="color:var(--ok)">ok</span></td>'
@@ -2517,6 +2598,11 @@ async function refreshDetail(token) {
   // ~5 KB against the gene-major shard's ~220 KB, and neither waits on the
   // other: the histogram is usually on screen before the tissue bars are.
   ensureHistTable(token);
+  // ~437 KB, cached per tissue|kind and shared with the results table, so
+  // opening several genes in one tissue fetches it once.
+  getR2Values(detailTissue, detailKind).then(() => {
+    if (token === detailToken) renderDistPanel();
+  });
   await loadDetailRows(token);
   if (token !== detailToken) return;
   detailBusy = false;
@@ -2947,6 +3033,10 @@ function renderDistPanel() {
     ["x_max", sig(n("right"))],
     ["TI", sig(n("truncationindex"), 4)],
     ["σ-dist", sig(n("ti_fourparam_sigma_dist"))],
+    ["R²", (() => {
+      const v = rSquaredOf({ tissue: detailTissue, kind: detailKind, gi: detailGI });
+      return v === null ? "—" : v.toFixed(3);
+    })()],
     ["fit", ok ? '<span style="color:var(--ok)">ok</span>'
                : '<span class="badge-fail">no fit</span>']
   ].map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("");

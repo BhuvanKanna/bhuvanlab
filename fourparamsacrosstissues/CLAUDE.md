@@ -25,6 +25,8 @@ fourparam/                    <- all the code (kept separate from the data)
   bhuvanfitter.py             <- the fit library (4-param Gaussian, KDE, truncated MLE + metrics); single source of truth
   normality.py                <- distribution-classification cascade + calibrated thresholds
   compute_qc.py               <- generate ONE qc table from ONE matrix (raw or excluded)
+  compute_r2.py               <- add r_squared to ONE table, without refitting -> r2/
+  build_r2.py                 <- publish r_squared to the browser as a fixed-width string
   generate_fourparam.py       <- generate ONE fourparam table from ONE matrix (raw or excluded)
   generate_all.py             <- driver: both tables for every tissue -> 108 tables
   run_cluster.py              <- same 108 tables, spread over several machines
@@ -34,7 +36,8 @@ fourparam/                    <- all the code (kept separate from the data)
   build_gene_major.py         <- re-orient outputs/ into gene_major/ shards
   build_hist_major.py         <- mirror hist/hist_max into hist_major/ shards
   build_gui_data.py           <- regenerate the browser GUI's static inputs
-  make_diagrams.py            <- 5-histogram summary sheet per table -> diagrams/
+  make_diagrams.py            <- 5-histogram summary sheet per table -> diagrams/ + excluded_diagrams/
+  make_r2_diagrams.py         <- one R^2 histogram per tissue -> r2_histograms/
   verify_hist_columns.py      <- check hist/hist_max invariants in outputs/
   tests/                      <- pytest suite: `python -m pytest tests/ -q`
 data/                         <- the 54 input matrices (nothing else)
@@ -44,12 +47,19 @@ outputs/                      <- the generated tables go here (starts empty)
   v11_log2_<tissue>_fourparam_excluded_at_or_below_-1.csv      <- excluded <= -1
 qc/                           <- distribution class + fit-validity, joined on `gene`
   v11_log2_<tissue>_qc[_excluded_at_or_below_-1].csv
+r2/                           <- r_squared alone, joined on `gene` (see "Fit quality")
+  v11_log2_<tissue>_r2[_excluded_at_or_below_-1].csv
 gene_major/                   <- the same rows re-oriented for the browser
   shard_NNNN.csv              <- 16 genes x all 54 tissues x both filters
 hist_major/                   <- just hist/hist_max, sharded the same way
   shard_NNNN.csv              <- one gene's histograms for ~5 KB
-diagrams/                     <- one 5-histogram summary sheet per table
-  v11_log2_<tissue>_fourparam[_excluded_at_or_below_-1].png
+diagrams/                     <- one 5-histogram summary sheet per RAW table
+  v11_log2_<tissue>_fourparam.png
+excluded_diagrams/            <- the same sheets for the EXCLUDED (<= -1) tables
+  v11_log2_<tissue>_fourparam_excluded_at_or_below_-1.png
+r2_histograms/                <- one R^2 histogram per tissue, excluded set
+  v11_log2_<tissue>_r2_hist.png
+  _overview_r2_by_tissue.png  <- all 54 on shared axes, ordered by donor count
 genelists/                    <- reusable gene sets, one token per line
 results/                      <- extracted gene subsets (output of extract_genes.py)
 ```
@@ -198,7 +208,7 @@ One row per gene. Columns, in order:
 | `A` | fitted amplitude (peak height above baseline) |
 | `x0` | fitted peak centre |
 | `w` | fitted width (`w = sigma * sqrt(2)`) |
-| `sumsquarevalue` | residual sum of squares of the fit (lower = better) |
+| `sumsquarevalue` | residual sum of squares of the fit (lower = better). **Unnormalised** — it tracks `n_obs` (ρ = 0.99 across tissues) and cannot compare two genes. Use `r_squared` from `r2/` for that; see "Fit quality" |
 | `ti_fourparam_sigma_dist` | `(x_max − x0)/(w/√2)` — how many σ the ceiling sits above the peak; **lower = more truncated** |
 | `truncationindex` | **height-ratio truncation index**, `f(x_max)/f(peak)` with the curve's interval-minimum subtracted from both; **bounded [0, 1]**; higher = more truncated (0 = ceiling at curve min, 1 = ceiling at peak) |
 | `min`, `max` | min / max of the values used for the fit |
@@ -240,13 +250,20 @@ single easiest way to get a wrong answer here.
 Each query token is reported as resolved (with what it hit) or `NOT FOUND`, so a
 typo or an absent symbol is loud rather than quietly empty.
 
-## Distribution sheets (`diagrams/`, `make_diagrams.py`)
+## Distribution sheets (`diagrams/`, `excluded_diagrams/`, `make_diagrams.py`)
 
 One PNG per table — 54 tissues × 2 filters = **108 sheets, 540 histograms** —
 covering `truncationindex`, `sumsquarevalue`, `mean`, `std`, and
 `ti_fourparam_sigma_dist` over the genes in that table, plus a panel stating what
 was excluded. File names mirror the table names, so a sheet sorts next to its
 source.
+
+**The two filters go to two directories** — raw sheets to `diagrams/`, excluded
+(`<= -1`) sheets to `excluded_diagrams/`. They answer different questions and are
+almost never read side by side; in one flat folder of 108 the pairs interleave
+alphabetically and neither set can be skimmed. Routing is by the source table's
+own filename suffix, not by the display label, so rewording a title cannot
+silently relocate files. Override with `--diagrams` / `--excluded-diagrams`.
 
 ```bash
 cd fourparam
@@ -389,10 +406,30 @@ fits a shallow slice off the top of an enormous one (APP: `w = 22.7`, σ = 16.0
 against a 3.95-unit span, `sigma_dist = 0.124` reading as maximal truncation).
 Neither is biology.
 
-**`r_squared` replaces `sumsquarevalue` for any cross-gene comparison.** The
+**`r_squared` replaces `sumsquarevalue` for within-tissue comparison** — it now ships for all 54 excluded tables in `r2/`, and in the browser; see "Fit quality". The
 stored SSR is unnormalised — it scales with n and peak height, so p50 = 58 says
-nothing about whether one fit is good. Expect low values regardless: 40 bins over
-~104 donors is ~2.6 donors per bin, and real genes land around R² 0.2–0.4.
+nothing about whether one fit is good.
+
+R² is **not** a monotone function of SSE. `R² = 1 − SSR/TSS`, and TSS grows faster
+with donor count than SSR does (muscle: `TSS ~ n_obs^1.82` against `SSE ~ n_obs^1.20`),
+so across genes the two need not even agree in sign: Spearman(SSE, R²) has median
+**+0.37** over the 54 excluded tables and ranges **−0.60 to +0.52**. In muscle it is
+**+0.45** — higher SSE goes with *better* R².
+
+Measured values are high, not low — median R² over the 54 excluded tables is **0.816**:
+
+| tissue | donors | median R² |
+|---|---|---|
+| `kidney_medulla` | 11 | 0.21 |
+| `cervix_endocervix` | 23 | 0.23 |
+| `adrenal_gland` | 295 | 0.85 |
+| `muscle_skeletal` | 818 | 0.91 |
+
+**So R² does not make tissues comparable.** Spearman(donor count, median R²) = **0.975**;
+R² = 0.85 is unremarkable in adrenal gland and would be extraordinary in kidney medulla.
+It reduces the donor-count dependence rather than removing it — median ρ(`n_obs`, SSE)
+= **+0.82** falls only to ρ(`n_obs`, R²) = **+0.60**. Use it to rank genes *within* a
+tissue, and compare across tissues by percentile-within-tissue, never by raw R².
 
 ### What the first two tissues actually showed — read this before trusting a candidate list
 
@@ -447,11 +484,117 @@ they come from the GTEx sample attributes file.
 `right_truncated` requires **both** skew below the null band and `d_aic` past the
 calibrated threshold. Either alone is common noise.
 
+## Fit quality (`r2/`, `compute_r2.py`, `build_r2.py`)
+
+`r_squared` for **every** gene in all 54 excluded tables, joined on `gene`.
+
+```bash
+cd fourparam
+python compute_r2.py --all --jobs 6 --verify     # -> r2/*.csv
+python build_r2.py                               # -> docs/r2/*.txt + manifest
+```
+
+### Why this exists at all
+
+`sumsquarevalue` is an **unnormalised** residual sum of squares. Across the 54
+excluded tables, Spearman(median `sumsquarevalue`, median `n_obs`) = **0.99** —
+the column is very nearly a restatement of how many donors the tissue has, and
+it cannot rank two genes, let alone two tissues. `r_squared` divides it by the
+total sum of squares and is comparable everywhere. **Use `r_squared` for any
+comparison of fits; `sumsquarevalue` is only meaningful within one gene.**
+
+### Nothing is refit
+
+`R² = 1 − SSR/TSS`, and SSR is already in the table as `sumsquarevalue`. Only
+`TSS = Σ(count − mean_count)²` over the 40 bins was never stored, and it is
+**not** recoverable from the published columns — `hist` is quantised to 1/63 of
+peak and exists in only 2 of the 54 excluded tables. So `compute_r2.py` re-bins
+each gene from the source matrix (the cheap half of the pipeline) and reuses the
+stored `y0, A, x0, w` untouched. No `curve_fit` call happens.
+
+`--verify` proves the re-binning reproduces the histogram that was fit, by
+recomputing SSR from the fresh bins and comparing against the stored
+`sumsquarevalue`. Measured on kidney cortex: **max relative error 1.7e-13, zero
+`n_obs` disagreements**, and the resulting column is **bit-identical to the
+`r_squared` already in `qc/`** on all 49,136 genes with a fit. If a tissue ever
+fails that check its histogram is not the one that was fit, and its R² would be
+quietly wrong — the run says so loudly.
+
+`compute_r2.py` imports `normality.r_squared` rather than reimplementing the
+formula, which is what keeps `r2/` and `qc/` from ever drifting apart.
+
+### It is deliberately not a column of `outputs/`
+
+Same reasoning as the QC tables, and it is the load-bearing decision here:
+`outputs/` is mirrored into 4,665 gene_major shards, pinned by four hardcoded
+column lists, and carries a byte-identity guarantee with `extract_genes.py`.
+Adding a real column means rewriting ~981 MB of excluded tables plus the 2.4 GB
+mirror, updating all four column lists, and a very large push. A side-car joined
+on `gene` costs ~24 MB and none of that.
+
+### The published encoding
+
+`docs/r2/*.txt` is **one `%6.3f` field per gene in `genes.tsv` order** — the same
+trade as `build_qc_class.py` and the `hist` column, one field wider because R² is
+a number rather than a class. ~437 KB per tissue, and the browser reads gene `gi`
+as `text.substr(gi * width, width)`, with no join and nothing to parse.
+
+- **Three decimals** is far finer than the column is ever read to.
+- **The sign slot is load-bearing.** R² below zero means the fit is worse than a
+  flat line at the mean count — a real verdict, and it must not be clipped to 0.
+- Values outside **±9.999** are clamped so the field width holds; `--strict`
+  refuses instead. One narrow or wide field shifts every gene after it, which no
+  fixed-offset read can detect. `tests/test_r2_sidecar.py` pins the geometry,
+  the round-trip, and the manifest contract.
+- A gene with no R² is **six spaces**, which reads as blank rather than as a
+  number belonging to some other gene.
+
+### What the values look like
+
+Kidney cortex, excluded: median **0.599**, p5 0.19, p95 0.92, and 49,136 of
+74,628 genes have one at all (the rest have no converged fit). Across all 54
+excluded tables the median is **0.816**, and it is almost entirely a function of
+donor count — see the table under "QC gates" and `r2_histograms/` below.
+
+### Seeing the distribution (`r2_histograms/`, `make_r2_diagrams.py`)
+
+```bash
+cd fourparam
+python make_r2_diagrams.py                       # 54 sheets + one overview
+python make_r2_diagrams.py --tissues liver --force
+python make_r2_diagrams.py --no-overview
+```
+
+One histogram per tissue (excluded set only — that is all `r2/` holds), plus
+`_overview_r2_by_tissue.png` putting all 54 on shared axes. Styling matches
+`make_diagrams.py` so the sheets read as siblings.
+
+**The overview is ordered by donor count, not alphabetically, because the
+gradient is the finding.** Read down it and the shape marches from
+`kidney_medulla` (n=11, mass piled near 0, visibly combed — 11 donors in 40 bins
+can only produce a handful of distinct R² values) through `kidney_cortex`
+(n=104, a broad hump at 0.6) to `muscle_skeletal` (n=818, everything crushed
+against 1.0). None of that is one tissue fitting better than another. Sorting
+these panels alphabetically hides the single most important thing about the
+column.
+
+The per-tissue sheets carry `n`, median, IQR and the fraction below zero — that
+last one is the honest fit-failure rate, and it tracks donor count too
+(`kidney_medulla` 4.40%, `muscle_skeletal` 0.07%). Values outside `[0, 1]` are
+counted on the sheet rather than drawn, so one R² of −9 cannot flatten the axis.
+
 ## The browser GUI (`docs/`, GitHub Pages)
 
 `docs/index.html` is a self-contained page published at
 <https://bhuvankanna.github.io/bhuvanlab/>. It has two tabs and, behind them, a
 per-gene page:
+
+Two columns in the results table are **virtual** — they are not in the fourparam
+tables and are joined by gene index rather than by a column: `class`
+(`dist_class`, from `qc/`) and `R²` (from `r2/`). Both sit at the end of the
+compact set, sort like any other column, and show `—` for a tissue whose table
+has not been computed. Neither reaches `statCols()`, so the CSV export stays
+byte-identical to `extract_genes.py`.
 
 - **Gene selection** — type-ahead multi-select over genes *and* tissues (both
   boxes work the same way; tissue matching is underscore-insensitive so "whole
@@ -471,7 +614,7 @@ to whichever tab you came from with its table intact.
 
 | panel | source | notes |
 |---|---|---|
-| Distribution in the focus tissue | `hist` / `hist_max` decoded against `min`/`max` | 40 real bars plus toggleable overlays: the 4-param fit, a moment-matched normal from `mean`/`std`, `y0`, `x0`, `x_max`, `min`, ±1σ/±2σ |
+| Distribution in the focus tissue | `hist` / `hist_max` decoded against `min`/`max`, plus `R²` from `r2/` | 40 real bars plus toggleable overlays: the 4-param fit, a moment-matched normal from `mean`/`std`, `y0`, `x0`, `x_max`, `min`, ±1σ/±2σ. The stat strip carries `R²` next to `fit`, so "the fit converged" and "the fit is any good" are never confused |
 | `mean` across all 54 tissues | gene-major shard | zero-anchored bars + a ranking sentence |
 | `truncationindex` / `ti_fourparam_sigma_dist` across all 54 tissues | gene-major shard | same, with a metric toggle |
 | What this gene is | **mygene.info**, live | name, summary, aliases, locus |
