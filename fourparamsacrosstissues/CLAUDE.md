@@ -599,11 +599,39 @@ byte-identical to `extract_genes.py`.
 - **Gene selection** — type-ahead multi-select over genes *and* tissues (both
   boxes work the same way; tissue matching is underscore-insensitive so "whole
   blood" finds `whole_blood`), a raw / excluded ≤ −1 toggle, and an explicit
-  **Load tables** button. Results are one row per gene × tissue, each carrying a
+  **Load tables** button. The gene box also takes a **pasted or typed list** —
+  see "Pasting a gene list" below. Results are one row per gene × tissue, each carrying a
   checkbox and **two views of that gene's fitted curve** — one in real log2
   units, one on a fixed sigma axis (see "The two shape columns" below).
 - **Working set** — rows ticked on the first tab, accumulated across any number
   of separate queries, filterable, and exported as one CSV.
+
+### Pasting a gene list
+
+The gene box accepts a whole roster at once, not just one type-ahead pick at a
+time. Paste it, or type it and press Enter; separators are commas, semicolons,
+pipes, tabs and newlines, so a spreadsheet column pastes as-is. Surrounding
+quotes are stripped.
+
+**Matching follows `extract_genes.py` exactly**, which is the point — the same
+token must resolve to the same gene in the browser and at the CLI. Symbol first,
+then Ensembl id, case-insensitive, and **the version suffix is always stripped**
+so a list written against an older annotation (`ENSG00000142192.20`) still
+resolves against these tables (`.22`).
+
+**Globs are deliberately not expanded here**, unlike `extract_genes.py`. A pasted
+list is meant to be an exact roster, and `ALDH*` quietly becoming 27 chips is
+precisely the surprise the warning exists to prevent — it is reported as
+unrecognised instead.
+
+**Nothing is silently dropped.** Recognised genes are added even when some tokens
+fail, so 200 genes with 3 typos gives you 197 plus a warning naming the 3. The
+warning sits under the gene box and reports unrecognised tokens (first 12, then
+`+N more`), how many duplicates were folded, and how many were actually added.
+Tokens are escaped before display — they are untrusted text pasted by the user.
+
+A single token with no separator is left entirely alone and still goes through
+the type-ahead, so the old one-at-a-time flow is unchanged.
 
 ### The gene page
 

@@ -215,6 +215,20 @@ select:hover { border-color: var(--accent); }
 .linkbtn:disabled { color: var(--muted); cursor: default; text-decoration: none; }
 .quick .sep { color: var(--rule); }
 
+/* Unrecognised tokens from a pasted list. Rust ink plus a rule, so it reads as
+   a caveat rather than a failure -- the recognised genes were still added. */
+.genewarn {
+  margin-top: 9px; padding: 8px 11px;
+  border: 1px solid var(--rule); border-left: 3px solid var(--ceiling);
+  border-radius: var(--r); background: var(--sunken);
+  font-size: .82rem; color: var(--ink); line-height: 1.5;
+}
+.genewarn b { color: var(--ceiling); font-weight: 600; }
+.genewarn .toks {
+  font-family: var(--mono); font-size: .78rem; color: var(--muted);
+  word-break: break-all;
+}
+
 /* ---------- status ---------- */
 .statusbar {
   display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center;
@@ -798,7 +812,7 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
             <input id="geneInput" type="text" autocomplete="off" spellcheck="false"
                    role="combobox" aria-expanded="false" aria-autocomplete="list"
                    aria-controls="suggest" aria-labelledby="genesLabel"
-                   placeholder="Type a symbol or ENSG id — ALDH2, APP, ENSG00000111275…">
+                   placeholder="Type or paste a list — ALDH2, APP, ENSG00000111275…">
           </div>
           <div class="suggest" id="suggest" hidden role="listbox" aria-label="Gene matches"></div>
           <div class="quick">
@@ -808,6 +822,7 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
             <span class="sep">·</span>
             <button class="linkbtn" id="copyLink" type="button">Copy link to this view</button>
           </div>
+          <div class="genewarn" id="geneWarn" hidden role="status" aria-live="polite"></div>
         </div>
       </div>
 
@@ -984,6 +999,10 @@ const DECIMALS = { n_obs: 0 };
 let manifest = null;
 let GID = [], SYM = [], SYMU = [], NOVER = [], NOVERU = [], SHARD = [];
 let geneIndexByNover = new Map();
+// Symbol -> row index, for resolving a pasted list without an O(n*m) scan
+// over 74k symbols per token. First occurrence wins, matching
+// SYMU.indexOf, so a duplicated symbol resolves the same way everywhere.
+let geneIndexBySym = new Map();
 let geneMajor = null;              // manifest.gene_major, when shards exist
 
 let selected = [];                 // array of gene-index integers
@@ -1087,8 +1106,10 @@ async function loadGeneIndex() {
     const shard = parts.length > 2 ? Number(parts[2]) : NaN;
     const nover = stripVersion(id);
     geneIndexByNover.set(nover, GID.length);
+    const symU = sym.toUpperCase();
+    if (symU && !geneIndexBySym.has(symU)) geneIndexBySym.set(symU, GID.length);
     GID.push(id); SYM.push(sym);
-    SYMU.push(sym.toUpperCase());
+    SYMU.push(symU);
     NOVER.push(nover); NOVERU.push(nover.toUpperCase());
     SHARD.push(Number.isFinite(shard) ? shard : -1);
   }
@@ -2043,6 +2064,92 @@ function addGene(gi) {
 }
 
 /* =====================================================================
+   Pasted gene lists
+
+   Matching follows extract_genes.py, so the browser and the CLI resolve the
+   same token to the same gene: symbol first, then Ensembl id, and the version
+   suffix is ALWAYS stripped. GTEx bumps `.NN` between releases, so a list
+   written against an older annotation (ENSG00000142192.20) must still resolve
+   against these tables (.22) -- matching the versioned string is the single
+   easiest way to silently get nothing back.
+
+   Unlike extract_genes.py this does NOT expand globs. A pasted list is meant
+   to be an exact roster, and "ALDH*" quietly becoming 27 chips is the kind of
+   surprise the warning exists to prevent; it is reported as unrecognised
+   instead.
+   ===================================================================== */
+const LIST_SEPARATORS = /[\s,;|]+/;      // commas, but also newlines and tabs,
+                                         // because a spreadsheet column pastes
+                                         // as one token per line.
+const WARN_TOKENS_SHOWN = 12;
+
+function looksLikeList(text) {
+  return LIST_SEPARATORS.test(text.trim());
+}
+
+/* Resolve tokens against the index. Returns what matched, what did not, and
+   what was already chosen -- the caller needs all three to report honestly. */
+function resolveGeneTokens(text) {
+  const seen = new Set();
+  const found = [], unknown = [], dupes = [];
+  for (const raw of String(text).split(LIST_SEPARATORS)) {
+    const tok = raw.trim().replace(/^["']|["']$/g, "");
+    if (!tok) continue;
+    const up = tok.toUpperCase();
+    let gi = geneIndexBySym.get(up);
+    if (gi === undefined) gi = geneIndexByNover.get(stripVersion(tok));
+    if (gi === undefined) gi = geneIndexByNover.get(stripVersion(up));
+    if (gi === undefined) { unknown.push(tok); continue; }
+    if (seen.has(gi)) { dupes.push(tok); continue; }
+    seen.add(gi);
+    found.push(gi);
+  }
+  return { found, unknown, dupes };
+}
+
+function showGeneWarning(result, addedCount) {
+  const box = $("geneWarn");
+  if (!box) return;
+  const { unknown, dupes } = result;
+  if (!unknown.length && !dupes.length) { box.hidden = true; box.innerHTML = ""; return; }
+
+  const parts = [];
+  if (unknown.length) {
+    const shown = unknown.slice(0, WARN_TOKENS_SHOWN).map(escapeHtml).join(", ");
+    const more = unknown.length > WARN_TOKENS_SHOWN
+      ? ` <span class="toks">+${unknown.length - WARN_TOKENS_SHOWN} more</span>` : "";
+    parts.push(
+      `<b>${unknown.length} not recognised</b> and skipped: ` +
+      `<span class="toks">${shown}</span>${more}`);
+  }
+  if (dupes.length) {
+    parts.push(`${dupes.length} duplicate${dupes.length === 1 ? "" : "s"} ignored`);
+  }
+  parts.push(`<b>${addedCount}</b> added.`);
+  box.innerHTML = parts.join(" · ");
+  box.hidden = false;
+}
+
+function clearGeneWarning() {
+  const box = $("geneWarn");
+  if (box) { box.hidden = true; box.innerHTML = ""; }
+}
+
+/* Add every recognised gene in one go, then report. Genes are added even when
+   some tokens fail: a list of 200 with 3 typos should still give you 197. */
+function addGeneList(text) {
+  const result = resolveGeneTokens(text);
+  const before = selected.length;
+  for (const gi of result.found) {
+    if (!selected.includes(gi)) selected.push(gi);
+  }
+  const added = selected.length - before;
+  if (added) { renderChips(); markStale(); }
+  showGeneWarning(result, added);
+  return result.found.length > 0 || result.unknown.length > 0;
+}
+
+/* =====================================================================
    Tissue chips
    ===================================================================== */
 function renderTissueChips() {
@@ -2392,6 +2499,7 @@ function loadExampleSet() {
     if (SYMU[i].startsWith("ALDH")) picks.push(i);
   }
   selected = Array.from(new Set(picks));
+  clearGeneWarning();
   renderChips(); markStale();
 }
 
@@ -3769,6 +3877,20 @@ async function boot() {
   $("tokenbox").addEventListener("click", () => $("geneInput").focus());
 
   let debounce = null;
+  /* A pasted list is handled here rather than on input, so the raw clipboard
+     text is seen before the browser drops it into a single-line field (which
+     turns newlines into spaces but is otherwise lossless). A paste with no
+     separator is an ordinary one-token paste and falls through to the
+     type-ahead untouched. */
+  $("geneInput").addEventListener("paste", (e) => {
+    const text = (e.clipboardData || window.clipboardData)?.getData("text") || "";
+    if (!looksLikeList(text)) return;
+    e.preventDefault();
+    addGeneList(text);
+    $("geneInput").value = "";
+    showSuggestions([]);
+  });
+
   $("geneInput").addEventListener("input", () => {
     clearTimeout(debounce);
     debounce = setTimeout(() => showSuggestions(searchGenes($("geneInput").value)), 90);
@@ -3779,10 +3901,19 @@ async function boot() {
     else if (e.key === "ArrowUp") { e.preventDefault(); moveSuggestion(-1); }
     else if (e.key === "Enter") {
       e.preventDefault();
-      if (activeSuggestion >= 0 && suggestions[activeSuggestion] !== undefined) {
+      const raw = $("geneInput").value;
+      // A typed list wins over the highlighted suggestion: once the text holds
+      // a separator the type-ahead is showing a match for only the last token,
+      // and committing that alone would silently drop the rest.
+      if (looksLikeList(raw)) {
+        addGeneList(raw);
+        $("geneInput").value = "";
+        showSuggestions([]);
+      } else if (activeSuggestion >= 0 && suggestions[activeSuggestion] !== undefined) {
         addGene(suggestions[activeSuggestion]);
         $("geneInput").value = "";
         showSuggestions([]);
+        clearGeneWarning();
       }
     } else if (e.key === "Escape") { showSuggestions([]); }
     else if (e.key === "Backspace" && !$("geneInput").value && selected.length) {
@@ -3803,6 +3934,7 @@ async function boot() {
 
   $("clearGenes").addEventListener("click", () => {
     selected = []; sortCol = null;
+    clearGeneWarning();
     renderChips(); markStale();
   });
   $("loadExample").addEventListener("click", loadExampleSet);
