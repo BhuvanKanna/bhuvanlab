@@ -98,10 +98,11 @@ def patch_manifest(published: dict) -> None:
         "base_url": "qc",
         "classes": {v: k for k, v in CLASS_CHAR.items()},
         "missing_char": MISSING,
-        # The page's toggle says "raw"/"excluded"; the filenames say what the
-        # tables say. Mirrors gene_major.kind_ids so the qc block stands alone
+        # The page says "excluded"; the filenames say what the tables say. Only
+        # the excluded kind is published. Mirrors gene_major.kind_ids so the qc
+        # block stands alone
         # even when gene_major is unavailable.
-        "kind_ids": {"raw": "raw", "excluded": "excluded_at_or_below_-1"},
+        "kind_ids": {"excluded": "excluded_at_or_below_-1"},
         # {tissue: {kind_id: filename}} -- the browser only fetches what is here,
         # so a tissue whose QC has not been computed simply shows no class.
         "files": published,

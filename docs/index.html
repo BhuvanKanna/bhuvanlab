@@ -147,7 +147,7 @@ select {
 }
 select:hover { border-color: var(--accent); }
 
-/* segmented control for raw / excluded */
+/* segmented control: sort order, TI metric */
 .segmented { display: inline-flex; border: 1px solid var(--rule); border-radius: var(--r); overflow: hidden; background: var(--sunken); }
 .segmented button {
   font-family: var(--sans); font-size: .84rem; color: var(--muted);
@@ -801,11 +801,6 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
           </div>
         </div>
 
-        <div class="field">
-          <span class="field-label" id="valuesLabel">Values included</span>
-          <div class="segmented" role="group" aria-labelledby="valuesLabel" id="kindGroup"></div>
-        </div>
-
         <div class="field gene-field">
           <span class="field-label" id="genesLabel">Genes</span>
           <div class="tokenbox" id="tokenbox">
@@ -894,10 +889,6 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
           <label class="field-label" for="detailTissueSel">Tissue in focus</label>
           <select id="detailTissueSel"></select>
         </div>
-        <div class="field">
-          <span class="field-label" id="detailKindLabel">Values included</span>
-          <div class="segmented" role="group" aria-labelledby="detailKindLabel" id="detailKindGroup"></div>
-        </div>
       </div>
     </div>
 
@@ -976,11 +967,18 @@ const COMPACT_COLS = [
 const DIST_COL = "__dist_class";
 
 /* r_squared is the same kind of virtual column, joined from r2/ by gene index.
-   It is deliberately not a column of the fourparam tables: SSR is stored there
-   but the total sum of squares never was, and adding it would mean rewriting
-   ~981 MB of tables plus the 2.4 GB gene-major mirror. Read it *instead of*
-   `sumsquarevalue` whenever comparing fits — the stored SSR is unnormalised and
-   tracks donor count (ρ = 0.99 across tissues), so it cannot rank two genes. */
+   The tables in outputs/ do now carry an `r_squared` column of their own — the
+   identical values, appended by append_r2_column.py so a CSV downloaded straight
+   from the repo is complete — but the page still reads the join, because the
+   2.4 GB gene-major mirror was not rebuilt and the join is the only source that
+   works on *both* load routes. `r_squared` is therefore kept out of
+   manifest.columns, and visibleStatCols() skips the table's own copy so the
+   column cannot render twice.
+
+   Read this *instead of* `sumsquarevalue` whenever comparing fits: the stored
+   SSR is unnormalised and tracks donor count (ρ = 0.99 across tissues), so it
+   cannot rank two genes. R² has an n dependence of its own — at 40 fixed bins
+   1 − R² ≈ 1.1 × bins/n — so read it beside `n_obs`, never alone. */
 const R2_COL = "__r_squared";
 
 const SHORT_LABEL = {
@@ -1007,7 +1005,14 @@ let geneMajor = null;              // manifest.gene_major, when shards exist
 
 let selected = [];                 // array of gene-index integers
 let selectedTissues = [];          // array of tissue names
-let currentKind = "raw";
+/* The one table kind the browser serves. The raw tables -- every finite value,
+   zero-expression spike included -- are gone from the manifest: the spike drags
+   the fit, so every analysis here worked off the excluded tables anyway and the
+   choice was only ever a way to get a worse answer. This stays a named value
+   rather than being inlined because it is the join key for the table, qc/ and
+   r2/ caches and for the gene-major `kind_ids` lookup. A `table=raw` in an old
+   shared link is now ignored rather than honoured. */
+const currentKind = "excluded";
 let showAllCols = false;
 let sortCol = null, sortDir = 1;
 let activeSuggestion = -1, suggestions = [];
@@ -1613,7 +1618,9 @@ function shapeCell(row, colIdx) {
    never surface — not even under "All columns". They stay in the CSV export,
    which mirrors the source table rather than this view. */
 function visibleStatCols(header, all) {
-  const skip = new Set(["gene", "genename", "hist", "hist_max"]);
+  // r_squared is skipped because the page shows the r2/ join instead (R2_COL);
+  // without this the tissue-major route would render the column twice.
+  const skip = new Set(["gene", "genename", "hist", "hist_max", "r_squared"]);
   const stats = header.filter((c) => !skip.has(c));
   const compact = COMPACT_COLS.filter((c) => stats.includes(c))
     .concat(DIST_COL, R2_COL);
@@ -1628,8 +1635,6 @@ function kindLabelOf(kind) {
   const spec = manifest.table_kinds.find((k) => k.id === kind);
   return spec ? spec.label : kind;
 }
-
-function kindShort(kind) { return kind === "raw" ? "raw" : "excluded ≤ −1"; }
 
 /* =====================================================================
    Loading: explicit, sequential, cancellable
@@ -1949,7 +1954,7 @@ function render() {
         aria-label="Add ${escapeHtml(SYM[gi] || GID[gi])} in ${escapeHtml(tissueLabel(r.tissue))} to the working set"></td>
       <td class="col-gene">
         <button class="genelink" type="button" data-gi="${gi}"
-          data-tissue="${escapeHtml(r.tissue)}" data-kind="${escapeHtml(r.kind)}"
+          data-tissue="${escapeHtml(r.tissue)}"
           title="Open the gene page for ${escapeHtml(SYM[gi] || GID[gi])}">
           <div class="c-sym">${escapeHtml(SYM[gi] || "—")}</div>
           <div class="c-id">${escapeHtml(GID[gi])}</div>
@@ -1983,7 +1988,7 @@ function render() {
   area.querySelector("tbody").addEventListener("click", (e) => {
     const link = e.target.closest(".genelink");
     if (!link) return;
-    openDetail(Number(link.dataset.gi), link.dataset.tissue, link.dataset.kind);
+    openDetail(Number(link.dataset.gi), link.dataset.tissue);
   });
 
   const byKey = new Map(rows.map((r) => [rowKey(r), r]));
@@ -2251,9 +2256,13 @@ function wsAdd(r) {
     const i = loadedColIdx[c];
     v[c] = i === undefined ? "" : (r.fields[i] ?? "");
   }
+  /* R² is not one of statCols() — it is joined from r2/ by gene index — so it
+     is snapshotted here alongside the fields. The r2 text for this tissue is
+     already cached by the time a row can be ticked (load() awaits it), and a
+     row from before this field existed simply exports blank. */
   workingSet.set(key, {
     t: r.tissue, k: r.kind, g: NOVER[r.gi],
-    gid: GID[r.gi], sym: SYM[r.gi] || "", v
+    gid: GID[r.gi], sym: SYM[r.gi] || "", v, r2: rSquaredOf(r)
   });
 }
 
@@ -2315,9 +2324,6 @@ function wsRows() {
   } else if (wsSortCol === "__tissue") {
     rows.sort((a, b) => a.e.t.localeCompare(b.e.t) * dir ||
                         a.e.sym.localeCompare(b.e.sym));
-  } else if (wsSortCol === "__table") {
-    rows.sort((a, b) => a.e.k.localeCompare(b.e.k) * dir ||
-                        a.e.sym.localeCompare(b.e.sym));
   } else {
     rows.sort((a, b) => {
       const na = Number(a.e.v[wsSortCol]), nb = Number(b.e.v[wsSortCol]);
@@ -2365,7 +2371,6 @@ function renderWorkingSet() {
     '<th class="col-check nosort"></th>' +
     sortableHead("__gene", "Gene", "col-gene tl") +
     sortableHead("__tissue", "Tissue", "tl") +
-    sortableHead("__table", "Table", "tl") +
     cols.map((c) => sortableHead(c, SHORT_LABEL[c] || c)).join("");
 
   const body = rows.map(({ key, e }) => {
@@ -2383,14 +2388,13 @@ function renderWorkingSet() {
         aria-label="Remove ${escapeHtml(e.sym || e.gid)} in ${escapeHtml(tissueLabel(e.t))}">×</button></td>
       <td class="col-gene">
         <button class="genelink" type="button" data-gene="${escapeHtml(e.g)}"
-          data-tissue="${escapeHtml(e.t)}" data-kind="${escapeHtml(e.k)}"
+          data-tissue="${escapeHtml(e.t)}"
           title="Open the gene page for ${escapeHtml(e.sym || e.gid)}">
           <div class="c-sym">${escapeHtml(e.sym || "—")}</div>
           <div class="c-id">${escapeHtml(e.gid)}</div>
         </button>
       </td>
       <td class="tl c-tissue">${escapeHtml(tissueLabel(e.t))}</td>
-      <td class="tl c-tissue">${escapeHtml(kindShort(e.k))}</td>
       ${cells}
     </tr>`;
   }).join("");
@@ -2411,7 +2415,7 @@ function renderWorkingSet() {
     const link = e.target.closest(".genelink");
     if (link) {
       const gi = geneIndexByNover.get(link.dataset.gene);
-      if (gi !== undefined) openDetail(gi, link.dataset.tissue, link.dataset.kind);
+      if (gi !== undefined) openDetail(gi, link.dataset.tissue);
       return;
     }
     const btn = e.target.closest(".rowdel");
@@ -2509,12 +2513,21 @@ function loadExampleSet() {
    Both exports carry the FULL statistic set regardless of the compact/all
    column toggle — that toggle is about reading the screen, and a spreadsheet
    silently missing columns is a trap. The header matches extract_genes.py:
-   tissue, table, gene, genename, then the table's own columns in order.
+   tissue, table, gene, genename, then the table's own columns in order —
+   then `r_squared` appended last, exactly where append_r2_column.py puts it in
+   outputs/. Appending rather than placing it beside `sumsquarevalue` keeps every
+   column to its left in the position existing sheets and scripts expect. The
+   value comes from the r2/ join (see R2_COL) rather than from the table's own
+   column, so the gene-major route exports it too.
    ===================================================================== */
 function csvCell(v) {
   const s = String(v ?? "");
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
+
+// Blank rather than a placeholder when there is no R² for this gene: a
+// spreadsheet reads an empty cell as missing, but "—" as text.
+function csvR2(v) { return v === null || v === undefined ? "" : Number(v).toFixed(3); }
 
 function saveCsv(lines, filename) {
   const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv;charset=utf-8" });
@@ -2532,13 +2545,14 @@ function stamp() { return new Date().toISOString().slice(0, 10); }
 function downloadCsv() {
   if (!loadedRows.length) return;
   const cols = statCols();
-  const lines = [["tissue", "table", "gene", "genename"].concat(cols).join(",")];
+  const lines = [["tissue", "table", "gene", "genename"]
+    .concat(cols, "r_squared").join(",")];
   for (const r of sortRows(loadedRows, sortCol, sortDir, loadedColIdx)) {
     lines.push([r.tissue, r.kind, GID[r.gi], SYM[r.gi]]
       .concat(cols.map((c) => {
         const i = loadedColIdx[c];
         return i === undefined ? "" : r.fields[i];
-      })).map(csvCell).join(","));
+      }), csvR2(rSquaredOf(r))).map(csvCell).join(","));
   }
   const nT = new Set(loadedRows.map((r) => r.tissue)).size;
   saveCsv(lines, `fourparam_${nT}tissues_${currentKind}_${loadedRows.length}rows.csv`);
@@ -2547,11 +2561,12 @@ function downloadCsv() {
 function exportWorkingSet() {
   if (!workingSet.size) return;
   const cols = statCols();
-  const lines = [["tissue", "table", "gene", "genename"].concat(cols).join(",")];
+  const lines = [["tissue", "table", "gene", "genename"]
+    .concat(cols, "r_squared").join(",")];
   // Export what is on screen, so a filter narrows the spreadsheet too.
   for (const { e } of wsRows()) {
     lines.push([e.t, e.k, e.gid, e.sym]
-      .concat(cols.map((c) => e.v[c])).map(csvCell).join(","));
+      .concat(cols.map((c) => e.v[c]), csvR2(e.r2)).map(csvCell).join(","));
   }
   saveCsv(lines, `working_set_${lines.length - 1}rows_${stamp()}.csv`);
 }
@@ -2580,7 +2595,6 @@ const SIGMA_BAR_CLAMP = 6;
 
 let detailGI = null;               // gene index, or null when the page is closed
 let detailTissue = null;
-let detailKind = null;
 let detailRows = null;             // tissue -> fields[], every tissue at once
 let detailColIdx = null;
 let detailSource = null;           // "gene-major" | "cached tables" | null
@@ -2664,7 +2678,7 @@ function defaultTissue() {
   return manifest.tissues.includes("liver") ? "liver" : manifest.tissues[0];
 }
 
-function openDetail(gi, tissue, kind, opts) {
+function openDetail(gi, tissue, opts) {
   const o = opts || {};
   if (gi === undefined || gi === null || gi < 0 || gi >= GID.length) return;
 
@@ -2677,7 +2691,6 @@ function openDetail(gi, tissue, kind, opts) {
 
   detailGI = gi;
   detailTissue = tissue && manifest.tissues.includes(tissue) ? tissue : defaultTissue();
-  detailKind = kind && manifest.table_kinds.some((k) => k.id === kind) ? kind : currentKind;
 
   $("tabBar").hidden = true;
   $("panelSelect").hidden = true;
@@ -2708,7 +2721,7 @@ async function refreshDetail(token) {
   ensureHistTable(token);
   // ~437 KB, cached per tissue|kind and shared with the results table, so
   // opening several genes in one tissue fetches it once.
-  getR2Values(detailTissue, detailKind).then(() => {
+  getR2Values(detailTissue, currentKind).then(() => {
     if (token === detailToken) renderDistPanel();
   });
   await loadDetailRows(token);
@@ -2754,7 +2767,7 @@ async function loadDetailRows(token) {
   detailColIdx = null;
   detailSource = null;
   const gi = detailGI;
-  const kindId = geneMajor && geneMajor.kind_ids && geneMajor.kind_ids[detailKind];
+  const kindId = geneMajor && geneMajor.kind_ids && geneMajor.kind_ids[currentKind];
 
   if (geneMajor && kindId && SHARD[gi] >= 0) {
     try {
@@ -2770,7 +2783,7 @@ async function loadDetailRows(token) {
   }
 
   for (const t of manifest.tissues) {
-    const tbl = tableCache.get(`${t}|${detailKind}`);
+    const tbl = tableCache.get(`${t}|${currentKind}`);
     if (!tbl) continue;
     const line = tbl.map.get(NOVER[gi]);
     if (!line) continue;
@@ -2786,9 +2799,9 @@ async function loadDetailRows(token) {
    build_hist_major.py --verify pins that — so the picture does not depend on
    which route supplied it. */
 function focusRow() {
-  const shardHist = histFromShard(detailTissue, detailKind);
+  const shardHist = histFromShard(detailTissue, currentKind);
 
-  const tbl = tableCache.get(`${detailTissue}|${detailKind}`);
+  const tbl = tableCache.get(`${detailTissue}|${currentKind}`);
   if (tbl) {
     const line = tbl.map.get(NOVER[detailGI]);
     if (line) {
@@ -2917,23 +2930,6 @@ function renderDetailFrame() {
     `<option value="${escapeHtml(t)}"${t === detailTissue ? " selected" : ""}>` +
     `${escapeHtml(tissueLabel(t))}</option>`).join("");
 
-  const group = $("detailKindGroup");
-  group.innerHTML = "";
-  for (const spec of manifest.table_kinds) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = spec.id === "raw" ? "Raw" : "Excluded ≤ −1";
-    b.title = spec.label;
-    b.setAttribute("aria-pressed", spec.id === detailKind);
-    b.addEventListener("click", () => {
-      if (detailKind === spec.id) return;
-      detailKind = spec.id;
-      renderDetailFrame();
-      syncHash();
-      refreshDetail(++detailToken);
-    });
-    group.appendChild(b);
-  }
 }
 
 function setFocusTissue(t) {
@@ -3124,7 +3120,7 @@ function renderDistPanel() {
   if (!row) {
     el.innerHTML = head + `<p class="quietnote">No row for
       <strong>${escapeHtml(SYM[detailGI] || GID[detailGI])}</strong> in
-      ${escapeHtml(tName)} under ${escapeHtml(kindShort(detailKind))}.</p>`;
+      ${escapeHtml(tName)} under excluded ≤ −1.</p>`;
     return;
   }
 
@@ -3142,7 +3138,7 @@ function renderDistPanel() {
     ["TI", sig(n("truncationindex"), 4)],
     ["σ-dist", sig(n("ti_fourparam_sigma_dist"))],
     ["R²", (() => {
-      const v = rSquaredOf({ tissue: detailTissue, kind: detailKind, gi: detailGI });
+      const v = rSquaredOf({ tissue: detailTissue, kind: currentKind, gi: detailGI });
       return v === null ? "—" : v.toFixed(3);
     })()],
     ["fit", ok ? '<span style="color:var(--ok)">ok</span>'
@@ -3206,15 +3202,15 @@ function renderDistPanel() {
    it is rather than showing an empty frame. */
 function histAvailabilityNote() {
   const tName = escapeHtml(tissueLabel(detailTissue));
-  const key = `${detailTissue}|${detailKind}`;
+  const key = `${detailTissue}|${currentKind}`;
 
   if (histFetching === detailGI) {
     return `Fetching this gene's histograms — one ~5&nbsp;KB shard covers every
       tissue and both filters. The curve below is already final.`;
   }
 
-  if (!histPublished(detailTissue, detailKind)) {
-    const have = histTissues(detailKind);
+  if (!histPublished(detailTissue, currentKind)) {
+    const have = histTissues(currentKind);
     const jumps = have.map((t) =>
       `<button class="linkbtn" type="button" data-jump="${escapeHtml(t)}">` +
       `${escapeHtml(tissueLabel(t))}</button>`).join(" · ");
@@ -3375,7 +3371,7 @@ function renderMeanPanel() {
   const rows = acrossValues("mean");
   el.innerHTML = `<h3>${title}</h3>
     <p class="sub">Mean of <code>log2(TPM+1) − 1</code> over that tissue's donors,
-      ${escapeHtml(kindShort(detailKind))}. <strong>−1</strong> is TPM&nbsp;0.
+      excluded ≤ −1. <strong>−1</strong> is TPM&nbsp;0.
       Click a tissue to bring it into focus above.</p>
     <div class="barhead"><span class="spacer"></span>${sortControl("meanSortCtl", meanSort)}</div>` +
     barsBlock(rows, {
@@ -3666,7 +3662,7 @@ function renderPhenoPanel() {
 let lastWrittenHash = "";
 
 function buildHash() {
-  const parts = [`table=${encodeURIComponent(currentKind)}`];
+  const parts = [];
   // "all" keeps a 54-tissue link short and survives new tissues being added.
   if (selectedTissues.length === manifest.tissues.length) parts.unshift("tissues=all");
   else if (selectedTissues.length) parts.unshift(`tissues=${selectedTissues.join(",")}`);
@@ -3674,7 +3670,7 @@ function buildHash() {
   // The open gene page rides along, so a gene page is linkable and the browser's
   // own Back unwinds it.
   if (detailGI !== null) {
-    parts.push(`focus=${NOVER[detailGI]}`, `ft=${detailTissue}`, `fk=${detailKind}`);
+    parts.push(`focus=${NOVER[detailGI]}`, `ft=${detailTissue}`);
   }
   return parts.join("&");
 }
@@ -3708,9 +3704,6 @@ function readHash() {
     if (one && manifest.tissues.includes(one)) selectedTissues = [one];
   }
 
-  const k = p.get("table");
-  if (k && manifest.table_kinds.some((x) => x.id === k)) currentKind = k;
-
   const g = p.get("genes");
   if (g) {
     selected = g.split(",").map((id) => geneIndexByNover.get(stripVersion(id.trim())))
@@ -3740,24 +3733,6 @@ function showTab(which) {
 /* =====================================================================
    Boot
    ===================================================================== */
-function buildKindGroup() {
-  const group = $("kindGroup");
-  group.innerHTML = "";
-  for (const spec of manifest.table_kinds) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = spec.id === "raw" ? "Raw" : "Excluded ≤ −1";
-    b.title = spec.label;
-    b.setAttribute("aria-pressed", spec.id === currentKind);
-    b.addEventListener("click", () => {
-      if (currentKind === spec.id) return;
-      currentKind = spec.id;
-      buildKindGroup(); markStale();
-    });
-    group.appendChild(b);
-  }
-}
-
 async function boot() {
   // Theme toggle, remembered per browser.
   const saved = localStorage.getItem("tb-theme");
@@ -3803,7 +3778,6 @@ async function boot() {
   const bootParams = new URLSearchParams(location.hash.replace(/^#/, ""));
   readHash();
   wsLoad();
-  buildKindGroup();
   renderChips();
   renderTissueChips();
   wsSync();
@@ -3977,21 +3951,20 @@ async function boot() {
         if (detailGI !== null) closeDetail(false);
       } else {
         detailPushed = false;      // this entry is where we already are
-        openDetail(focusGi, p.get("ft"), p.get("fk"), { push: false });
+        openDetail(focusGi, p.get("ft"), { push: false });
       }
       return;
     }
 
     if (detailGI !== null) closeDetail(false);
     readHash();
-    buildKindGroup();
-    renderChips();
+      renderChips();
     renderTissueChips();
     loadedRows = [];
     resultsStale = false;
     render();
     if (focusGi !== undefined) {
-      openDetail(focusGi, p.get("ft"), p.get("fk"), { push: false });
+      openDetail(focusGi, p.get("ft"), { push: false });
     }
   });
 
@@ -4017,8 +3990,7 @@ async function boot() {
   const bootFocus = bootParams.get("focus");
   const bootGi = bootFocus ? geneIndexByNover.get(stripVersion(bootFocus)) : undefined;
   if (bootGi !== undefined) {
-    openDetail(bootGi, bootParams.get("ft"), bootParams.get("fk"),
-               { push: false, scroll: false });
+    openDetail(bootGi, bootParams.get("ft"), { push: false, scroll: false });
   }
 }
 

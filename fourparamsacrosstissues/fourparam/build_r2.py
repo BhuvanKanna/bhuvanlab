@@ -115,7 +115,7 @@ def patch_manifest(published: dict) -> None:
         "clamp": CLAMP,
         # Mirrors qc.kind_ids so the r2 block stands alone even when the others
         # are unavailable.
-        "kind_ids": {"raw": "raw", "excluded": "excluded_at_or_below_-1"},
+        "kind_ids": {"excluded": "excluded_at_or_below_-1"},
         # {tissue: {kind_id: filename}} -- the browser only fetches what is here,
         # so a tissue whose R^2 has not been computed simply shows no value.
         "files": published,

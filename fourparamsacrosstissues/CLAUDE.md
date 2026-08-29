@@ -27,6 +27,7 @@ fourparam/                    <- all the code (kept separate from the data)
   compute_qc.py               <- generate ONE qc table from ONE matrix (raw or excluded)
   compute_r2.py               <- add r_squared to ONE table, without refitting -> r2/
   build_r2.py                 <- publish r_squared to the browser as a fixed-width string
+  append_r2_column.py         <- append r_squared as a real last column of the excluded tables
   generate_fourparam.py       <- generate ONE fourparam table from ONE matrix (raw or excluded)
   generate_all.py             <- driver: both tables for every tissue -> 108 tables
   run_cluster.py              <- same 108 tables, spread over several machines
@@ -43,8 +44,8 @@ fourparam/                    <- all the code (kept separate from the data)
 data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
 outputs/                      <- the generated tables go here (starts empty)
-  v11_log2_<tissue>_fourparam.csv                              <- raw
-  v11_log2_<tissue>_fourparam_excluded_at_or_below_-1.csv      <- excluded <= -1
+  v11_log2_<tissue>_fourparam.csv                              <- raw (not browsable)
+  v11_log2_<tissue>_fourparam_excluded_at_or_below_-1.csv      <- excluded <= -1, +r_squared
 qc/                           <- distribution class + fit-validity, joined on `gene`
   v11_log2_<tissue>_qc[_excluded_at_or_below_-1].csv
 r2/                           <- r_squared alone, joined on `gene` (see "Fit quality")
@@ -170,7 +171,17 @@ once — **no histogram shipped without its `min`/`max` bin edges**.
   **zero-expression (undetected) samples**, so a gene's `n_obs` shrinks and it may
   fall below the minimum.
 
-Nothing else changes between the two — same fit, same columns, same handling.
+Nothing else changes between the two — same fit, same handling. The excluded
+tables carry one extra column, `r_squared` (see "Fit quality"); the raw ones do
+not, because `r2/` was only ever computed for excluded.
+
+> **The browser serves the excluded tables only.** `manifest.json` no longer
+> lists a `raw` kind, and the *Values included* toggle is gone from both the
+> results tab and the gene page — the zero-expression spike drags the fit, so
+> every analysis here worked off the excluded tables anyway. The raw tables are
+> still generated and still in `outputs/`, still reachable through
+> `extract_genes.py --table raw`; they are simply not published to the page. A
+> shared link carrying `table=raw` now opens on the excluded tables.
 
 ### Default filters (applied to BOTH table types)
 
@@ -220,6 +231,7 @@ One row per gene. Columns, in order:
 | `fit_success` | `True` if the fit converged with `n_obs >= 10`, else `False` (metrics `NaN`) |
 | `hist` | 40-character thumbnail histogram, one character per bin from `A-Za-z0-9+/` (= 0–63), each `round(count * 63 / hist_max)`. **Not analysis data** — quantised and lossy to 1/63 of the peak. Read by the browser's **gene page**, which decodes it into real bars and overlays the fitted curve on the same count axis. Not by the table's Shape cells, which draw the fitted curve alone. Empty when `n_obs = 0`. Written whenever `n_obs >= 1`, **independent of `fit_success`**, so a gene whose fit failed still shows its real distribution. Bin edges are not stored: they are `linspace(min, max, 41)`, and numpy widens a zero-width range to `[min-0.5, max+0.5]` |
 | `hist_max` | exact count in the tallest bin; `0` when there is no histogram (never `NaN` — one `NaN` in the column makes pandas write every other row's value as a float) |
+| `r_squared` | **excluded tables only, last column.** `1 − SSR/TSS` over the 40 bins, appended verbatim from `r2/` by `append_r2_column.py` — nothing is refit. Blank on a `fit_success = False` row. Deliberately **not** in `manifest.columns`: the browser reads the `r2/` join instead, so that the gene-major route gets it too. Read it beside `n_obs`, never alone — at 40 fixed bins `1 − R² ≈ 1.1 × bins/n`, so R² partly restates donor count |
 
 Fitting details (in `bhuvanfitter.py`, the single source of truth): the histogram
 is always **40 bins**; the curve is fit by ordinary least squares (Trust Region
@@ -492,6 +504,7 @@ calibrated threshold. Either alone is common noise.
 cd fourparam
 python compute_r2.py --all --jobs 6 --verify     # -> r2/*.csv
 python build_r2.py                               # -> docs/r2/*.txt + manifest
+python append_r2_column.py --all                 # -> r_squared column in outputs/
 ```
 
 ### Why this exists at all
@@ -500,7 +513,12 @@ python build_r2.py                               # -> docs/r2/*.txt + manifest
 excluded tables, Spearman(median `sumsquarevalue`, median `n_obs`) = **0.99** —
 the column is very nearly a restatement of how many donors the tissue has, and
 it cannot rank two genes, let alone two tissues. `r_squared` divides it by the
-total sum of squares and is comparable everywhere. **Use `r_squared` for any
+total sum of squares, which makes it comparable *within* a tissue. It is **not**
+comparable across tissues of different size: at 40 fixed bins the ceiling a
+perfect Gaussian can reach is itself a function of n (`1 − R² ≈ 1.1 × bins/n`,
+so R² ≈ 0.9 needs ~11 observations per bin), and across the 54 excluded tables
+Spearman(median `n_obs`, median R²) = 0.97. Rank within a tissue, or against the
+per-n floor — never one tissue's raw R² against another's. **Use `r_squared` for any
 comparison of fits; `sumsquarevalue` is only meaningful within one gene.**
 
 ### Nothing is refit
@@ -533,6 +551,15 @@ mirror, updating all four column lists, and a very large push. A side-car joined
 on `gene` costs ~24 MB and none of that.
 
 ### The published encoding
+
+`append_r2_column.py` additionally appends `r_squared` as the **last column of
+each excluded table in `outputs/`**, so a CSV downloaded straight from the repo
+is complete without a manual join. Same numbers, same file, nothing refit; it is
+appended rather than slotted beside `sumsquarevalue` so every column to its left
+keeps the position `extract_genes.py`, `indexTable` and the shard builders index
+by. It is re-runnable and skips a table that already has the column. The
+gene-major mirror in `gene_major/` was **not** rebuilt, which is why the browser
+still reads the join and `r_squared` stays out of `manifest.columns`.
 
 `docs/r2/*.txt` is **one `%6.3f` field per gene in `genes.tsv` order** — the same
 trade as `build_qc_class.py` and the `hist` column, one field wider because R² is
@@ -598,8 +625,8 @@ byte-identical to `extract_genes.py`.
 
 - **Gene selection** — type-ahead multi-select over genes *and* tissues (both
   boxes work the same way; tissue matching is underscore-insensitive so "whole
-  blood" finds `whole_blood`), a raw / excluded ≤ −1 toggle, and an explicit
-  **Load tables** button. The gene box also takes a **pasted or typed list** —
+  blood" finds `whole_blood`) and an explicit **Load tables** button. There is no
+  table-kind toggle: every table the page serves is the excluded ≤ −1 one. The gene box also takes a **pasted or typed list** —
   see "Pasting a gene list" below. Results are one row per gene × tissue, each carrying a
   checkbox and **two views of that gene's fitted curve** — one in real log2
   units, one on a fixed sigma axis (see "The two shape columns" below).
@@ -792,15 +819,24 @@ Three things about it are load-bearing and easy to undo by accident:
 2. **The working set stores values, not references.** Each entry keeps all 18
    statistic columns, so it survives a reload without re-fetching. It is keyed
    `tissue|kind|unversioned-id`, which is why the same gene can appear for many
-   tissues and for both raw and excluded at once. It is persisted to
+   tissues at once. `kind` is now always `excluded`, but it stays in the key so
+   entries saved before the raw tables were withdrawn still load. It is persisted to
    `localStorage` under `tb-working-set-v1`; if the quota is exceeded the page
    falls back to memory-only and says so rather than failing silently.
-3. **Its CSV is byte-identical to `extract_genes.py`'s** — header `tissue, table,
-   gene, genename` then the table's own columns in `manifest.json` order, and
-   values passed through as text. Exports always carry the full statistic set
-   regardless of the compact/all column toggle, and always cover every loaded row
-   rather than the rendered subset (rendering is capped at 800 rows). Keep these
-   in sync if columns change.
+3. **Its CSV matches `extract_genes.py`'s through the last table column** —
+   header `tissue, table, gene, genename` then the table's own columns in
+   `manifest.json` order, with values passed through as text, and then one
+   appended column `r_squared`. R² is joined from `r2/` by gene index rather
+   than stored in the tables, so it is appended last rather than placed beside
+   `sumsquarevalue`: everything left of it stays byte-identical, and it is blank
+   for a gene with no R². Both exports always carry the full statistic set
+   regardless of the compact/all column toggle, and the selection export covers
+   every loaded row rather than the rendered subset (rendering is capped at 800
+   rows). Keep these in sync if columns change.
+
+   > The working set snapshots R² at tick time (`wsAdd`), since the r2 text is
+   > cached per tissue and not carried on the row. Entries persisted before that
+   > field existed export a blank `r_squared`.
 
    > This is only true because **nothing re-serialises a float**. `extract_genes.py`
    > reads with `dtype=str, keep_default_na=False`; `build_gene_major.py` builds

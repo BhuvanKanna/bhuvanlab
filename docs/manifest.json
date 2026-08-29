@@ -4,13 +4,8 @@
   "file_prefix": "v11_log2_",
   "table_kinds": [
     {
-      "id": "raw",
-      "label": "Raw (every finite value)",
-      "suffix": "_fourparam.csv"
-    },
-    {
       "id": "excluded",
-      "label": "Excluded \u2264 \u22121 (drops zero-expression samples)",
+      "label": "Excluded ≤ −1 (drops zero-expression samples)",
       "suffix": "_fourparam_excluded_at_or_below_-1.csv"
     }
   ],
@@ -102,15 +97,10 @@
     "n_shards": 4665,
     "file_pattern": "shard_{shard:04d}.csv",
     "kind_ids": {
-      "raw": "raw",
       "excluded": "excluded_at_or_below_-1"
     }
   },
   "hist": {
-    "raw": [
-      "uterus",
-      "vagina"
-    ],
     "excluded": [
       "uterus",
       "vagina"
@@ -121,7 +111,6 @@
       "file_pattern": "shard_{shard:04d}.csv",
       "n_shards": 4665,
       "kind_ids": {
-        "raw": "raw",
         "excluded": "excluded_at_or_below_-1"
       }
     }
@@ -144,28 +133,22 @@
     },
     "missing_char": ".",
     "kind_ids": {
-      "raw": "raw",
       "excluded": "excluded_at_or_below_-1"
     },
     "files": {
       "adipose_subcutaneous": {
-        "raw": "v11_log2_adipose_subcutaneous_qc.txt",
         "excluded_at_or_below_-1": "v11_log2_adipose_subcutaneous_qc_excluded_at_or_below_-1.txt"
       },
       "kidney_cortex": {
-        "raw": "v11_log2_kidney_cortex_qc.txt",
         "excluded_at_or_below_-1": "v11_log2_kidney_cortex_qc_excluded_at_or_below_-1.txt"
       },
       "muscle_skeletal": {
-        "raw": "v11_log2_muscle_skeletal_qc.txt",
         "excluded_at_or_below_-1": "v11_log2_muscle_skeletal_qc_excluded_at_or_below_-1.txt"
       },
       "skin_sun_exposed_lower_leg": {
-        "raw": "v11_log2_skin_sun_exposed_lower_leg_qc.txt",
         "excluded_at_or_below_-1": "v11_log2_skin_sun_exposed_lower_leg_qc_excluded_at_or_below_-1.txt"
       },
       "whole_blood": {
-        "raw": "v11_log2_whole_blood_qc.txt",
         "excluded_at_or_below_-1": "v11_log2_whole_blood_qc_excluded_at_or_below_-1.txt"
       }
     }
@@ -177,7 +160,6 @@
     "decimals": 3,
     "clamp": 9.999,
     "kind_ids": {
-      "raw": "raw",
       "excluded": "excluded_at_or_below_-1"
     },
     "files": {

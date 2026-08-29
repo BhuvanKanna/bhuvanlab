@@ -92,9 +92,8 @@ def hist_availability(raw_tables, exc_tables) -> dict:
         cols = header_of(path)
         return "hist" in cols and "hist_max" in cols
 
-    raw = [p.name[len(PREFIX):-len(RAW_SUFFIX)] for p in raw_tables if carries(p)]
     exc = [p.name[len(PREFIX):-len(EXCLUDED_SUFFIX)] for p in exc_tables if carries(p)]
-    return {"raw": raw, "excluded": exc}
+    return {"excluded": exc}
 
 
 def main(argv=None) -> int:
@@ -207,10 +206,15 @@ def main(argv=None) -> int:
 
     # ---- manifest -----------------------------------------------------------
     columns = list(pd.read_csv(reference, nrows=0).columns)
+    # `r_squared` is a real last column of every excluded table (appended by
+    # append_r2_column.py) but must NOT appear here: the browser joins R^2 from
+    # r2/ by gene index, which is the only source that also covers the
+    # gene-major route, and listing it here would render and export it twice.
+    columns = [c for c in columns if c != "r_squared"]
 
     hist_tissues = hist_availability(raw_tables, exc_tables)
-    n_hist = len(hist_tissues["raw"]) + len(hist_tissues["excluded"])
-    print(f"Histogram cols : {n_hist}/{len(raw_tables) + len(exc_tables)} tables "
+    n_hist = len(hist_tissues["excluded"])
+    print(f"Histogram cols : {n_hist}/{len(exc_tables)} excluded tables "
           f"carry hist/hist_max", file=sys.stderr)
     if n_hist == 0:
         print("  (the gene page will draw fitted curves only, with no bars)",
@@ -226,7 +230,7 @@ def main(argv=None) -> int:
         "base_url": HIST_MAJOR_BASE,
         "file_pattern": "shard_{shard:04d}.csv",
         "n_shards": len(hist_shards),
-        "kind_ids": {"raw": RAW_KIND, "excluded": EXCLUDED_KIND},
+        "kind_ids": {"excluded": EXCLUDED_KIND},
     }
     if hist_shards:
         hist_size = sum(p.stat().st_size for p in hist_shards)
@@ -245,10 +249,13 @@ def main(argv=None) -> int:
         "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "data_base_url": DATA_BASE,
         "file_prefix": PREFIX,
+        # Excluded only. The raw tables are still generated and still in
+        # outputs/, but they are not published to the page: the zero-expression
+        # spike drags the fit, so every analysis works off the excluded set and
+        # offering the choice only offered a worse answer. Re-listing "raw" here
+        # is all it would take to bring the toggle back -- index.html builds the
+        # control from this list.
         "table_kinds": [
-            {"id": "raw",
-             "label": "Raw (every finite value)",
-             "suffix": RAW_SUFFIX},
             {"id": "excluded",
              "label": "Excluded ≤ −1 (drops zero-expression samples)",
              "suffix": EXCLUDED_SUFFIX},
@@ -264,7 +271,7 @@ def main(argv=None) -> int:
             "shard_size": SHARD_SIZE,
             "n_shards": n_shards,
             "file_pattern": "shard_{shard:04d}.csv",
-            "kind_ids": {"raw": RAW_KIND, "excluded": EXCLUDED_KIND},
+            "kind_ids": {"excluded": EXCLUDED_KIND},
         },
         # Per-table, because hist/hist_max landed after the first full run.
         "hist": hist_tissues,
