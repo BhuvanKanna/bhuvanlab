@@ -55,6 +55,12 @@ DEFAULT_GENE_MAJOR = HERE.parent / "gene_major"
 DEFAULT_HIST_MAJOR = HERE.parent / "hist_major"
 HIST_MAJOR_BASE = f"{RAW_BASE}/{REPO_SUBDIR}/hist_major"
 
+# C. elegans. Its own directory rather than outputs/, so the tissue pipeline's
+# `*_fourparam*.csv` globs cannot sweep a second organism into a GTEx run.
+DEFAULT_WORM = HERE.parent / "worm"
+WORM_BASE = f"{RAW_BASE}/{REPO_SUBDIR}/worm"
+WORM_FILE = "worm_fourparam_excluded_at_or_below_-1.csv"
+
 
 # One curated row per (gene, disorder) where OMIM/G2P name **over-expression**
 # as the driving mechanism. Small enough to publish verbatim; the browser's gene
@@ -96,6 +102,41 @@ def hist_availability(raw_tables, exc_tables) -> dict:
     return {"excluded": exc}
 
 
+def worm_block(worm_dir: Path) -> dict:
+    """Describe the C. elegans table for the browser's Worm Data tab.
+
+    A second organism rather than a 55th tissue: its identifiers are WormBase,
+    `genes.tsv` does not contain them, and there is only ever one table -- so it
+    is published as its own block and read by its own panel rather than being
+    squeezed into ``tissues``. Deliberately kept out of ``outputs/``, where a
+    glob for ``*_fourparam*.csv`` would sweep it into the tissue pipeline.
+
+    ``available: False`` (rather than a missing key) when the file is absent, so
+    the page can say "no worm table published" instead of failing to boot.
+    """
+    path = worm_dir / WORM_FILE
+    if not path.is_file():
+        print(f"  (no {WORM_FILE} in {worm_dir} - the Worm Data tab will be empty)",
+              file=sys.stderr)
+        return {"available": False}
+
+    with path.open(encoding="utf-8", newline="") as fh:
+        header = fh.readline().rstrip("\r\n").split(",")
+        n_genes = sum(1 for line in fh if line.strip())
+    print(f"Worm table     : {n_genes:,} genes, {len(header)} columns",
+          file=sys.stderr)
+    if "r_squared" not in header:
+        print("  (no r_squared column yet - run compute_r2.py against the worm "
+              "matrix, then append_r2_column.py)", file=sys.stderr)
+    return {
+        "available": True,
+        "base_url": WORM_BASE,
+        "file": WORM_FILE,
+        "n_genes": n_genes,
+        "columns": header,
+    }
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -105,6 +146,8 @@ def main(argv=None) -> int:
                     help="Directory of gene-major shards (default: ../gene_major).")
     ap.add_argument("--hist-major", type=Path, default=DEFAULT_HIST_MAJOR,
                     help="Directory of histogram shards (default: ../hist_major).")
+    ap.add_argument("--worm", type=Path, default=DEFAULT_WORM,
+                    help="Directory holding the C. elegans table (default: ../worm).")
     ap.add_argument("--reference", type=str, default=None,
                    help="Tissue whose raw table supplies manifest.columns "
                         "(default: first alphabetically). During a partial "
@@ -280,6 +323,8 @@ def main(argv=None) -> int:
             "available": (args.docs / PHENOTYPES_FILE).is_file(),
             "file": PHENOTYPES_FILE,
         },
+        # C. elegans, read by its own tab. See worm_block().
+        "worm": worm_block(args.worm),
     }
     manifest_path = args.docs / "manifest.json"
 

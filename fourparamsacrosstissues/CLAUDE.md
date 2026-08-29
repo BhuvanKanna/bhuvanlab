@@ -28,6 +28,7 @@ fourparam/                    <- all the code (kept separate from the data)
   compute_r2.py               <- add r_squared to ONE table, without refitting -> r2/
   build_r2.py                 <- publish r_squared to the browser as a fixed-width string
   append_r2_column.py         <- append r_squared as a real last column of the excluded tables
+  stage_worm_table.py         <- publish the C. elegans table, repairing Excel-mangled gene names
   generate_fourparam.py       <- generate ONE fourparam table from ONE matrix (raw or excluded)
   generate_all.py             <- driver: both tables for every tissue -> 108 tables
   run_cluster.py              <- same 108 tables, spread over several machines
@@ -50,6 +51,8 @@ qc/                           <- distribution class + fit-validity, joined on `g
   v11_log2_<tissue>_qc[_excluded_at_or_below_-1].csv
 r2/                           <- r_squared alone, joined on `gene` (see "Fit quality")
   v11_log2_<tissue>_r2[_excluded_at_or_below_-1].csv
+worm/                         <- C. elegans, one table (see "Worm data")
+  worm_fourparam_excluded_at_or_below_-1.csv
 gene_major/                   <- the same rows re-oriented for the browser
   shard_NNNN.csv              <- 16 genes x all 54 tissues x both filters
 hist_major/                   <- just hist/hist_max, sharded the same way
@@ -496,6 +499,46 @@ they come from the GTEx sample attributes file.
 `right_truncated` requires **both** skew below the null band and `d_aic` past the
 calibrated threshold. Either alone is common noise.
 
+## Worm data (`worm/`, `stage_worm_table.py`)
+
+A second organism, not a 55th tissue. One *C. elegans* fourparam table,
+25,849 transcripts, `n_obs = 207` for all but a handful, produced by the same
+4-parameter fit over the same 40 bins — so every statistic column means exactly
+what it means for a GTEx tissue.
+
+```bash
+cd fourparam
+python stage_worm_table.py --source <the table as handed over>   # -> worm/
+```
+
+**It lives in `worm/`, deliberately not in `outputs/`.** Every script in the
+tissue pipeline globs `outputs/` for `*_fourparam*.csv`; dropping a second
+organism in there would sweep it into `build_gene_major.py`, the manifest's
+`tissues` list and `append_r2_column.py --all` as though it were a tissue.
+
+**Its schema differs by one column.** `gene` is a per-transcript id
+(`w233_K04G2.8a.1`), and an extra `wormbasegeneid` (`WBGene00000156`) sits
+between `gene` and `genename`. `genename` is *not* unique — 9,755 rows share a
+name with another, because isoforms of one gene carry it.
+
+**Excel had eaten eleven gene names.** `mar-1` … `mar-6`, `apr-1`, `jun-1`,
+`sep-1`, `oct-1`, `oct-2` are month abbreviations, and the table arrived with
+them as `2025-04-01 00:00:00` — 24 rows across those 11 names. `stage_worm_table.py`
+reverses it on the way in (month number → abbreviation, day → suffix, which is
+unambiguous) and prints every rewrite. Only `genename` is touched, so each one
+is checkable against the untouched `wormbasegeneid`: `WBGene00000156` is
+`apr-1`, `WBGene00004775` is `sep-1`. **Do not re-export this table through a
+spreadsheet** — it will happen again, and `apr-1` is not a gene to lose
+silently.
+
+> **No `r_squared` yet.** R² = 1 − SSR/TSS, and while SSR is in the table as
+> `sumsquarevalue`, TSS is not recoverable from any published column — it needs
+> the 40-bin histogram, hence the underlying expression matrix, which is not in
+> this repo (`data/` holds the 54 GTEx matrices only). Once the worm matrix is
+> here, `compute_r2.py` followed by `append_r2_column.py` fills the column and
+> the browser picks it up with no further change: `wormStatCols()` adds an `R²`
+> column exactly when the header has one, and the summary strip gains a median.
+
 ## Fit quality (`r2/`, `compute_r2.py`, `build_r2.py`)
 
 `r_squared` for **every** gene in all 54 excluded tables, joined on `gene`.
@@ -632,6 +675,18 @@ byte-identical to `extract_genes.py`.
   units, one on a fixed sigma axis (see "The two shape columns" below).
 - **Working set** — rows ticked on the first tab, accumulated across any number
   of separate queries, filterable, and exported as one CSV.
+- **Worm data** — the *C. elegans* table on its own tab: no tissue or gene
+  selection to make, so the whole 8 MB table is fetched on first open, then
+  filtered, sorted and exported in the page. It reuses `fittedCurveCell`,
+  `shapeCell`, `fmt` and `COMPACT_COLS` unchanged, and shares nothing else —
+  WormBase ids are not in `genes.tsv`, so there is no working set (its key is
+  `tissue|kind|ensembl-id`) and no gene page (every panel there is "this gene
+  across the other tissues"). Its R² is read from the table's own `r_squared`
+  column, not the `r2/` join, since there is no gene-major mirror to keep in
+  step. **The page turns green while this tab is open** — `data-view="worm"` on
+  `<html>` moves `--accent` and `--curve`, which is why the sparklines change
+  colour too. The block has to be repeated for all three theme states, and sits
+  after the theme blocks so equal-specificity selectors go the worm's way.
 
 ### Pasting a gene list
 

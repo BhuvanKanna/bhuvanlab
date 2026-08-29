@@ -119,6 +119,35 @@
     "available": true,
     "file": "overexpression_phenotypes.tsv"
   },
+  "worm": {
+    "available": true,
+    "base_url": "https://raw.githubusercontent.com/BhuvanKanna/bhuvanlab/main/fourparamsacrosstissues/worm",
+    "file": "worm_fourparam_excluded_at_or_below_-1.csv",
+    "n_genes": 25849,
+    "columns": [
+      "gene",
+      "wormbasegeneid",
+      "genename",
+      "y0",
+      "A",
+      "x0",
+      "w",
+      "sumsquarevalue",
+      "ti_fourparam_sigma_dist",
+      "truncationindex",
+      "min",
+      "max",
+      "mean",
+      "std",
+      "skew",
+      "kurt",
+      "right",
+      "maxheight",
+      "rightheight",
+      "n_obs",
+      "fit_success"
+    ]
+  },
   "qc": {
     "available": true,
     "base_url": "qc",

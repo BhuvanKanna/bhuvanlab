@@ -57,6 +57,36 @@
   --ceiling:#c0402b; --curve:#12657f; --ok:#2f6f4f;
 }
 
+/* ---------- worm view ----------
+   `data-view="worm"` is set on <html> whenever the Worm Data tab is open, and
+   moves only the accent family and `--curve`: the page stays the same
+   instrument, switched to another specimen, rather than turning into a second
+   site. Because the accent also paints the fitted-curve sparklines, a worm
+   table reads green all the way down.
+
+   It has to be stated four times for the same reason the base palette is —
+   the theme has three states (explicit dark, explicit light, and the system
+   default that stamps nothing) — and these blocks sit *after* the theme
+   blocks so equal-specificity selectors resolve in the worm view's favour.
+   `--ceiling` and `--ok` stay put: those are semantic, not decorative. */
+:root[data-view="worm"] {
+  --accent:#1d6b3c; --accent-ink:#ffffff; --accent-wash:#dcefe2; --curve:#1d6b3c;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-view="worm"]:not([data-theme="light"]) {
+    --accent:#5fc98b; --accent-ink:#06200f; --accent-wash:#153020; --curve:#5fc98b;
+  }
+}
+:root[data-view="worm"][data-theme="dark"] {
+  --accent:#5fc98b; --accent-ink:#06200f; --accent-wash:#153020; --curve:#5fc98b;
+}
+:root[data-view="worm"][data-theme="light"] {
+  --accent:#1d6b3c; --accent-ink:#ffffff; --accent-wash:#dcefe2; --curve:#1d6b3c;
+}
+/* The masthead paints its own dark ground rather than reading the palette, so
+   it needs saying explicitly or the header alone stays blue. */
+:root[data-view="worm"] .masthead { background: #08150e; border-bottom-color: #1b3a27; }
+
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
@@ -437,6 +467,24 @@ footer p { margin: 0 0 7px; max-width: 78ch; }
 .tabs button[aria-selected="true"] .count-pill { background: var(--accent); color: var(--accent-ink); }
 .tabpanel[hidden] { display: none; }
 
+/* ---------- worm summary strip ---------- */
+.wormstats {
+  display: flex; flex-wrap: wrap; gap: 0 30px; margin: 0;
+  padding: 14px 16px; border-bottom: 1px solid var(--rule-soft);
+  background: var(--sunken);
+}
+.wormstats div { padding: 2px 0; }
+.wormstats dt {
+  font-family: var(--mono); font-size: .6rem; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--muted); margin: 0 0 3px;
+}
+.wormstats dd {
+  margin: 0; font-family: var(--mono); font-size: .95rem; font-weight: 500;
+  font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.wormstats[hidden] { display: none; }
+.c-wid { font-family: var(--mono); font-size: .7rem; color: var(--muted); }
+
 /* ---------- tissue token input (mirrors the gene one) ---------- */
 .tissue-field { grid-column: 1 / -1; position: relative; }
 #tissueInput {
@@ -780,6 +828,8 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
     <button type="button" id="tabWorking" role="tab" aria-selected="false"
             aria-controls="panelWorking">Working set
       <span class="count-pill" id="wsCount">0</span></button>
+    <button type="button" id="tabWorm" role="tab" aria-selected="false"
+            aria-controls="panelWorm">Worm data</button>
   </div>
 
   <div class="tabpanel" id="panelSelect" role="tabpanel" aria-labelledby="tabSelect">
@@ -868,6 +918,35 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
       </div>
       <div class="banner" id="wsBanner" hidden></div>
       <div id="wsArea"></div>
+    </section>
+  </div>
+
+  <!-- C. elegans: one table, no tissues, its own identifiers. Kept as its own
+       panel rather than folded in as a 55th "tissue" because nothing joins —
+       WormBase ids are not in genes.tsv, and a cross-tissue gene page has no
+       meaning for a single-table organism. -->
+  <div class="tabpanel" id="panelWorm" role="tabpanel" aria-labelledby="tabWorm" hidden>
+    <section class="panel" aria-label="Worm fourparam table">
+      <div class="statusbar">
+        <span class="status-text" id="wormStatus">Worm table not loaded yet</span>
+        <span class="spacer"></span>
+        <input id="wormFilter" class="minifilter" type="text" autocomplete="off"
+               spellcheck="false" placeholder="Filter genes — aap-1, WBGene00000001…"
+               aria-label="Filter worm genes">
+        <button class="btn" id="wormCols" type="button" aria-pressed="false">All columns</button>
+        <button class="btn" id="wormDownload" type="button" disabled>Download CSV</button>
+      </div>
+      <div class="progress" id="wormProgress" hidden><i></i></div>
+      <dl class="wormstats" id="wormStats" hidden></dl>
+      <div id="wormArea"></div>
+      <div class="legend" id="wormLegend" hidden>
+        <span class="key"><span class="swatch f"></span> observed range, <code>min</code> to <code>x_max</code></span>
+        <span class="key"><span class="swatch o"></span> modelled below <code>min</code>, never observed</span>
+        <span class="key"><span class="swatch d"></span> censored beyond the ceiling</span>
+        <span class="key sep">Same fit, same columns, same two shape cells as the
+          human tables — one <em>C. elegans</em> dataset rather than 54 tissues,
+          so there is nothing to select and the whole table loads at once.</span>
+      </div>
     </section>
   </div>
 
@@ -988,7 +1067,11 @@ const SHORT_LABEL = {
   n_obs: "n",
   fit_success: "fit",
   [DIST_COL]: "class",
-  [R2_COL]: "R²"
+  [R2_COL]: "R²",
+  // The worm table carries R^2 as a real column rather than a join, so the
+  // label has to exist under its own name too.
+  r_squared: "R²",
+  wormbasegeneid: "WormBase id"
 };
 
 // Columns where more decimal places actually matter.
@@ -2696,6 +2779,10 @@ function openDetail(gi, tissue, opts) {
   $("panelSelect").hidden = true;
   $("panelWorking").hidden = true;
   $("panelDetail").hidden = false;
+  /* The gene page is human-only, so it never inherits the worm palette even
+     when it was opened from a tab that had it. */
+  delete document.documentElement.dataset.view;
+  $("panelWorm").hidden = true;
   $("detailBackLabel").textContent =
     detailReturn === "working" ? "Back to working set" : "Back to gene selection";
 
@@ -3657,6 +3744,297 @@ function renderPhenoPanel() {
 }
 
 /* =====================================================================
+   Worm data (C. elegans)
+
+   One table, no tissues. The fit is the same 4-parameter Gaussian over the
+   same 40 histogram bins, so every statistic column means exactly what it
+   means for a GTEx tissue and `fittedCurveCell` / `shapeCell` / `fmt` are
+   reused unchanged.
+
+   Everything else is separate on purpose. The identifiers are WormBase, which
+   `genes.tsv` has never heard of, so there is no shared gene index, no working
+   set (a set keyed `tissue|kind|ensembl-id` cannot hold a worm row) and no
+   gene page (its panels are all "this gene across the other tissues", which
+   does not exist for a single-table organism). Folding the worm in as a 55th
+   tissue would have made all three of those quietly wrong.
+
+   R² is read from the table's own `r_squared` column here rather than joined
+   from `r2/` as on the human side: there is no gene-major mirror to keep in
+   step, so the column in the file is the single source. A table without that
+   column simply shows one fewer column — see `wormStatCols`.
+   ===================================================================== */
+let wormTable = null;            // {header, colIdx, rows} once fetched
+let wormPending = null;          // in-flight fetch, so a double click fetches once
+let wormQuery = "";
+let wormSortCol = null, wormSortDir = 1;
+let wormAllCols = false;
+
+/* Identity columns are drawn in the gene cell, never as statistics. */
+const WORM_ID_COLS = ["gene", "wormbasegeneid", "genename"];
+
+function wormAvailable() { return !!(manifest.worm && manifest.worm.available); }
+
+function setWormStatus(html) { $("wormStatus").innerHTML = html; }
+
+async function getWormTable() {
+  if (wormTable) return wormTable;
+  if (wormPending) return wormPending;
+
+  const w = manifest.worm;
+  $("wormProgress").hidden = false;
+  setWormStatus("Fetching the worm table…");
+
+  wormPending = (async () => {
+    try {
+      const text = await fetchTextWithProgress(`${w.base_url}/${w.file}`, (b) =>
+        setWormStatus(`Fetching the worm table — <strong>${(b / 1048576).toFixed(1)} MB</strong>`));
+      const lines = text.split("\n");
+      const header = lines[0].replace(/\r$/, "").split(",").map((h) => h.trim());
+      const colIdx = {};
+      header.forEach((h, i) => { colIdx[h] = i; });
+      /* Parsed eagerly, unlike the human tables. Those are indexed lazily
+         because only the handful of selected genes is ever read out of a
+         74,628-row table; here the whole table *is* the view -- it is sorted
+         and filtered in full -- so the split has to happen anyway. */
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].replace(/\r$/, "");
+        if (line) rows.push(line.split(","));
+      }
+      wormTable = { header, colIdx, rows };
+      return wormTable;
+    } finally {
+      wormPending = null;
+      $("wormProgress").hidden = true;
+    }
+  })();
+  return wormPending;
+}
+
+/* Same shape as visibleStatCols(), minus the virtual columns: the worm table
+   has no qc/ classes, and its R² is a column of its own rather than a join. */
+function wormStatCols(header, all) {
+  const skip = new Set(WORM_ID_COLS.concat("hist", "hist_max"));
+  const stats = header.filter((c) => !skip.has(c));
+  const compact = COMPACT_COLS.filter((c) => stats.includes(c));
+  if (stats.includes("r_squared")) compact.push("r_squared");
+  if (!all) return compact;
+  const shown = new Set(compact);
+  return compact.concat(stats.filter((c) => !shown.has(c)));
+}
+
+/* Any token matching any identifier keeps the row, so a pasted list works the
+   way the gene box does -- and a bare substring still behaves the way a filter
+   box is expected to. */
+function wormMatches(query) {
+  const t = wormTable;
+  if (!query.trim()) return t.rows;
+  const tokens = query.toUpperCase().split(LIST_SEPARATORS)
+    .map((x) => x.trim()).filter(Boolean);
+  if (!tokens.length) return t.rows;
+  const idx = WORM_ID_COLS.map((c) => t.colIdx[c]).filter((i) => i !== undefined);
+  return t.rows.filter((f) => {
+    for (const i of idx) {
+      const v = (f[i] || "").toUpperCase();
+      for (const tok of tokens) if (v.includes(tok)) return true;
+    }
+    return false;
+  });
+}
+
+function wormSort(rows) {
+  const t = wormTable, out = rows.slice(), dir = wormSortDir;
+  const name = (f) => (f[t.colIdx.genename] || "") + " " + (f[t.colIdx.gene] || "");
+  if (wormSortCol === "__gene" || !wormSortCol) {
+    out.sort((a, b) => name(a).localeCompare(name(b)) * (wormSortCol ? dir : 1));
+    return out;
+  }
+  const ci = t.colIdx[wormSortCol];
+  out.sort((a, b) => {
+    const na = Number(a[ci]), nb = Number(b[ci]);
+    const fa = Number.isFinite(na), fb = Number.isFinite(nb);
+    // Blank metrics on a failed fit sink whichever way the sort points.
+    if (fa && fb) return (na - nb) * dir || name(a).localeCompare(name(b));
+    if (fa !== fb) return fa ? -1 : 1;
+    return String(a[ci]) < String(b[ci]) ? -dir
+         : String(a[ci]) > String(b[ci]) ? dir
+         : name(a).localeCompare(name(b));
+  });
+  return out;
+}
+
+function wormMedian(rows, col) {
+  const ci = wormTable.colIdx[col];
+  if (ci === undefined) return null;
+  const v = [];
+  for (const f of rows) {
+    const x = Number(f[ci]);
+    if (Number.isFinite(x)) v.push(x);
+  }
+  if (!v.length) return null;
+  v.sort((a, b) => a - b);
+  return median(v);
+}
+
+function renderWormStats(rows) {
+  const el = $("wormStats");
+  const ci = wormTable.colIdx.fit_success;
+  const fitted = rows.filter((f) =>
+    String(f[ci]).trim().toLowerCase() === "true").length;
+
+  const cells = [
+    ["Genes", rows.length.toLocaleString()],
+    ["Fitted", fitted.toLocaleString()],
+    ["Median n", wormMedian(rows, "n_obs")],
+    ["Median TI", wormMedian(rows, "truncationindex")],
+    ["Median σ-dist", wormMedian(rows, "ti_fourparam_sigma_dist")],
+    ["Median R²", wormMedian(rows, "r_squared")]
+  ];
+  el.innerHTML = cells
+    // A statistic with nothing behind it is left out rather than shown as a
+    // dash: R² is simply absent until the column is in the file.
+    .filter(([, v]) => v !== null && v !== undefined)
+    .map(([k, v]) => {
+      const txt = typeof v === "number"
+        ? (k === "Median n" ? String(Math.round(v)) : v.toFixed(3))
+        : v;
+      return `<div><dt>${escapeHtml(k)}</dt><dd>${txt}</dd></div>`;
+    }).join("");
+  el.hidden = false;
+}
+
+function renderWorm() {
+  const area = $("wormArea");
+
+  if (!wormAvailable()) {
+    area.innerHTML = `<div class="note"><h2>No worm table published</h2>
+      <p>This build's <code>manifest.json</code> has no <code>worm</code> block,
+      so there is nothing to show here.</p></div>`;
+    $("wormStats").hidden = true;
+    $("wormLegend").hidden = true;
+    return;
+  }
+  if (!wormTable) {
+    area.innerHTML = `<div class="note"><h2>Loading the worm table…</h2>
+      <p>One <em>C. elegans</em> table, fetched whole — there is nothing to
+      select first.</p></div>`;
+    return;
+  }
+
+  const t = wormTable;
+  const cols = wormStatCols(t.header, wormAllCols);
+  const rows = wormSort(wormMatches(wormQuery));
+  const shown = rows.slice(0, RENDER_LIMIT);
+  renderWormStats(rows);
+
+  if (!rows.length) {
+    area.innerHTML = `<div class="note"><h2>No genes match</h2>
+      <p>Nothing in the worm table matches
+      “${escapeHtml(wormQuery)}”. Try a sequence name
+      (<code>Y110A7A.10.1</code>), a gene name (<code>aap-1</code>) or a
+      WormBase id.</p></div>`;
+    $("wormLegend").hidden = true;
+    $("wormDownload").disabled = true;
+    setWormStatus(`<strong>0</strong> of ${t.rows.length.toLocaleString()} genes`);
+    return;
+  }
+
+  const sortableHead = (c, label, cls) => {
+    const arrow = wormSortCol === c
+      ? `<span class="arrow">${wormSortDir > 0 ? "▲" : "▼"}</span>` : "";
+    return `<th class="${cls || ""}" data-col="${escapeHtml(c)}" title="${escapeHtml(c.replace(/^__/, ""))}">${escapeHtml(label)}${arrow}</th>`;
+  };
+
+  const head =
+    sortableHead("__gene", "Gene", "col-gene tl") +
+    '<th class="tl nosort">Fitted curve<span class="sub">log2 units, own range</span></th>' +
+    '<th class="tl nosort">Curve coverage<span class="sub">σ from peak, fixed axis</span></th>' +
+    cols.map((c) => sortableHead(c, SHORT_LABEL[c] || c)).join("");
+
+  const body = shown.map((f) => {
+    const ok = String(f[t.colIdx.fit_success]).trim().toLowerCase() === "true";
+    const cells = cols.map((c) => {
+      if (c === "fit_success") {
+        return ok ? '<td><span style="color:var(--ok)">ok</span></td>'
+                  : '<td><span class="badge-fail">no fit</span></td>';
+      }
+      if (c === "r_squared") {
+        const v = Number(f[t.colIdx.r_squared]);
+        return Number.isFinite(v) ? `<td>${v.toFixed(3)}</td>`
+          : '<td><span class="nil" title="No R² for this gene">—</span></td>';
+      }
+      const v = fmt(f[t.colIdx[c]], c);
+      return `<td>${v === null ? '<span class="nil">—</span>' : escapeHtml(v)}</td>`;
+    }).join("");
+
+    const wb = t.colIdx.wormbasegeneid === undefined
+      ? "" : (f[t.colIdx.wormbasegeneid] || "");
+    return `<tr>
+      <td class="col-gene">
+        <div class="c-sym">${escapeHtml(f[t.colIdx.genename] || "—")}</div>
+        <div class="c-id">${escapeHtml(f[t.colIdx.gene] || "")}</div>
+        ${wb ? `<div class="c-wid">${escapeHtml(wb)}</div>` : ""}
+      </td>
+      <td class="c-shape">${fittedCurveCell(f, t.colIdx)}</td>
+      <td class="c-shape">${shapeCell(f, t.colIdx)}</td>
+      ${cells}
+    </tr>`;
+  }).join("");
+
+  const capped = rows.length > shown.length
+    ? `<div class="banner">Showing the first <strong>${RENDER_LIMIT.toLocaleString()}</strong>
+       of <strong>${rows.length.toLocaleString()}</strong> genes. The CSV export still
+       covers all ${rows.length.toLocaleString()}.</div>`
+    : "";
+
+  area.innerHTML = capped +
+    `<div class="tablewrap"><table class="t-sel"><thead><tr>${head}</tr></thead>` +
+    `<tbody>${body}</tbody></table></div>`;
+
+  area.querySelectorAll("th[data-col]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const c = th.dataset.col;
+      if (wormSortCol === c) wormSortDir = -wormSortDir;
+      else { wormSortCol = c; wormSortDir = 1; }
+      renderWorm();
+    });
+  });
+
+  $("wormLegend").hidden = false;
+  $("wormDownload").disabled = false;
+  const all = t.rows.length;
+  setWormStatus(rows.length === all
+    ? `<strong>${all.toLocaleString()}</strong> genes · one <em>C. elegans</em> table`
+    : `<strong>${rows.length.toLocaleString()}</strong> of ${all.toLocaleString()} genes`);
+}
+
+/* Every filtered row and every column of the source table -- the same contract
+   as the other two exports, where the compact/all toggle is about reading the
+   screen and never about what leaves the page. */
+function downloadWormCsv() {
+  if (!wormTable) return;
+  const rows = wormSort(wormMatches(wormQuery));
+  const lines = [wormTable.header.join(",")];
+  for (const f of rows) lines.push(f.map(csvCell).join(","));
+  saveCsv(lines, `worm_fourparam_${rows.length}genes_${stamp()}.csv`);
+}
+
+async function openWormTab() {
+  renderWorm();
+  if (!wormAvailable() || wormTable) return;
+  try {
+    await getWormTable();
+  } catch (err) {
+    $("wormArea").innerHTML =
+      `<div class="note error"><h2>Could not load the worm table</h2>
+       <p>${escapeHtml(String(err.message || err))}</p></div>`;
+    setWormStatus('<strong style="color:var(--ceiling)">Worm table failed to load</strong>');
+    return;
+  }
+  renderWorm();
+}
+
+/* =====================================================================
    Shareable URL state
    ===================================================================== */
 let lastWrittenHash = "";
@@ -3715,11 +4093,20 @@ function readHash() {
    Tabs
    ===================================================================== */
 function showTab(which) {
-  const onSelect = which === "select";
-  $("tabSelect").setAttribute("aria-selected", onSelect);
-  $("tabWorking").setAttribute("aria-selected", !onSelect);
-  $("panelSelect").hidden = !onSelect;
-  $("panelWorking").hidden = onSelect;
+  const tabs = { select: "panelSelect", working: "panelWorking", worm: "panelWorm" };
+  const buttons = { select: "tabSelect", working: "tabWorking", worm: "tabWorm" };
+  if (!tabs[which]) which = "select";
+
+  for (const [id, panel] of Object.entries(tabs)) {
+    $(panel).hidden = id !== which;
+    $(buttons[id]).setAttribute("aria-selected", id === which);
+  }
+  /* The whole page turns green on the worm tab -- see the `data-view` block in
+     the stylesheet. Set on <html> rather than on the panel because the
+     masthead and the tab strip sit outside it. */
+  if (which === "worm") document.documentElement.dataset.view = "worm";
+  else delete document.documentElement.dataset.view;
+
   // Switching tabs while a gene page is open leaves it; the tab bar is hidden
   // then, so this only fires from closeDetail() or a keyboard shortcut.
   if (detailGI !== null && !$("panelDetail").hidden) {
@@ -3727,7 +4114,8 @@ function showTab(which) {
     $("tabBar").hidden = false;
     detailGI = null;
   }
-  if (!onSelect) renderWorkingSet();
+  if (which === "working") renderWorkingSet();
+  if (which === "worm") openWormTab();
 }
 
 /* =====================================================================
@@ -3785,6 +4173,19 @@ async function boot() {
   // --- tabs ---
   $("tabSelect").addEventListener("click", () => showTab("select"));
   $("tabWorking").addEventListener("click", () => showTab("working"));
+  $("tabWorm").addEventListener("click", () => showTab("worm"));
+
+  // --- worm tab ---
+  $("wormFilter").addEventListener("input", (e) => {
+    wormQuery = e.target.value;
+    if (wormTable) renderWorm();
+  });
+  $("wormCols").addEventListener("click", () => {
+    wormAllCols = !wormAllCols;
+    $("wormCols").setAttribute("aria-pressed", wormAllCols);
+    if (wormTable) renderWorm();
+  });
+  $("wormDownload").addEventListener("click", downloadWormCsv);
 
   // --- tissue box ---
   $("tissuebox").addEventListener("click", () => $("tissueInput").focus());
