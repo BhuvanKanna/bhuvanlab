@@ -146,7 +146,7 @@ def render_one(tissue: str, values, donors: int, dest: Path, dpi: int) -> str:
              f"IQR {q1:.3f}–{q3:.3f}     below 0: {(values < 0).mean():.2%}",
              color=INK_SOFT, fontsize=8.5, va="top")
     note = ("R² = 1 − SSR/TSS over the 40 fit bins. Not comparable across "
-            "tissues — median R² tracks donor count at ρ = 0.975.")
+            "tissues; median R² tracks donor count at ρ = 0.975.")
     if n_clipped:
         note += f"\n{n_clipped:,} value(s) outside [0, 1] not drawn."
     fig.text(0.093, 0.062, note, color=INK_FAINT, fontsize=7.5,
@@ -201,7 +201,7 @@ def render_overview(rows, dest: Path, dpi: int) -> str:
              "rust rule = median",
              fontsize=9, color=INK_FAINT, ha="left")
     fig.text(0.5, 0.011,
-             "r_squared — 1 − SSR/TSS over the 40 fit bins. Rises with donor "
+             "r_squared:  1 − SSR/TSS over the 40 fit bins. Rises with donor "
              "count (ρ = 0.975), so read down the panels, not across.",
              fontsize=10, color=INK_SOFT, ha="center")
 
