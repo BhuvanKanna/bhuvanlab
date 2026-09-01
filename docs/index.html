@@ -245,6 +245,32 @@ select:hover { border-color: var(--accent); }
 .linkbtn:disabled { color: var(--muted); cursor: default; text-decoration: none; }
 .quick .sep { color: var(--rule); }
 
+/* Control-gene sets. One button per published roster, coloured by what the set
+   is FOR rather than by hue for its own sake: a positive set should come out
+   truncated if the hypothesis holds, a negative set should not. The polarity
+   is spelled out in the +/- glyph and in the title, never carried by colour
+   alone. */
+.setrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin-top: 10px; }
+.setrow-label {
+  font-family: var(--mono); font-size: .68rem; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted);
+}
+.setrow-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.setbtn {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  border: 1px solid var(--rule); border-radius: var(--r);
+  background: var(--surface); color: var(--ink);
+  padding: 4px 9px; cursor: pointer;
+  font-family: var(--sans); font-size: .8rem; line-height: 1.3;
+}
+.setbtn:hover { border-color: var(--accent); background: var(--accent-wash); }
+.setbtn:disabled { opacity: .55; cursor: progress; }
+.setbtn .pol { font-family: var(--mono); font-weight: 700; font-size: .82rem; }
+.setbtn.pos .pol { color: var(--ceiling); }
+.setbtn.neg .pol { color: var(--ok); }
+.setbtn .n { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .74rem; }
+.setrow-note { color: var(--muted); font-size: .76rem; }
+
 /* Unrecognised tokens from a pasted list. Rust ink plus a rule, so it reads as
    a caveat rather than a failure -- the recognised genes were still added. */
 .genewarn {
@@ -866,6 +892,11 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
             <button class="linkbtn" id="clearGenes" type="button" disabled>Clear genes</button>
             <span class="sep">·</span>
             <button class="linkbtn" id="copyLink" type="button">Copy link to this view</button>
+          </div>
+          <div class="setrow" id="setRow" hidden>
+            <span class="setrow-label">Control sets</span>
+            <span class="setrow-btns" id="setButtons"></span>
+            <span class="setrow-note">each adds to the genes already chosen</span>
           </div>
           <div class="genewarn" id="geneWarn" hidden role="status" aria-live="polite"></div>
         </div>
@@ -2591,6 +2622,84 @@ function loadExampleSet() {
 }
 
 /* =====================================================================
+   Control-gene sets (manifest.genesets, files under docs/genelists/)
+
+   One button per published roster. Each is a plain one-token-per-line file,
+   so a click is exactly a paste: it goes through addGeneList(), which resolves
+   symbol-first then version-stripped id, adds what it recognises, and reports
+   what it did not. That keeps a set identical in the browser, in
+   extract_genes.py, and in the control-gene analysis, and it means the sets
+   need no resolution code of their own.
+
+   Adding rather than replacing is the point. The interesting query is usually
+   two sets at once -- positives against negatives -- and "Clear genes" is
+   right there when you want to start over.
+
+   Fetched on click, not at boot: the four sets are ~17 KB together and most
+   sessions never touch them.
+   ===================================================================== */
+const genesetCache = new Map();
+
+async function loadGeneSet(spec, btn) {
+  const label = btn.querySelector(".label");
+  const original = label.textContent;
+  btn.disabled = true;
+  label.textContent = "loading…";
+  try {
+    let text = genesetCache.get(spec.id);
+    if (text === undefined) {
+      const base = manifest.genesets.base_url;
+      const res = await fetch(`${base}/${spec.file}`);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      text = await res.text();
+      genesetCache.set(spec.id, text);
+    }
+    addGeneList(text);
+  } catch (err) {
+    const box = $("geneWarn");
+    if (box) {
+      box.innerHTML =
+        `<b>Could not load ${escapeHtml(spec.label)}</b> · ` +
+        `${escapeHtml(String(err.message || err))} · nothing was added.`;
+      box.hidden = false;
+    }
+  } finally {
+    label.textContent = original;
+    btn.disabled = false;
+  }
+}
+
+function renderGeneSetButtons() {
+  const row = $("setRow"), box = $("setButtons");
+  if (!row || !box) return;
+  const block = manifest.genesets;
+  if (!block || !block.available || !Array.isArray(block.sets) || !block.sets.length) {
+    row.hidden = true;
+    return;
+  }
+  box.innerHTML = "";
+  for (const spec of block.sets) {
+    const pos = spec.polarity === "positive";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `setbtn ${pos ? "pos" : "neg"}`;
+    btn.title = `${spec.label} · ${pos ? "positive" : "negative"} control · ` +
+                `${spec.note} · ${spec.n_genes.toLocaleString()} of ` +
+                `${spec.n_tokens.toLocaleString()} tokens are in GTEx v11`;
+    btn.innerHTML =
+      `<span class="pol" aria-hidden="true">${pos ? "+" : "−"}</span>` +
+      `<span class="label">${escapeHtml(spec.label)}</span>` +
+      `<span class="n">${spec.n_genes.toLocaleString()}</span>`;
+    btn.setAttribute("aria-label",
+      `Add the ${spec.label} ${pos ? "positive" : "negative"} control set, ` +
+      `${spec.n_genes} genes`);
+    btn.addEventListener("click", () => loadGeneSet(spec, btn));
+    box.appendChild(btn);
+  }
+  row.hidden = false;
+}
+
+/* =====================================================================
    CSV export
 
    Both exports carry the FULL statistic set regardless of the compact/all
@@ -4313,6 +4422,7 @@ async function boot() {
     renderChips(); markStale();
   });
   $("loadExample").addEventListener("click", loadExampleSet);
+  renderGeneSetButtons();
   $("download").addEventListener("click", downloadCsv);
 
   $("toggleCols").addEventListener("click", () => {

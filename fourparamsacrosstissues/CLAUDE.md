@@ -715,6 +715,52 @@ Tokens are escaped before display — they are untrusted text pasted by the user
 A single token with no separator is left entirely alone and still goes through
 the type-ahead, so the old one-at-a-time flow is unchanged.
 
+### Control-set buttons (`docs/genelists/`, `manifest.genesets`)
+
+A **Control sets** row under the gene box carries one button per published
+roster, the four sets the control-gene analysis scores against:
+
+| button | polarity | genes in GTEx v11 |
+|---|---|---|
+| pTriplo > 0.94 | positive | 1,385 of 1,412 tokens |
+| DECIPHER dominant | positive | 146 of 147 |
+| Duplication-tolerant | negative | 630 of 676 |
+| Olfactory receptors | negative | 384 of 392 |
+
+**A click is exactly a paste.** The file is fetched and handed to
+`addGeneList()`, the same function the paste box uses, so a set resolves
+identically in the browser, in `extract_genes.py` and in
+`control_gene_analysis/`, and it reports unrecognised tokens the same way. The
+sets need no resolution code of their own, and there is no second place for the
+matching rules to drift.
+
+**They add rather than replace**, because the query that matters is usually two
+sets at once — positives against negatives — and *Clear genes* is right there
+when you want to start over. This is where it differs from *Load the ADH / ALDH
+set*, which replaces the selection and expands `ALDH*` against the live index at
+runtime. That is also why `adh_aldh_plus.txt` is **not** published as a button:
+as a literal roster it resolves to 12 genes instead of 38.
+
+**Source of truth is `genelists/`**, and `build_gui_data.py` copies each set
+into `docs/genelists/` (GitHub Pages only serves what is under `docs/`),
+stripping `#` comments on the way so the published file is clean
+one-token-per-line. It also resolves every token against the gene index and
+publishes the count, so a button can state its size before anyone clicks it and
+a set that quietly stops resolving is loud on the next rebuild.
+
+To add a set: drop the file in `genelists/`, add an entry to `GENESETS` in
+`build_gui_data.py`, re-run it. The page builds the row from
+`manifest.genesets` and needs no edit.
+
+**Files are fetched on click, not at boot** — the four are ~17 KB together and
+most sessions never touch them — then cached for the session.
+
+> One consequence worth knowing: the hash carries the full gene list, so
+> clicking pTriplo makes *Copy link to this view* produce a ~22 KB URL. It is
+> valid and it restores exactly, but it is not pasteable anywhere pretty. The
+> fix, if it ever matters, is to carry `sets=<id>` in the hash and expand it on
+> boot rather than listing 1,385 ids.
+
 ### The gene page
 
 Clicking a gene name in **either** table opens one gene, everywhere it was
@@ -946,12 +992,20 @@ Pages publishes **only `docs/`** (branch `main`, folder `/docs`). That matters:
 the Pages site size limit is 1 GB and `outputs/` alone is 2.05 GB, so publishing
 the whole repo would fail.
 
-Regenerate its two static inputs after adding tissues or changing columns:
+Regenerate its static inputs after adding tissues or changing columns:
 
 ```bash
 cd fourparam
-python build_gui_data.py     # writes ../../docs/manifest.json and ../../docs/genes.tsv
+python build_gui_data.py --reference uterus
+# writes ../../docs/manifest.json, ../../docs/genes.tsv and ../../docs/genelists/
 ```
+
+**Pass `--reference` a tissue whose table actually carries every column.**
+`manifest.columns` is read off one reference table, and the default is the
+alphabetically first (`adipose_subcutaneous`), which does not have `hist` /
+`hist_max` yet. Rebuilding without `--reference` silently publishes a 20-column
+manifest and the gene page loses its histogram. `tests/test_column_lists_agree.py`
+catches it.
 
 `genes.tsv` is built from a single table because the gene set is byte-identical
 across all 108; `build_gui_data.py` verifies that and aborts if it ever stops

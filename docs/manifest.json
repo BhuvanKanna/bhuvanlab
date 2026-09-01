@@ -1,11 +1,11 @@
 {
-  "generated_utc": "2026-08-10T18:53:14Z",
+  "generated_utc": "2026-09-01T18:01:26Z",
   "data_base_url": "https://raw.githubusercontent.com/BhuvanKanna/bhuvanlab/main/fourparamsacrosstissues/outputs",
   "file_prefix": "v11_log2_",
   "table_kinds": [
     {
       "id": "excluded",
-      "label": "Excluded ≤ −1 (drops zero-expression samples)",
+      "label": "Excluded \u2264 \u22121 (drops zero-expression samples)",
       "suffix": "_fourparam_excluded_at_or_below_-1.csv"
     }
   ],
@@ -118,6 +118,48 @@
   "phenotypes": {
     "available": true,
     "file": "overexpression_phenotypes.tsv"
+  },
+  "genesets": {
+    "available": true,
+    "base_url": "genelists",
+    "sets": [
+      {
+        "id": "pos_pTriplo",
+        "file": "pos_pTriplo.txt",
+        "label": "pTriplo > 0.94",
+        "polarity": "positive",
+        "note": "triplication-sensitive (Collins et al. 2022)",
+        "n_tokens": 1412,
+        "n_genes": 1385
+      },
+      {
+        "id": "pos_decipher",
+        "file": "pos_decipher.txt",
+        "label": "DECIPHER dominant",
+        "polarity": "positive",
+        "note": "dominant-mechanism disease genes",
+        "n_tokens": 147,
+        "n_genes": 146
+      },
+      {
+        "id": "neg_dup_tolerant",
+        "file": "neg_dup_tolerant.txt",
+        "label": "Duplication-tolerant",
+        "polarity": "negative",
+        "note": "tolerated as an extra copy in healthy people",
+        "n_tokens": 676,
+        "n_genes": 630
+      },
+      {
+        "id": "neg_olfactory",
+        "file": "neg_olfactory.txt",
+        "label": "Olfactory receptors",
+        "polarity": "negative",
+        "note": "the cleanest negative control there is",
+        "n_tokens": 392,
+        "n_genes": 384
+      }
+    ]
   },
   "worm": {
     "available": true,

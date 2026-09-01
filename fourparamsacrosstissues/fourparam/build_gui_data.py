@@ -58,6 +58,7 @@ HIST_MAJOR_BASE = f"{RAW_BASE}/{REPO_SUBDIR}/hist_major"
 # C. elegans. Its own directory rather than outputs/, so the tissue pipeline's
 # `*_fourparam*.csv` globs cannot sweep a second organism into a GTEx run.
 DEFAULT_WORM = HERE.parent / "worm"
+DEFAULT_GENELISTS = HERE.parent / "genelists"
 WORM_BASE = f"{RAW_BASE}/{REPO_SUBDIR}/worm"
 WORM_FILE = "worm_fourparam_excluded_at_or_below_-1.csv"
 
@@ -70,6 +71,94 @@ PHENOTYPES_FILE = "overexpression_phenotypes.tsv"
 # Manifest blocks owned by another script, which patches manifest.json in place.
 # This script rewrites the file wholesale and must carry these forward verbatim.
 PATCHED_BLOCKS = ("qc", "r2")
+
+
+# Reusable gene sets published beside the page, one token per line, so the
+# browser can load a whole roster with one button instead of a paste.
+#
+# `genelists/` is the source of truth and the same files feed
+# `extract_genes.py --genes-file`, so a set is identical at the CLI and in the
+# GUI. They are copied into docs/ rather than linked because GitHub Pages only
+# serves what is under docs/.
+#
+# `polarity` is what the control sets are FOR: positive sets should come out
+# truncated if the hypothesis holds, negative sets should not. The browser
+# colours the buttons by it.
+GENESETS_DIR = "genelists"
+GENESETS = [
+    {"id": "pos_pTriplo",
+     "file": "pos_pTriplo.txt",
+     "label": "pTriplo > 0.94",
+     "polarity": "positive",
+     "note": "triplication-sensitive (Collins et al. 2022)"},
+    {"id": "pos_decipher",
+     "file": "pos_decipher.txt",
+     "label": "DECIPHER dominant",
+     "polarity": "positive",
+     "note": "dominant-mechanism disease genes"},
+    {"id": "neg_dup_tolerant",
+     "file": "neg_dup_tolerant.txt",
+     "label": "Duplication-tolerant",
+     "polarity": "negative",
+     "note": "tolerated as an extra copy in healthy people"},
+    {"id": "neg_olfactory",
+     "file": "neg_olfactory.txt",
+     "label": "Olfactory receptors",
+     "polarity": "negative",
+     "note": "the cleanest negative control there is"},
+]
+
+# `adh_aldh_plus.txt` is deliberately NOT in that list. It carries `#` comments
+# and an unexpanded `ALDH*` glob, and the page already has its own button that
+# expands that glob against the live index at runtime. Publishing it here as a
+# literal roster would resolve to 12 genes instead of 38.
+
+
+def geneset_block(src_dir: Path, docs: Path, df) -> dict:
+    """Copy each set into docs/ and count how many tokens the index resolves.
+
+    Resolution mirrors the browser and extract_genes.py: symbol first, then
+    Ensembl id with the version suffix stripped. The count is published so a
+    button can state its size before anyone clicks it, and so a set that
+    silently stops resolving is loud on the next rebuild.
+
+    Globs are deliberately NOT expanded. A published set is an exact roster,
+    and the browser reports an unexpanded `ALDH*` as unrecognised rather than
+    quietly turning it into 27 chips.
+    """
+    by_symbol = {s.upper() for s in df["genename"] if s}
+    by_id = {g.split(".")[0].upper() for g in df["gene"] if g}
+
+    out_dir = docs / GENESETS_DIR
+    sets = []
+    for spec in GENESETS:
+        src = src_dir / spec["file"]
+        if not src.is_file():
+            print(f"  WARNING: gene set {spec['id']} not found at {src} - "
+                  f"skipped", file=sys.stderr)
+            continue
+        # Strip `#` comments, whole-line and trailing, so a source file written
+        # for extract_genes.py publishes as clean one-token-per-line.
+        tokens = []
+        for line in src.read_text(encoding="utf-8").splitlines():
+            tok = line.split("#", 1)[0].strip()
+            if tok:
+                tokens.append(tok)
+        resolved = sum(1 for t in tokens
+                       if t.upper() in by_symbol
+                       or t.split(".")[0].upper() in by_id)
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / spec["file"]).write_text("\n".join(tokens) + "\n",
+                                            encoding="utf-8", newline="\n")
+
+        sets.append({**spec, "n_tokens": len(tokens), "n_genes": resolved})
+        miss = len(tokens) - resolved
+        print(f"  {spec['id']:18s} {len(tokens):5d} tokens -> {resolved:5d} "
+              f"in GTEx v11" + (f", {miss} not found" if miss else ""),
+              file=sys.stderr)
+
+    return {"available": bool(sets), "base_url": GENESETS_DIR, "sets": sets}
 
 
 def gene_column_digest(path: Path) -> str:
@@ -148,6 +237,10 @@ def main(argv=None) -> int:
                     help="Directory of histogram shards (default: ../hist_major).")
     ap.add_argument("--worm", type=Path, default=DEFAULT_WORM,
                     help="Directory holding the C. elegans table (default: ../worm).")
+    ap.add_argument("--genelists", type=Path, default=DEFAULT_GENELISTS,
+                    help="Directory of reusable gene sets (default: ../genelists). "
+                         "Each set named in GENESETS is copied into docs/ and "
+                         "indexed in the manifest.")
     ap.add_argument("--reference", type=str, default=None,
                    help="Tissue whose raw table supplies manifest.columns "
                         "(default: first alphabetically). During a partial "
@@ -247,6 +340,10 @@ def main(argv=None) -> int:
     print(f"Wrote {genes_path.name}: {len(df):,} genes, {size_kb:,.0f} KB "
           f"(id, symbol, shard)", file=sys.stderr)
 
+    print("\nGene sets      : published to "
+          f"{(args.docs / GENESETS_DIR).name}/", file=sys.stderr)
+    genesets = geneset_block(args.genelists, args.docs, df)
+
     # ---- manifest -----------------------------------------------------------
     columns = list(pd.read_csv(reference, nrows=0).columns)
     # `r_squared` is a real last column of every excluded table (appended by
@@ -323,6 +420,8 @@ def main(argv=None) -> int:
             "available": (args.docs / PHENOTYPES_FILE).is_file(),
             "file": PHENOTYPES_FILE,
         },
+        # Reusable gene sets, one button each in the browser. See geneset_block().
+        "genesets": genesets,
         # C. elegans, read by its own tab. See worm_block().
         "worm": worm_block(args.worm),
     }

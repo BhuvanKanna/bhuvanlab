@@ -23,6 +23,16 @@ Two tabs:
 - **Working set** — everything ticked so far, gathered across as many separate
   queries as you like, filterable and exportable to CSV.
 
+**One button per control-gene set.** Under the gene box, a **Control sets** row
+loads any of the four rosters the control-gene analysis scores against —
+`pTriplo > 0.94` (1,385 genes) and `DECIPHER dominant` (146) as positives,
+`Duplication-tolerant` (630) and `Olfactory receptors` (384) as negatives. A
+click is exactly a paste: the same resolver, the same "N not recognised"
+report, and the sets **add** to whatever is already chosen, so you can put
+positives and negatives on screen together and sort by `truncationindex`. The
+lists live in [`genelists/`](fourparamsacrosstissues/genelists/) and are the
+same files `extract_genes.py --genes-file` reads.
+
 **Click any gene name** in either table to open that gene on its own page: its
 donor histogram in the tissue you were looking at — 40 real bins, drawn as soon
 as the page opens, because clicking already named the gene, the tissue and the
@@ -164,8 +174,9 @@ and `ALDH*`. That resolves to **38 genes**, giving 38 × 54 tissues × 2 tables 
 README.md                     <- this file
 docs/                         <- the GitHub Pages site (the Truncation Browser)
   index.html                  <- the whole GUI, self-contained
-  manifest.json               <- tissue list + column list
+  manifest.json               <- tissue list + column list + gene-set index
   genes.tsv                   <- gene index for type-ahead
+  genelists/                  <- the four control sets, one button each
   overexpression_phenotypes.tsv <- 51 curated over-expression driver genes
   qc/                         <- one distribution class per gene, per tissue
 fourparamsacrosstissues/
@@ -178,9 +189,10 @@ fourparamsacrosstissues/
     run_cluster.py            <- the same, spread over several machines
     extract_genes.py          <- pull a gene set out of the tables
     build_gene_major.py       <- re-orient outputs/ into gene_major/ shards
-    build_gui_data.py         <- regenerate docs/manifest.json + docs/genes.tsv
+    build_gui_data.py         <- regenerate docs/manifest.json, genes.tsv, genelists/
     make_diagrams.py          <- render the distribution sheets
-  genelists/                  <- reusable gene sets
+  genelists/                  <- reusable gene sets; the control sets are published
+                                 to docs/genelists/ as browser buttons
   outputs/                    <- the 108 generated tables (tissue-major)
   gene_major/                 <- the same rows, gene-major: 4,665 shards
   hist_major/                 <- just the histograms, same sharding: ~5 KB each
@@ -197,7 +209,7 @@ cd fourparamsacrosstissues/fourparam
 python generate_all.py          # all 108 tables; resumable, skips existing
 python build_gene_major.py      # re-orient them into gene_major/ (~80 s)
 python build_hist_major.py      # mirror the histograms into hist_major/
-python build_gui_data.py        # refresh the GUI's manifest + gene index
+python build_gui_data.py --reference uterus   # manifest + gene index + gene sets
 python make_diagrams.py         # 108 distribution sheets -> diagrams/
 ```
 
