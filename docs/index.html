@@ -245,6 +245,33 @@ select:hover { border-color: var(--accent); }
 .linkbtn:disabled { color: var(--muted); cursor: default; text-decoration: none; }
 .quick .sep { color: var(--rule); }
 
+/* ---------- column filters ---------- */
+.filter-field { grid-column: 1 / -1; }
+.filterlist { display: flex; flex-direction: column; gap: 7px; }
+.filterrow { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.filterrow select.fcol, .filterrow select.fop {
+  width: auto; font-size: .84rem; padding: 7px 28px 7px 9px;
+  background-position: calc(100% - 14px) 55%, calc(100% - 9px) 55%;
+}
+.filterrow select.fcol { flex: 0 1 230px; min-width: 150px; }
+.filterrow select.fop  { flex: 0 0 auto; min-width: 86px; }
+.filterrow input.fval {
+  font-family: var(--sans); font-size: .84rem; color: var(--ink);
+  background: var(--sunken); border: 1px solid var(--rule);
+  border-radius: var(--r); padding: 7px 9px; width: 132px; outline: 0;
+}
+.filterrow input.fval:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash);
+}
+.filterempty { margin: 0; font-size: .82rem; color: var(--muted); }
+/* "optional" rides inside the uppercase field label, so it has to shed the
+   letter-spacing the label sets or it reads as a second heading. */
+.field-label .opt {
+  letter-spacing: .04em; text-transform: none; opacity: .7; font-style: italic;
+}
+.filternote { font-family: var(--mono); font-size: .74rem; color: var(--muted); }
+.filternote strong { color: var(--ink); font-weight: 600; }
+
 /* Control-gene sets. One button per published roster, coloured by what the set
    is FOR rather than by hue for its own sake: a positive set should come out
    truncated if the hypothesis holds, a negative set should not. The polarity
@@ -878,12 +905,12 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
         </div>
 
         <div class="field gene-field">
-          <span class="field-label" id="genesLabel">Genes</span>
+          <span class="field-label" id="genesLabel">Genes <span class="opt">optional</span></span>
           <div class="tokenbox" id="tokenbox">
             <input id="geneInput" type="text" autocomplete="off" spellcheck="false"
                    role="combobox" aria-expanded="false" aria-autocomplete="list"
                    aria-controls="suggest" aria-labelledby="genesLabel"
-                   placeholder="Type or paste a list — ALDH2, APP, ENSG00000111275…">
+                   placeholder="Leave empty for every gene — or ALDH2, APP, ENSG00000111275…">
           </div>
           <div class="suggest" id="suggest" hidden role="listbox" aria-label="Gene matches"></div>
           <div class="quick">
@@ -899,6 +926,19 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
             <span class="setrow-note">each adds to the genes already chosen</span>
           </div>
           <div class="genewarn" id="geneWarn" hidden role="status" aria-live="polite"></div>
+        </div>
+
+        <div class="field filter-field">
+          <span class="field-label" id="filtersLabel">Column filters</span>
+          <div class="filterlist" id="filterList" role="group"
+               aria-labelledby="filtersLabel"></div>
+          <div class="quick">
+            <button class="linkbtn" id="addFilter" type="button">Add a filter</button>
+            <span class="sep">&middot;</span>
+            <button class="linkbtn" id="clearFilters" type="button" disabled>Clear filters</button>
+            <span class="sep">&middot;</span>
+            <span class="filternote" id="filterNote"></span>
+          </div>
         </div>
       </div>
 
@@ -1060,6 +1100,18 @@ const MB_PER_SHARD = 0.22;
    both CSV exports always operate on every loaded row, never on this subset. */
 const RENDER_LIMIT = 800;
 
+/* A whole-tissue load materialises one row object per gene per tissue, so the
+   ceiling here is memory rather than bandwidth: a tissue table is ~8 MB of
+   text but ~60k rows once every line is split into fields. Past this the tab
+   is at real risk of dying, so the load is refused with a way out rather than
+   attempted and lost. Narrowing by gene, not by filter, is what lowers it --
+   filters run after the rows are in memory.
+
+   Measured in Chrome against the real tables: one whole tissue (74,628 rows)
+   sits at ~70 MB of heap and three at ~227 MB, so this ceiling is four whole
+   tissues and roughly 300 MB. */
+const MAX_WHOLE_TISSUE_ROWS = 300000;
+
 // Compact column set shown by default; the rest appear under "All columns".
 /* The default column set. "All columns" appends everything else in the table's
    own order *after* these, so turning it on never moves a column you were
@@ -1119,6 +1171,9 @@ let geneMajor = null;              // manifest.gene_major, when shards exist
 
 let selected = [];                 // array of gene-index integers
 let selectedTissues = [];          // array of tissue names
+/* Column filters: {col, op, value}, ANDed. Applied to the rows already in
+   memory, never at fetch time -- see the block above renderFilters(). */
+let filters = [];
 /* The one table kind the browser serves. The raw tables -- every finite value,
    zero-expression spike included -- are gone from the manifest: the spike drags
    the fit, so every analysis here worked off the excluded tables anyway and the
@@ -1510,7 +1565,7 @@ function shardsFor(geneIdxs) {
    over the same genes is free on whichever route it took the first time. */
 function planLoad() {
   const nT = selectedTissues.length, nG = selected.length;
-  if (!nT || !nG) return null;
+  if (!nT) return null;
 
   const tissuesToFetch =
     selectedTissues.filter((t) => !tableCache.has(`${t}|${currentKind}`));
@@ -1520,6 +1575,11 @@ function planLoad() {
     mb: tissuesToFetch.length * MB_PER_TABLE,
     unit: "table"
   };
+
+  /* Whole-tissue mode has no gene list to shard on, and a gene shard carries
+     only the genes in it -- so the tissue table is the only route that can
+     answer "every gene in this tissue". */
+  if (!nG) return tissuePlan;
 
   const usable = geneMajor && geneMajor.available &&
                  selected.every((gi) => SHARD[gi] >= 0);
@@ -1751,26 +1811,221 @@ function kindLabelOf(kind) {
 }
 
 /* =====================================================================
+   Column filters
+
+   A filter is {col, op, value} and the set is ANDed. They run over the rows
+   already in memory at render time, never at fetch time, so changing a
+   threshold re-filters instantly and never costs another download. That is
+   also why a filter change does NOT mark the results stale: the rows on
+   screen are still exactly what the controls describe.
+
+   A rule with an empty value is inactive rather than invalid, so a half-typed
+   threshold does not blank the table while it is being typed.
+   ===================================================================== */
+const FILTER_SKIP = new Set(["gene", "genename", "hist", "hist_max", "r_squared"]);
+const CATEGORICAL_COLS = new Set(["fit_success", DIST_COL]);
+const NUM_OPS = [[">=", "\u2265"], [">", ">"], ["<=", "\u2264"], ["<", "<"],
+                 ["==", "="], ["!=", "\u2260"]];
+const CAT_OPS = [["==", "is"], ["!=", "is not"]];
+
+/* Before the first load there is no header, so the manifest's column list
+   stands in -- a filter can be set up, and shared by URL, ahead of the data. */
+function filterCols() {
+  const base = (loadedHeader || manifest.columns || [])
+    .filter((c) => !FILTER_SKIP.has(c));
+  return base.concat(R2_COL, DIST_COL);
+}
+
+function opsFor(col) { return CATEGORICAL_COLS.has(col) ? CAT_OPS : NUM_OPS; }
+
+/* The real column name leads, because that is what the CSV export and the
+   column tooltips use; the table's short label rides along when it differs. */
+function filterColLabel(col) {
+  const raw = col.replace(/^__/, "");
+  const short = SHORT_LABEL[col];
+  return short && short !== raw ? raw + " (" + short + ")" : raw;
+}
+
+function catOptionsFor(col) {
+  if (col === "fit_success") return ["True", "False"];
+  if (col === DIST_COL) return Object.keys(DIST_LABEL);
+  return [];
+}
+
+function filterValueOf(r, col) {
+  if (col === R2_COL) {
+    const v = rSquaredOf(r);
+    return v === null ? NaN : v;
+  }
+  if (col === DIST_COL) return distClassOf(r) || "";
+  if (CATEGORICAL_COLS.has(col)) {
+    const i = loadedColIdx ? loadedColIdx[col] : undefined;
+    return i === undefined ? "" : String(r.fields[i]).trim();
+  }
+  return numOf(r.fields, loadedColIdx, col);
+}
+
+function testFilter(r, f) {
+  const v = filterValueOf(r, f.col);
+  if (CATEGORICAL_COLS.has(f.col)) {
+    const want = String(f.value).trim().toLowerCase();
+    const got = String(v).trim().toLowerCase();
+    return f.op === "!=" ? got !== want : got === want;
+  }
+  const t = Number(f.value);
+  if (!Number.isFinite(t)) return true;
+  /* A row with no value for the column cannot clear a threshold, so it fails
+     rather than passing silently -- "no fit" rows drop out of a TI filter. */
+  if (!Number.isFinite(v)) return false;
+  switch (f.op) {
+    case ">=": return v >= t;
+    case ">":  return v >  t;
+    case "<=": return v <= t;
+    case "<":  return v <  t;
+    case "==": return v === t;
+    case "!=": return v !== t;
+    default:   return true;
+  }
+}
+
+function activeFilters() {
+  return filters.filter((f) => f.col && String(f.value).trim() !== "");
+}
+
+function filteredRows() {
+  const active = activeFilters();
+  if (!active.length) return loadedRows;
+  return loadedRows.filter((r) => active.every((f) => testFilter(r, f)));
+}
+
+/* `count` is passed by render(), which has just done the filtering work, so
+   the note never repeats a scan over a whole-tissue row set. */
+function updateFilterNote(count) {
+  const el = $("filterNote");
+  if (!el) return;
+  const n = activeFilters().length;
+  if (!n) { el.textContent = ""; return; }
+  if (!loadedRows.length) {
+    el.textContent = n + (n === 1 ? " filter" : " filters") +
+                     " set \u2014 applied when the table loads";
+    return;
+  }
+  const k = count === undefined ? filteredRows().length : count;
+  el.innerHTML = "<strong>" + k.toLocaleString() + "</strong> of <strong>" +
+                 loadedRows.length.toLocaleString() + "</strong> rows match";
+}
+
+function renderFilters() {
+  const list = $("filterList");
+  if (!list) return;
+  const cols = filterCols();
+
+  if (!filters.length) {
+    list.innerHTML =
+      '<p class="filterempty">No filters \u2014 every loaded row is shown.</p>';
+  } else {
+    list.innerHTML = filters.map((f, i) => {
+      const cat = CATEGORICAL_COLS.has(f.col);
+      const opts = cols.map((c) =>
+        `<option value="${escapeHtml(c)}"${c === f.col ? " selected" : ""}>` +
+        `${escapeHtml(filterColLabel(c))}</option>`).join("");
+      const ops = opsFor(f.col).map(([v, l]) =>
+        `<option value="${v}"${v === f.op ? " selected" : ""}>${escapeHtml(l)}</option>`).join("");
+      const dl = cat
+        ? `<datalist id="fvals-${i}">${catOptionsFor(f.col)
+            .map((v) => `<option value="${escapeHtml(v)}"></option>`).join("")}</datalist>`
+        : "";
+      return `<div class="filterrow" data-i="${i}">
+        <select class="fcol" aria-label="Column to filter on">${opts}</select>
+        <select class="fop" aria-label="Comparison">${ops}</select>
+        <input class="fval" type="${cat ? "text" : "number"}" step="any"
+               value="${escapeHtml(f.value)}" placeholder="${cat ? "value" : "threshold"}"
+               aria-label="Value"${cat ? ` list="fvals-${i}"` : ""}>${dl}
+        <button class="rowdel" type="button" data-del="${i}"
+                title="Remove this filter" aria-label="Remove this filter">\u2715</button>
+      </div>`;
+    }).join("");
+  }
+
+  list.querySelectorAll(".filterrow").forEach((row) => {
+    const i = Number(row.dataset.i);
+    row.querySelector(".fcol").addEventListener("change", (e) => {
+      filters[i].col = e.target.value;
+      /* Numeric and categorical columns take different operators, and a
+         threshold typed for one rarely means anything for the other. */
+      if (!opsFor(filters[i].col).some(([v]) => v === filters[i].op)) {
+        filters[i].op = opsFor(filters[i].col)[0][0];
+      }
+      filters[i].value = "";
+      renderFilters(); applyFilters();
+    });
+    row.querySelector(".fop").addEventListener("change", (e) => {
+      filters[i].op = e.target.value; applyFilters();
+    });
+    row.querySelector(".fval").addEventListener("input", (e) => {
+      filters[i].value = e.target.value; applyFilters();
+    });
+  });
+  list.querySelectorAll("[data-del]").forEach((b) => {
+    b.addEventListener("click", () => {
+      filters.splice(Number(b.dataset.del), 1);
+      renderFilters(); applyFilters();
+    });
+  });
+
+  $("clearFilters").disabled = !filters.length;
+  updateFilterNote();
+}
+
+function applyFilters() {
+  syncHash();
+  if (loadedRows.length) render();
+  else { updateFilterNote(); updateLoadNote(); }
+}
+
+/* =====================================================================
    Loading: explicit, sequential, cancellable
    ===================================================================== */
+/* Upper bound, not a promise: `n_genes` is the size of the gene index, and a
+   tissue table carries only the genes that survived its own fit. The real
+   count lands in the status bar once the rows are in. */
+function wholeTissueEstimate() {
+  return selectedTissues.length * (manifest.n_genes || 75000);
+}
+
 function updateLoadNote() {
   const nT = selectedTissues.length, nG = selected.length;
   const note = $("loadNote");
-  $("loadTables").disabled = loading || nT === 0 || nG === 0;
+  const whole = nT > 0 && nG === 0;
+  const projected = whole ? wholeTissueEstimate() : nG * nT;
+  const over = whole && projected > MAX_WHOLE_TISSUE_ROWS;
+
+  $("loadTables").disabled = loading || nT === 0 || over;
   $("clearTissues").disabled = nT === 0;
   $("clearGenes").disabled = nG === 0;
 
   if (loading) return;
-  if (!nT || !nG) {
-    note.innerHTML = !nG && !nT ? "Pick genes and tissues to begin"
-      : !nG ? "Pick at least one gene" : "Pick at least one tissue";
+  if (!nT) {
+    note.innerHTML = "Pick at least one tissue · genes are optional";
     return;
   }
+  if (over) {
+    note.innerHTML =
+      `<span class="heavy">Too big to hold in the page.</span> ` +
+      `${nT} whole tissues is about <strong>${projected.toLocaleString()}</strong> ` +
+      `rows, over the ${MAX_WHOLE_TISSUE_ROWS.toLocaleString()} ceiling. ` +
+      `Load fewer tissues at a time, or name some genes.`;
+    return;
+  }
+
   const plan = planLoad();
-  const nR = nG * nT;
-  let s = `<strong>${nG}</strong> gene${nG === 1 ? "" : "s"} × ` +
-          `<strong>${nT}</strong> tissue${nT === 1 ? "" : "s"} = ` +
-          `<strong>${nR.toLocaleString()}</strong> row${nR === 1 ? "" : "s"}`;
+  let s = whole
+    ? `<strong>every gene</strong> × <strong>${nT}</strong> ` +
+      `tissue${nT === 1 ? "" : "s"} · up to ` +
+      `<strong>${projected.toLocaleString()}</strong> rows`
+    : `<strong>${nG}</strong> gene${nG === 1 ? "" : "s"} × ` +
+      `<strong>${nT}</strong> tissue${nT === 1 ? "" : "s"} = ` +
+      `<strong>${(nG * nT).toLocaleString()}</strong> row${nG * nT === 1 ? "" : "s"}`;
   if (!plan.fetch.length) {
     s += " · all cached";
   } else {
@@ -1778,6 +2033,11 @@ function updateLoadNote() {
     s += ` · ${n} ${plan.unit}${n === 1 ? "" : "s"} to fetch, ` +
          `<span class="${plan.mb >= 100 ? "heavy" : ""}">${formatMb(plan.mb)}</span>`;
     if (plan.route === "gene") s += " <span class=\"muted\">· gene-major</span>";
+  }
+  const nF = activeFilters().length;
+  if (nF) {
+    s += ` · <span class="muted">${nF} filter${nF === 1 ? "" : "s"} ` +
+         `applied after loading</span>`;
   }
   note.innerHTML = s;
 }
@@ -1804,7 +2064,7 @@ function showStaleBanner() {
 }
 
 async function loadTables() {
-  if (loading || !selected.length || !selectedTissues.length) return;
+  if (loading || !selectedTissues.length) return;
 
   loading = true;
   cancelRequested = false;
@@ -1881,10 +2141,22 @@ async function loadTables() {
           continue;
         }
         header = tbl.header; colIdx = tbl.colIdx;
-        for (const gi of selected) {
-          const line = tbl.map.get(NOVER[gi]);
-          if (!line) { missing++; continue; }
-          rows.push({ tissue, kind, gi, fields: line.split(",") });
+        if (selected.length) {
+          for (const gi of selected) {
+            const line = tbl.map.get(NOVER[gi]);
+            if (!line) { missing++; continue; }
+            rows.push({ tissue, kind, gi, fields: line.split(",") });
+          }
+        } else {
+          /* Whole tissue: every row the table has, in table order. A gene the
+             table carries but genes.tsv does not is counted as missing rather
+             than rendered, because every downstream cell -- the gene link, the
+             QC class, the R² join -- keys off the gene index. */
+          for (const [nover, line] of tbl.map) {
+            const gi = geneIndexByNover.get(nover);
+            if (gi === undefined) { missing++; continue; }
+            rows.push({ tissue, kind, gi, fields: line.split(",") });
+          }
         }
         done++;
       }
@@ -1999,27 +2271,55 @@ function render() {
     $("download").disabled = true;
     $("addAll").disabled = true;
     $("legend").hidden = true;
-    const why = !selected.length
-      ? `<p>Search by symbol (<code>ALDH2</code>) or Ensembl id
-         (<code>ENSG00000111275</code>) and pick as many as you like. Versions are
-         ignored, so an id from an older annotation still resolves.</p>
+    const why = !selectedTissues.length
+      ? `<p>Pick one or more tissues above — or select every tissue. Genes are
+         optional: search by symbol (<code>ALDH2</code>) or Ensembl id
+         (<code>ENSG00000111275</code>) to narrow the query, or leave the gene
+         box empty to load every gene in the tissue.</p>
          <button class="btn" type="button" id="emptyExample">Load the ADH / ALDH set</button>`
-      : !selectedTissues.length
-        ? `<p>Pick one or more tissues above — or select every tissue — then
-           press <strong>Load tables</strong>.</p>`
-        : `<p>Press <strong>Load tables</strong> to fetch the
-           ${selectedTissues.length === 1 ? "table" : `${selectedTissues.length} tables`}
-           for this selection.</p>`;
+      : `<p>Press <strong>Load tables</strong> to fetch
+         ${selected.length
+           ? `<strong>${selected.length}</strong> gene${selected.length === 1 ? "" : "s"}`
+           : `<strong>every gene</strong>`} in
+         ${selectedTissues.length === 1
+           ? "this tissue"
+           : `these ${selectedTissues.length} tissues`}.</p>`;
     area.innerHTML = `<div class="note"><h2>Nothing loaded yet</h2>${why}</div>`;
     const b = $("emptyExample");
     if (b) b.addEventListener("click", loadExampleSet);
     setStatus(`<strong>${GID.length.toLocaleString()}</strong> genes · ` +
               `<strong>${manifest.tissues.length}</strong> tissues indexed`);
+    updateFilterNote();
     return;
   }
 
   const cols = visibleStatCols(loadedHeader, showAllCols);
-  const rows = sortRows(loadedRows, sortCol, sortDir, loadedColIdx);
+  const rows = sortRows(filteredRows(), sortCol, sortDir, loadedColIdx);
+
+  /* Loaded, but the filters exclude everything. Distinct from "nothing loaded"
+     above: the fix here is a threshold, not another fetch. */
+  if (!rows.length) {
+    const nF = activeFilters().length;
+    $("download").disabled = true;
+    $("addAll").disabled = true;
+    $("legend").hidden = true;
+    updateFilterNote(0);
+    area.innerHTML = `<div class="note"><h2>No rows match the filters</h2>
+      <p><strong>${loadedRows.length.toLocaleString()}</strong>
+      row${loadedRows.length === 1 ? "" : "s"} loaded, none of which clear all
+      ${nF} filter${nF === 1 ? "" : "s"}. Loosen a threshold, or clear them.</p>
+      <button class="btn" type="button" id="noMatchClear">Clear filters</button></div>`;
+    const c = $("noMatchClear");
+    if (c) {
+      c.addEventListener("click", () => {
+        filters = []; renderFilters(); applyFilters();
+      });
+    }
+    setStatus(`<strong>0</strong> of <strong>` +
+              `${loadedRows.length.toLocaleString()}</strong> rows match the filters`);
+    return;
+  }
+
   const shown = rows.slice(0, RENDER_LIMIT);
   const allPicked = rows.every((r) => workingSet.has(rowKey(r)));
 
@@ -2105,7 +2405,7 @@ function render() {
     openDetail(Number(link.dataset.gi), link.dataset.tissue);
   });
 
-  const byKey = new Map(rows.map((r) => [rowKey(r), r]));
+  const byKey = new Map(shown.map((r) => [rowKey(r), r]));
   area.querySelector("tbody").addEventListener("change", (e) => {
     const box = e.target;
     if (box.type !== "checkbox") return;
@@ -2144,8 +2444,13 @@ function render() {
     msg += ` · <span style="color:var(--ceiling)">cancelled at ${m.unitsDone}` +
            `/${m.unitsTotal} ${escapeHtml(m.unitLabel)}s</span>`;
   }
+  if (activeFilters().length) {
+    msg += ` · <span class="muted">filtered from ` +
+           `${loadedRows.length.toLocaleString()}</span>`;
+  }
   if (m.route === "gene") msg += ` · <span class="muted">gene-major</span>`;
   setStatus(msg);
+  updateFilterNote(rows.length);
 }
 
 /* =====================================================================
@@ -2171,9 +2476,11 @@ function renderChips() {
     chip.appendChild(x);
     box.insertBefore(chip, input);
   }
+  /* Empty is now a real query -- the whole tissue -- so the empty-state
+     placeholder has to say so rather than only inviting a symbol. */
   input.placeholder = selected.length
     ? "Add another…"
-    : "Type a symbol or ENSG id — ALDH2, APP, ENSG00000111275…";
+    : "Leave empty for every gene — or ALDH2, APP, ENSG00000111275…";
 }
 
 function addGene(gi) {
@@ -2735,19 +3042,21 @@ function stamp() { return new Date().toISOString().slice(0, 10); }
 
 /* The loaded query, every row of it — not just the rendered subset. */
 function downloadCsv() {
-  if (!loadedRows.length) return;
+  // Export what the filters left, so the spreadsheet matches the screen.
+  const out = filteredRows();
+  if (!out.length) return;
   const cols = statCols();
   const lines = [["tissue", "table", "gene", "genename"]
     .concat(cols, "r_squared").join(",")];
-  for (const r of sortRows(loadedRows, sortCol, sortDir, loadedColIdx)) {
+  for (const r of sortRows(out, sortCol, sortDir, loadedColIdx)) {
     lines.push([r.tissue, r.kind, GID[r.gi], SYM[r.gi]]
       .concat(cols.map((c) => {
         const i = loadedColIdx[c];
         return i === undefined ? "" : r.fields[i];
       }), csvR2(rSquaredOf(r))).map(csvCell).join(","));
   }
-  const nT = new Set(loadedRows.map((r) => r.tissue)).size;
-  saveCsv(lines, `fourparam_${nT}tissues_${currentKind}_${loadedRows.length}rows.csv`);
+  const nT = new Set(out.map((r) => r.tissue)).size;
+  saveCsv(lines, `fourparam_${nT}tissues_${currentKind}_${out.length}rows.csv`);
 }
 
 function exportWorkingSet() {
@@ -4154,6 +4463,13 @@ function buildHash() {
   if (selectedTissues.length === manifest.tissues.length) parts.unshift("tissues=all");
   else if (selectedTissues.length) parts.unshift(`tissues=${selectedTissues.join(",")}`);
   if (selected.length) parts.push(`genes=${selected.map((i) => NOVER[i]).join(",")}`);
+  /* `~` separates the three parts because the operators themselves contain
+     `<`, `>` and `=`, which would make a `col=op=value` form ambiguous. */
+  const af = activeFilters();
+  if (af.length) {
+    parts.push(`filters=${af.map((f) =>
+      `${f.col}~${f.op}~${encodeURIComponent(f.value)}`).join(";")}`);
+  }
   // The open gene page rides along, so a gene page is linkable and the browser's
   // own Back unwinds it.
   if (detailGI !== null) {
@@ -4166,7 +4482,8 @@ function buildHash() {
    closed" apart from "somebody pasted a different query". */
 function queryKey(params) {
   return [params.get("tissues") || "", params.get("tissue") || "",
-          params.get("table") || "", params.get("genes") || ""].join("");
+          params.get("table") || "", params.get("genes") || "",
+          params.get("filters") || ""].join("");
 }
 
 function syncHash() {
@@ -4196,6 +4513,16 @@ function readHash() {
     selected = g.split(",").map((id) => geneIndexByNover.get(stripVersion(id.trim())))
                 .filter((i) => i !== undefined);
   }
+
+  /* Absent means "no filters", not "keep the ones already set": a pasted link
+     should land on exactly the view it describes. */
+  const fl = p.get("filters");
+  const fcols = new Set(filterCols());
+  filters = !fl ? [] : fl.split(";")
+    .map((rule) => rule.split("~"))
+    .filter((a) => a.length === 3 && fcols.has(a[0]) &&
+                   opsFor(a[0]).some(([v]) => v === a[1]))
+    .map(([col, op, value]) => ({ col, op, value: decodeURIComponent(value) }));
 }
 
 /* =====================================================================
@@ -4277,6 +4604,7 @@ async function boot() {
   wsLoad();
   renderChips();
   renderTissueChips();
+  renderFilters();
   wsSync();
 
   // --- tabs ---
@@ -4340,7 +4668,7 @@ async function boot() {
 
   // --- working set actions ---
   $("addAll").addEventListener("click", () => {
-    loadedRows.forEach(wsAdd);
+    filteredRows().forEach(wsAdd);
     wsSync(); render();
   });
   $("wsExport").addEventListener("click", exportWorkingSet);
@@ -4423,6 +4751,21 @@ async function boot() {
   });
   $("loadExample").addEventListener("click", loadExampleSet);
   renderGeneSetButtons();
+
+  // --- column filters ---
+  $("addFilter").addEventListener("click", () => {
+    const cols = filterCols();
+    // The truncation index is what the page is for, so it is the useful default.
+    const col = cols.includes("truncationindex") ? "truncationindex" : cols[0];
+    filters.push({ col, op: opsFor(col)[0][0], value: "" });
+    renderFilters();
+    const box = $("filterList").querySelector(".filterrow:last-child .fval");
+    if (box) box.focus();
+  });
+  $("clearFilters").addEventListener("click", () => {
+    filters = []; renderFilters(); applyFilters();
+  });
+
   $("download").addEventListener("click", downloadCsv);
 
   $("toggleCols").addEventListener("click", () => {
@@ -4469,8 +4812,9 @@ async function boot() {
 
     if (detailGI !== null) closeDetail(false);
     readHash();
-      renderChips();
+    renderChips();
     renderTissueChips();
+    renderFilters();
     loadedRows = [];
     resultsStale = false;
     render();
