@@ -264,6 +264,13 @@ select:hover { border-color: var(--accent); }
   border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash);
 }
 .filterempty { margin: 0; font-size: .82rem; color: var(--muted); }
+
+/* ---------- "a newer build is live" notice ---------- */
+.updatebanner {
+  margin: 0 0 14px; border: 1px solid var(--accent);
+  border-radius: var(--r); background: var(--accent-wash);
+}
+.updatebanner[hidden] { display: none; }
 /* "optional" rides inside the uppercase field label, so it has to shed the
    letter-spacing the label sets or it reads as a second heading. */
 .field-label .opt {
@@ -885,6 +892,9 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
             aria-controls="panelWorm">Worm data</button>
   </div>
 
+  <div class="banner updatebanner" id="updateBanner" hidden role="status"
+       aria-live="polite"></div>
+
   <div class="tabpanel" id="panelSelect" role="tabpanel" aria-labelledby="tabSelect">
     <section class="panel controls" aria-label="Query">
       <div class="control-grid">
@@ -1075,6 +1085,40 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
    ===================================================================== */
 const MANIFEST_URL = "manifest.json";
 const GENES_URL    = "genes.tsv";
+
+/* =====================================================================
+   Cache busting
+
+   GitHub Pages serves everything under docs/ with a fixed
+   `Cache-Control: max-age=600` and gives no way to change it, so for ten
+   minutes after a deploy a returning visitor can be handed the previous
+   build. There are two halves to that problem and they need different fixes.
+
+   Sub-resources -- manifest.json, genes.tsv, the gene lists, qc/ and r2/ --
+   are fetched by URL, so `?v=BUILD_ID` is enough: a new build asks for a URL
+   the cache has never seen. That is what `localUrl()` does. Absolute URLs are
+   left alone; they point at raw.githubusercontent, which is pinned to a commit
+   and is not served by Pages at all.
+
+   index.html itself cannot be busted that way -- its URL is the one people
+   visit and bookmark. So instead the page asks whether it is still current:
+   `version.json` carries the id of the build that is live, is fetched with
+   `no-store` so the answer is never itself cached, and if it disagrees with
+   the BUILD_ID compiled into this file, the page says so and offers a reload.
+
+   `BUILD_ID` and version.json are both written by docs/stamp_version.py --
+   run it after editing this file, or the two silently drift apart.
+   ===================================================================== */
+const BUILD_ID = "5327e777b5b6";
+const VERSION_URL = "version.json";
+const UPDATE_RECHECK_MS = 5 * 60 * 1000;
+
+/* Only the Pages-served files under docs/ take the stamp. An absolute URL is
+   on another host with its own caching and must be passed through untouched. */
+function localUrl(u) {
+  if (!BUILD_ID || /^[a-z]+:/i.test(u) || u.startsWith("//")) return u;
+  return u + (u.includes("?") ? "&" : "?") + "v=" + encodeURIComponent(BUILD_ID);
+}
 const MAX_CACHED_TABLES = 4;      // ~21 MB of text each
 const MAX_CACHED_SHARDS = 64;     // ~550 KB of text each
 const MAX_SUGGESTIONS   = 40;
@@ -1264,7 +1308,7 @@ async function fetchTextWithProgress(url, onBytes) {
    Gene index (shared by all 108 tables — the gene set is identical)
    ===================================================================== */
 async function loadGeneIndex() {
-  const text = await fetchTextWithProgress(GENES_URL, (b) =>
+  const text = await fetchTextWithProgress(localUrl(GENES_URL), (b) =>
     setStatus(`Loading gene index… <strong>${(b / 1048576).toFixed(1)} MB</strong>`));
 
   /* "<id>\t<symbol>\t<shard>". The third column is written by build_gui_data.py
@@ -1418,7 +1462,7 @@ async function getQcClasses(tissue, kind) {
   if (!name) { qcCache.set(key, null); return null; }
 
   try {
-    const res = await fetch(`${qc.base_url}/${name}`);
+    const res = await fetch(localUrl(`${qc.base_url}/${name}`));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
     // A short file means the gene index and the QC table disagree, which would
@@ -1465,7 +1509,7 @@ async function getR2Values(tissue, kind) {
   if (!name) { r2Cache.set(key, null); return null; }
 
   try {
-    const res = await fetch(`${r2.base_url}/${name}`);
+    const res = await fetch(localUrl(`${r2.base_url}/${name}`));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
     // A short file means the gene index and the R² table disagree, which would
@@ -2956,7 +3000,7 @@ async function loadGeneSet(spec, btn) {
     let text = genesetCache.get(spec.id);
     if (text === undefined) {
       const base = manifest.genesets.base_url;
-      const res = await fetch(`${base}/${spec.file}`);
+      const res = await fetch(localUrl(`${base}/${spec.file}`));
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       text = await res.text();
       genesetCache.set(spec.id, text);
@@ -3981,7 +4025,7 @@ async function loadPhenotypeTable() {
   const spec = manifest.phenotypes;
   if (!spec || !spec.available || !spec.file) return phenoByEnsg;
   try {
-    const res = await fetch(spec.file);
+    const res = await fetch(localUrl(spec.file));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const lines = (await res.text()).split("\n");
     const head = lines[0].replace(/\r$/, "").split("\t");
@@ -4453,6 +4497,48 @@ async function openWormTab() {
 }
 
 /* =====================================================================
+   Is this page still the build that is live?
+
+   Cheap enough to run on every load: version.json is a few dozen bytes, and
+   `no-store` keeps the answer itself out of the cache. Any failure -- offline,
+   a 404 on a checkout that has never been stamped -- is silent, because a
+   version check must never be the reason the page looks broken.
+   ===================================================================== */
+let lastUpdateCheck = 0;
+
+async function checkForUpdate() {
+  if (!BUILD_ID) return;                      // unstamped build, nothing to compare
+  lastUpdateCheck = Date.now();
+  let live;
+  try {
+    const res = await fetch(VERSION_URL, { cache: "no-store" });
+    if (!res.ok) return;
+    live = (await res.json()).build;
+  } catch (err) {
+    return;
+  }
+  if (!live || live === BUILD_ID) return;
+  showUpdateBanner(live);
+}
+
+function showUpdateBanner(live) {
+  const b = $("updateBanner");
+  if (!b || !b.hidden) return;                // already showing, do not restate
+  b.innerHTML = `<span>A newer version of this page is live. This tab is
+    running an older copy that the browser cached.</span>
+    <button class="btn" type="button" id="updateReload">Reload</button>`;
+  b.hidden = false;
+  $("updateReload").addEventListener("click", () => {
+    /* A plain reload can still be answered from cache. Asking for a URL the
+       cache has never seen cannot be, and the hash rides along so the reload
+       lands on the same query. */
+    const u = new URL(location.href);
+    u.searchParams.set("v", live);
+    location.replace(u.toString());
+  });
+}
+
+/* =====================================================================
    Shareable URL state
    ===================================================================== */
 let lastWrittenHash = "";
@@ -4571,7 +4657,7 @@ async function boot() {
   });
 
   try {
-    manifest = await (await fetch(MANIFEST_URL)).json();
+    manifest = await (await fetch(localUrl(MANIFEST_URL))).json();
   } catch (err) {
     setStatus('<strong style="color:var(--ceiling)">Could not load manifest.json</strong>');
     return;
@@ -4606,6 +4692,17 @@ async function boot() {
   renderTissueChips();
   renderFilters();
   wsSync();
+
+  /* Not awaited: a stale-build notice must never delay first paint, and it is
+     equally useful arriving a moment late. Re-checked when the tab is brought
+     back to the front, which is when a long-lived tab is most likely stale. */
+  checkForUpdate();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" &&
+        Date.now() - lastUpdateCheck > UPDATE_RECHECK_MS) {
+      checkForUpdate();
+    }
+  });
 
   // --- tabs ---
   $("tabSelect").addEventListener("click", () => showTab("select"));
