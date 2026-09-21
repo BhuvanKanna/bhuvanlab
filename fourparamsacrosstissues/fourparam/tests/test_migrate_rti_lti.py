@@ -135,6 +135,45 @@ def test_recheck_passes_on_a_migrated_table(tmp_path):
     assert st["mismatches"] == 0
 
 
+def test_recheck_tolerates_a_numerically_flat_curve(tmp_path):
+    """A fit whose curve is constant to floating point.
+
+    ENSG00000172188 in whole blood fits A = 0.605 but with the peak so far
+    outside [min, max] that the curve varies by 8.5e-12 across it. Stored and
+    recomputed maxheight agree to five significant figures, yet scaling the
+    error by maxheight itself -- a floating-point zero -- reports 3.3e-06 and
+    condemns the row. The scale has to be the amplitude the curve is *evaluated*
+    at (|A| + |y0|), because that is where the cancellation comes from.
+    """
+    import numpy as np
+    from bhuvanfitter import _fourparam_gaussian
+    y0, A, x0, w, lo, hi = 1.0, 0.605435, 1.27, 0.146277, 2.0, 2.0575
+    grid = np.linspace(lo, hi, M.CURVE_GRID)
+    curve = _fourparam_gaussian(grid, y0, A, x0, w)
+    base = curve.min()
+    maxheight = curve.max() - base
+    # tiny but not zero, exactly like the row this reproduces
+    assert 0 < maxheight < 1e-9 * (abs(A) + abs(y0)), maxheight
+
+    cols = OLD_HEADER.split(",")
+    vals = dict(zip(cols, old_row_from(fitted_gene()).split(",")))
+    rh = float(_fourparam_gaussian(hi, y0, A, x0, w) - base)
+    vals.update(y0=repr(y0), A=repr(A), x0=repr(x0), w=repr(w),
+                min=repr(lo), max=repr(hi), right=repr(hi),
+                # off by one ulp of the evaluation scale, as on disk
+                maxheight=repr(float(maxheight) * (1 + 3e-6)),
+                rightheight=repr(rh),
+                # every other metric has to describe THIS fit too, or the test
+                # fails on a stale value rather than on the scale rule
+                ti_fourparam_sigma_dist=repr((hi - x0) / (w / np.sqrt(2.0))),
+                truncationindex=repr(min(1.0, max(0.0, rh / float(maxheight)))))
+    src = write_old(tmp_path, [",".join(vals[c] for c in cols)])
+    out = tmp_path / "out.csv"
+    M.migrate_table(src, out)
+    st = M.recheck_table(out)
+    assert st["mismatches"] == 0, f"max_err={st['max_err']:.3e}"
+
+
 def test_recheck_catches_a_corrupted_lti(tmp_path):
     """The check has to be able to fail, or it proves nothing."""
     src = write_old(tmp_path, [old_row_from(fitted_gene())])

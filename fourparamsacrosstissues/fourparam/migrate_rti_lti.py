@@ -161,11 +161,11 @@ def migrate_table(src, dest, verify=False):
         # `rightheight` at ~5e-17 on a curve ~1e3 tall -- a floating-point zero,
         # which both sides agree on. Dividing by that value would report a 100%
         # error and condemn a migration that is exactly right.
+        amp = np.maximum(np.abs(num["A"]) + np.abs(num["y0"]), 1e-300)
         for name, got in (("maxheight", maxheight), ("rightheight", rightheight)):
             stored = num[name]
             cmp = usable & np.isfinite(stored) & np.isfinite(got)
-            scale = np.maximum(np.abs(maxheight[cmp]), 1e-12)
-            err = np.abs(got[cmp] - stored[cmp]) / scale
+            err = np.abs(got[cmp] - stored[cmp]) / amp[cmp]
             if err.size:
                 stats["max_rel_err"] = max(stats["max_rel_err"], float(err.max()))
             if name == "maxheight":
@@ -250,19 +250,36 @@ def recheck_table(path):
             "lti_sigma_dist": (num["x0"] - num["min"]) / sigma,
         }
 
-    max_err, mismatches = 0.0, 0
+    # The scale a height error is judged against is the amplitude the curve is
+    # EVALUATED at, |A| + |y0| -- not the height being checked. Every height
+    # here is a difference of two curve values of that magnitude, so its
+    # absolute error is ~eps * (|A| + |y0|) regardless of how small the
+    # difference happens to be. Scaling by the height itself condemns exactly
+    # the rows where the curve is flat: ENSG00000172188 in whole blood fits
+    # A = 0.605 with a maxheight of 8.5e-12, where stored and recomputed agree
+    # to five significant figures and the "relative error" reads 3.3e-06.
+    amp = np.maximum(np.abs(num["A"]) + np.abs(num["y0"]), 1e-300)
+    # A ratio against a flat curve is 0/0. Both sides compute the same noise
+    # from the same inputs, but the value carries no information and is not
+    # worth failing a run over, so it is counted and skipped.
+    meaningful = mh > 1e-9 * amp
+
+    max_err, mismatches, skipped = 0.0, 0, 0
     for name, got in expect.items():
         stored = num[name]
         cmp = usable & np.isfinite(stored) & np.isfinite(got)
-        # Heights scale with the curve; the ratios and sigma-distances are
-        # already dimensionless, so they are compared against 1.
-        scale = np.maximum(np.abs(mh[cmp]), 1e-12) if "height" in name else 1.0
+        if name in ("rti", "lti"):
+            skipped += int((cmp & ~meaningful).sum())
+            cmp = cmp & meaningful
+        # Heights are absolute and scale with the curve; the ratios and
+        # sigma-distances are already dimensionless, so they compare against 1.
+        scale = amp[cmp] if "height" in name else 1.0
         err = np.abs(got[cmp] - stored[cmp]) / scale
         if err.size:
             max_err = max(max_err, float(err.max()))
             mismatches += int((err > 1e-6).sum())
     return {"rows_checked": int(usable.sum()), "max_err": max_err,
-            "mismatches": mismatches}
+            "mismatches": mismatches, "flat_ratios_skipped": skipped}
 
 
 def discover(outputs, tissues=None):
@@ -311,8 +328,8 @@ def main(argv=None):
             bad += st["mismatches"]
             checked += st["rows_checked"]
             print(f"[{i}/{len(jobs)}] {src.name}: {st['rows_checked']:,} rows, "
-                  f"max err {st['max_err']:.2e}, {st['mismatches']} mismatches",
-                  flush=True)
+                  f"max err {st['max_err']:.2e}, {st['mismatches']} mismatches, "
+                  f"{st['flat_ratios_skipped']} flat", flush=True)
         print(f"\nrechecked {checked:,} rows over {len(jobs)} tables")
         print(f"worst error {worst:.2e}, {bad} mismatches")
         if bad:
