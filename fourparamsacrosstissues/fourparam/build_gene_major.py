@@ -69,10 +69,17 @@ SUPER_BUCKETS = 64       # pass-1 fan-out; bounds pass-2 memory
 
 # The shard header. Identical to extract_genes.py's output header, so a shard
 # and a CLI extract can be concatenated without reconciling columns.
+# Schema columns the mirror deliberately does NOT carry. `hist`/`hist_max` are
+# published separately in hist_major/ (~24 MB) because they are empty for 104 of
+# the 108 tables and this directory is 2.4 GB. Listing them here instead would
+# fail the header check on every table that lacks them -- which is all but
+# uterus and vagina -- and silently make the mirror unbuildable.
+SHARD_EXCLUDED = ("hist", "hist_max")
+
 SHARD_HEADER = ("tissue,table,gene,genename,y0,A,x0,w,sumsquarevalue,"
                 "rti_sigma_dist,rti,lti_sigma_dist,lti,min,max,mean,std,"
                 "skew,kurt,left,right,maxheight,rightheight,leftheight,"
-                "n_obs,fit_success,hist,hist_max\n")
+                "n_obs,fit_success\n")
 
 TABLE_HEADER = SHARD_HEADER[len("tissue,table,"):]
 

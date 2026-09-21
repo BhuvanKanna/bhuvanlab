@@ -1098,12 +1098,26 @@ quietly loses data.
 | `extract_genes.STAT_COLUMNS` | what the CLI extract emits |
 | `docs/manifest.json` `"columns"` | what the browser's CSV export follows |
 
-`build_gene_major.py` accepts a header that *starts* with the schema and drops
-any extra trailing columns (the excluded tables end with `r_squared`, which is
-deliberately not in `SHARD_HEADER`). Demanding an exact match is what left the
-mirror a schema behind: every excluded table was rejected, so the last rebuild
-predates `append_r2_column.py`. A header that differs any other way is still
-refused.
+**`SHARD_HEADER` is the schema *minus* `hist`/`hist_max`** — see `SHARD_EXCLUDED`.
+The mirror deliberately does not carry the histogram (that is what `hist_major/`
+is for), and only uterus and vagina have those columns at all. When `hist` was
+added to `COLUMNS` it was also added to `SHARD_HEADER`, which made **every** table
+fail the header check and the mirror silently unbuildable — it stayed that way
+until the RTI/LTI migration, and the published shards were a schema behind
+(their header ends at `fit_success`, with no `r_squared` either).
+
+`build_gene_major.py` therefore accepts a header that *starts* with
+`TABLE_HEADER` and drops whatever a table carries past it — `hist`/`hist_max`,
+`r_squared`, both or neither. The drop is a string slice at the Nth comma (no
+field may contain a comma), so nothing is re-serialised. A header that differs
+any other way is still refused, and `tests/test_column_lists_agree.py` checks
+all 108 real tables actually start with that prefix.
+
+> Note the asymmetry this creates and keep it in mind when changing columns:
+> `manifest.columns` (26) is the **table** schema and includes `hist`; the shard
+> body (24) does not. The browser's CSV export follows the manifest, so a
+> gene-major-routed export carries no `hist` column while a tissue-major one
+> does.
 
 Drift is silent and expensive: `build_gene_major.py` rejects every table with
 "unexpected header" (it fails safe, but the whole run dies), or the browser
