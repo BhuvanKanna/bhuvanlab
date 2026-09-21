@@ -1161,8 +1161,8 @@ const MAX_WHOLE_TISSUE_ROWS = 300000;
    own order *after* these, so turning it on never moves a column you were
    already reading — it only adds to the right. */
 const COMPACT_COLS = [
-  "truncationindex", "ti_fourparam_sigma_dist", "mean", "std",
-  "rightheight", "maxheight"
+  "rti", "lti", "rti_sigma_dist", "lti_sigma_dist", "mean", "std",
+  "rightheight", "leftheight", "maxheight"
 ];
 
 /* dist_class does not live in the fourparam tables — it comes from qc/, joined
@@ -1188,8 +1188,10 @@ const DIST_COL = "__dist_class";
 const R2_COL = "__r_squared";
 
 const SHORT_LABEL = {
-  truncationindex: "TI",
-  ti_fourparam_sigma_dist: "σ-dist",
+  rti: "RTI",
+  lti: "LTI",
+  rti_sigma_dist: "RTI σ-dist",
+  lti_sigma_dist: "LTI σ-dist",
   sumsquarevalue: "SSR",
   n_obs: "n",
   fit_success: "fit",
@@ -1734,12 +1736,12 @@ function fittedCurveCell(row, colIdx) {
    shape to draw. The only real per-gene content is which slice of that bell
    the observations span, from z_min = (min - x0)/sigma to
    z_max = (max - x0)/sigma, and z_max is already the published
-   ti_fourparam_sigma_dist.
+   rti_sigma_dist.
 
    Marking z_min is what makes a degenerate fit visible. APP in kidney cortex
    fits sigma = 16 to a 3.95-unit data span, so its whole observed range is a
    0.25-sigma sliver at the apex: sigma_dist reads 0.124 (apparently maximal
-   truncation) and truncationindex reads 0, and neither means anything. On this
+   truncation) and rti reads 0, and neither means anything. On this
    axis that row is a thin spike instead of a plausible bell, which is the point.
 
    The axis is fixed for every row, so two cells are comparable by construction
@@ -1758,7 +1760,7 @@ function shapeCell(row, colIdx) {
   };
 
   // z_max is the metric itself, so the cell is empty exactly when the metric is.
-  const zMax = num("ti_fourparam_sigma_dist");
+  const zMax = num("rti_sigma_dist");
   if (!Number.isFinite(zMax)) {
     return '<span class="nil" title="No sigma-distance for this row">\u2014</span>';
   }
@@ -3149,7 +3151,7 @@ let detailToken = 0;               // invalidates an in-flight render
 let detailBusy = false;
 
 let meanSort = "value", tiSort = "value";
-let tiMetric = "truncationindex";
+let tiMetric = "rti";
 const histOpts = {
   fit: true, normal: false, baseline: false,
   peak: true, ceiling: true, floor: false, sigma: false
@@ -3185,7 +3187,7 @@ function ordinal(n) {
 }
 
 /* Competition ranking: ties share the best rank. The tie count comes back with
-   it because ties are the normal case here — `truncationindex` is exactly 0 for
+   it because ties are the normal case here — `rti` is exactly 0 for
    most genes in most tissues, and "25th of 54" alone would read as a position
    when it is really a 30-way draw. */
 function rankOf(values, v, descending) {
@@ -3684,8 +3686,10 @@ function renderDistPanel() {
     ["peak x₀", sig(n("x0"))],
     ["σ = w/√2", sig(sigma)],
     ["x_max", sig(n("right"))],
-    ["TI", sig(n("truncationindex"), 4)],
-    ["σ-dist", sig(n("ti_fourparam_sigma_dist"))],
+    ["RTI", sig(n("rti"), 4)],
+    ["LTI", sig(n("lti"), 4)],
+    ["RTI σ-dist", sig(n("rti_sigma_dist"))],
+    ["LTI σ-dist", sig(n("lti_sigma_dist"))],
     ["R²", (() => {
       const v = rSquaredOf({ tissue: detailTissue, kind: currentKind, gi: detailGI });
       return v === null ? "—" : v.toFixed(3);
@@ -3931,28 +3935,56 @@ function renderMeanPanel() {
   wireBars(el, (s) => { meanSort = s; renderMeanPanel(); });
 }
 
+/* Four metrics, two per side. RTI/LTI are the height ratios; the two
+   σ-distances are the same geometry in σ units.
+
+   The two sides share a baseline — the curve's minimum over [min, max] — so
+   exactly one of RTI and LTI is non-zero for any bell-shaped fit: whichever
+   edge sits farther from the peak defines the baseline and zeroes its own
+   side. They are a matched pair naming which side is closer, not two
+   independent measurements. In practice RTI is exactly 0 for ~96% of genes
+   and LTI carries the spread. */
 const TI_METRICS = {
-  truncationindex: {
-    label: "TI (height ratio)", descending: true, places: 4, clamp: null,
-    shortName: "truncation index", unit: "", rankSense: "more truncated",
+  rti: {
+    label: "RTI (height ratio)", descending: true, places: 4, clamp: null,
+    shortName: "right truncation index", unit: "", rankSense: "more truncated",
     topWord: "most truncated", bottomWord: "least truncated",
     blurb: `<code>f(x_max)/f(peak)</code> with the curve's own baseline removed —
-            bounded [0,&nbsp;1], <strong>higher = more truncated</strong>.`
+            bounded [0,&nbsp;1], <strong>higher = more right-truncated</strong>
+            (the ceiling cuts in closer to the peak).`
   },
-  ti_fourparam_sigma_dist: {
-    label: "σ-distance", descending: false, places: 3, clamp: SIGMA_BAR_CLAMP,
-    shortName: "σ-distance", unit: "σ", rankSense: "more truncated",
+  lti: {
+    label: "LTI (height ratio)", descending: true, places: 4, clamp: null,
+    shortName: "left truncation index", unit: "", rankSense: "more truncated",
+    topWord: "most truncated", bottomWord: "least truncated",
+    blurb: `<code>f(x_min)/f(peak)</code>, the mirror of RTI — bounded
+            [0,&nbsp;1], <strong>higher = more left-truncated</strong> (the floor
+            cuts in closer to the peak). Read it beside <code>mean</code>: the
+            data floor is also where the detection limit sits, so a high LTI on a
+            barely-expressed gene may be the floor rather than biology.`
+  },
+  rti_sigma_dist: {
+    label: "RTI σ-distance", descending: false, places: 3, clamp: SIGMA_BAR_CLAMP,
+    shortName: "right σ-distance", unit: "σ", rankSense: "more truncated",
     topWord: "most truncated", bottomWord: "least truncated",
     blurb: `<code>(x_max − x₀)/σ</code> — how many σ the ceiling sits above the
             peak, <strong>lower = more truncated</strong>. The axis is clipped to
             ±${SIGMA_BAR_CLAMP}σ (degenerate fits reach 10⁵); clipped bars carry a
             caret and the printed number is always the real one.`
+  },
+  lti_sigma_dist: {
+    label: "LTI σ-distance", descending: false, places: 3, clamp: SIGMA_BAR_CLAMP,
+    shortName: "left σ-distance", unit: "σ", rankSense: "more truncated",
+    topWord: "most truncated", bottomWord: "least truncated",
+    blurb: `<code>(x₀ − x_min)/σ</code> — how many σ the floor sits below the
+            peak, <strong>lower = more truncated</strong>. Same clipping and same
+            caveat about degenerate fits as the right-hand one.`
   }
 };
 
 function renderTiPanel() {
   const el = $("tiPanel");
-  const title = `Truncation index across ${manifest.tissues.length} tissues`;
+  const title = `Truncation indices across ${manifest.tissues.length} tissues`;
   if (detailBusy || !detailRows) {
     pendingPanel(el, title, "Loading this gene in every tissue…");
     return;
@@ -4348,8 +4380,10 @@ function renderWormStats(rows) {
     ["Genes", rows.length.toLocaleString()],
     ["Fitted", fitted.toLocaleString()],
     ["Median n", wormMedian(rows, "n_obs")],
-    ["Median TI", wormMedian(rows, "truncationindex")],
-    ["Median σ-dist", wormMedian(rows, "ti_fourparam_sigma_dist")],
+    ["Median RTI", wormMedian(rows, "rti")],
+    ["Median LTI", wormMedian(rows, "lti")],
+    ["Median RTI σ-dist", wormMedian(rows, "rti_sigma_dist")],
+    ["Median LTI σ-dist", wormMedian(rows, "lti_sigma_dist")],
     ["Median R²", wormMedian(rows, "r_squared")]
   ];
   el.innerHTML = cells
@@ -4853,7 +4887,7 @@ async function boot() {
   $("addFilter").addEventListener("click", () => {
     const cols = filterCols();
     // The truncation index is what the page is for, so it is the useful default.
-    const col = cols.includes("truncationindex") ? "truncationindex" : cols[0];
+    const col = cols.includes("rti") ? "rti" : cols[0];
     filters.push({ col, op: opsFor(col)[0][0], value: "" });
     renderFilters();
     const box = $("filterList").querySelector(".filterrow:last-child .fval");

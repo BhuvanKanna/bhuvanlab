@@ -5,7 +5,7 @@ One PNG per table in ``outputs/``: raw sheets to ``diagrams/`` and excluded
 (<= -1) sheets to ``excluded_diagrams/``, so 54 tissues x 2 filters =
 108 images, each holding five histograms over the ~74,628 genes in that table:
 
-    truncationindex   sumsquarevalue   mean   std   ti_fourparam_sigma_dist
+    rti   lti   sumsquarevalue   mean   std   rti_sigma_dist   lti_sigma_dist
 
 The image file name mirrors the table name exactly (``.csv`` -> ``.png``), so a
 sheet and the table it came from sort next to each other.
@@ -17,14 +17,14 @@ Axis choices, which are per-metric on purpose
 ---------------------------------------------
 These five columns do not share a shape, so one axis rule cannot serve them all.
 
-``truncationindex``
+``rti`` / ``lti``
     Bounded [0, 1] by construction, and violently zero-inflated - in liver
     roughly 60% of genes sit at exactly 0 and p99 is under 0.09. Plotted on its
     full fixed [0, 1] domain with a **log count axis**, because on a linear one
     the entire panel is a single bar at zero and the informative tail is
     invisible.
 
-``ti_fourparam_sigma_dist``
+``rti_sigma_dist`` / ``lti_sigma_dist``
     Spans about six orders of magnitude either side of zero: degenerate fits
     with w ~ 1e-4 push it past 1e5 while the biologically meaningful range is
     single digits. No linear window shows the bulk without hiding ~10% of the
@@ -74,16 +74,20 @@ EXCLUDED_SUFFIX = "_fourparam_excluded_at_or_below_-1.csv"
 
 # (column, panel title, one-line gloss)
 METRICS = [
-    ("truncationindex", "Truncation index",
+    ("rti", "Right truncation index (RTI)",
      "f(x_max) / f(peak), baseline removed - higher = more truncated"),
+    ("lti", "Left truncation index (LTI)",
+     "f(x_min) / f(peak), baseline removed - higher = more truncated"),
     ("sumsquarevalue", "Sum of squares",
      "residual sum of squares of the 4-parameter fit - lower = better fit"),
     ("mean", "Mean",
      "mean expression across donors, log2(TPM + 1) - 1"),
     ("std", "Standard deviation",
      "spread of expression across donors"),
-    ("ti_fourparam_sigma_dist", "Sigma distance",
+    ("rti_sigma_dist", "RTI sigma distance",
      "(x_max - x0) / sigma - how many sigma the ceiling sits above the peak"),
+    ("lti_sigma_dist", "LTI sigma distance",
+     "(x0 - x_min) / sigma - how many sigma the floor sits below the peak"),
 ]
 
 BINS = 60
@@ -221,7 +225,7 @@ def draw_panel(ax, values: np.ndarray, column: str, title: str, gloss: str,
     note = ""
     log_y = False
 
-    if column == "truncationindex":
+    if column in ("rti", "lti"):
         # Bounded [0, 1] and zero-inflated: fixed domain, log counts.
         edges = np.linspace(0.0, 1.0, BINS + 1)
         lo, hi = 0.0, 1.0
@@ -231,7 +235,7 @@ def draw_panel(ax, values: np.ndarray, column: str, title: str, gloss: str,
         note = f"{at_zero:,} exactly 0 ({at_zero / values.size:.0%}) - log counts"
         if hidden:
             note += f" - {hidden:,} outside [0, 1]"
-    elif column == "ti_fourparam_sigma_dist":
+    elif column in ("rti_sigma_dist", "lti_sigma_dist"):
         # Six orders of magnitude either side of zero: symlog, nothing clipped.
         edges = symlog_edges(values, BINS, SYMLOG_LINTHRESH)
         lo, hi = float(values.min()), float(values.max())
@@ -250,7 +254,7 @@ def draw_panel(ax, values: np.ndarray, column: str, title: str, gloss: str,
     ax.hist(inside, bins=edges, color=BAR, edgecolor=BAR_EDGE,
             linewidth=0.25, zorder=2)
 
-    if column == "ti_fourparam_sigma_dist":
+    if column in ("rti_sigma_dist", "lti_sigma_dist"):
         ax.set_xscale("symlog", linthresh=SYMLOG_LINTHRESH)
     if log_y:
         ax.set_yscale("log")
@@ -335,7 +339,7 @@ def render_sheet(table: Path, dest: Path, tissue: str, kind_label: str,
         series[column] = s
         per_metric[column] = int(s.size)
 
-    fig, axes = plt.subplots(2, 3, figsize=(17.5, 10.0), dpi=dpi,
+    fig, axes = plt.subplots(2, 4, figsize=(23.0, 10.0), dpi=dpi,
                              facecolor=SURFACE)
     fig.subplots_adjust(left=0.052, right=0.985, top=0.838, bottom=0.088,
                         wspace=0.235, hspace=0.62)
@@ -351,7 +355,8 @@ def render_sheet(table: Path, dest: Path, tissue: str, kind_label: str,
     flat = axes.ravel()
     for ax, (column, title, gloss) in zip(flat, METRICS):
         draw_panel(ax, series[column], column, title, gloss, n_fit)
-    draw_info_panel(flat[5], tissue, kind_label, n_rows, n_fit, per_metric)
+    draw_info_panel(flat[len(METRICS)], tissue, kind_label, n_rows, n_fit,
+                    per_metric)
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(dest, facecolor=SURFACE)

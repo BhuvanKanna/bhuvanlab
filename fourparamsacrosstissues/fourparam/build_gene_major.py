@@ -111,8 +111,20 @@ def _split_table(job):
     n_rows, unknown = 0, 0
     try:
         with path.open("r", encoding="utf-8", newline="") as fh:
-            header = fh.readline()
-            if header.replace("\r\n", "\n") != TABLE_HEADER:
+            header = fh.readline().replace("\r\n", "\n")
+            # A table may carry extra columns past the schema -- the 54 excluded
+            # tables end with `r_squared`, which is deliberately not in
+            # SHARD_HEADER (the browser joins it from r2/ by gene index so both
+            # load routes get it). Those are dropped rather than carried, so the
+            # shard is exactly SHARD_HEADER and stays byte-identical to
+            # extract_genes.py. Demanding an exact match here is what left the
+            # mirror a schema behind, since every excluded table was rejected.
+            n_keep = 0
+            if header == TABLE_HEADER:
+                pass
+            elif header.startswith(TABLE_HEADER.rstrip("\n") + ","):
+                n_keep = len(TABLE_HEADER.strip().split(","))
+            else:
                 return False, f"{path.name}: unexpected header", 0
             for line in fh:
                 if not line.strip():
@@ -121,7 +133,19 @@ def _split_table(job):
                 # older pandas carries CRLF, and copying that verbatim would
                 # leave shards with mixed line endings and a stray \r glued to
                 # the last field.
-                line = line.rstrip("\r\n") + "\n"
+                line = line.rstrip("\r\n")
+                if n_keep:
+                    # No field in these tables may contain a comma, so cutting
+                    # after the n_keep'th one is safe -- and it is a string
+                    # slice, so no value is ever re-serialised.
+                    cut = -1
+                    for _ in range(n_keep):
+                        cut = line.find(",", cut + 1)
+                        if cut < 0:
+                            break
+                    if cut >= 0:
+                        line = line[:cut]
+                line += "\n"
                 gene = line[:line.index(",")]
                 bucket = super_of_gene.get(gene)
                 if bucket is None:

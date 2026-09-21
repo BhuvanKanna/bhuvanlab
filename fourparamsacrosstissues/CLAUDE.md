@@ -9,10 +9,27 @@ For each of the **54 GTEx v11 human tissues**, we characterise the shape of ever
 gene's expression-level distribution across the population of donors. Per gene we
 fit a **4-parameter Gaussian** to its 40-bin expression histogram and compute a
 set of shape / truncation metrics (see "Generated statistics" below). The headline
-metric is the **truncation index**: how strongly the right tail of a gene's
-distribution is "capped", which is a candidate signal for genes whose
-over-expression is deleterious (individuals expressing past a ceiling are censored
-from the healthy population, truncating the distribution).
+metrics are the two **truncation indices**, RTI and LTI:
+
+- **RTI** (right) — how strongly the *upper* tail is "capped". A candidate signal
+  for genes whose **over**-expression is deleterious: individuals expressing past
+  a ceiling are censored from the healthy population.
+- **LTI** (left) — the mirror, how strongly the *lower* tail is capped. The
+  corresponding signal for **haplo**insufficiency: individuals expressing below a
+  floor are censored.
+
+**Exactly one of the two is non-zero for any given gene.** Both are measured
+above the same baseline — the fitted curve's minimum over `[min, max]` — and for
+a bell that minimum is whichever edge sits farther from the peak, so that edge
+reads 0 and the nearer one carries the whole ratio. They name *which side is
+closer*, and are not two independent measurements. In practice RTI is exactly 0
+for ~96% of genes (kidney cortex) and LTI carries the spread, median 0.457.
+
+**Read LTI beside `mean`.** The data floor is also where detection fails, and in
+the excluded tables 63% of genes sit within 0.1 of the −1 cut. Spearman(`lti_sigma_dist`,
+`mean`) = **+0.67** in muscle skeletal, so a high LTI on a barely-expressed gene
+is likely the detection floor rather than biology. Match on expression before
+reading anything into it.
 
 The expression matrices have already been downloaded and transformed (see
 `data/`). **Your job is to generate the fourparam tables** (see "What to do").
@@ -28,6 +45,7 @@ fourparam/                    <- all the code (kept separate from the data)
   compute_r2.py               <- add r_squared to ONE table, without refitting -> r2/
   build_r2.py                 <- publish r_squared to the browser as a fixed-width string
   append_r2_column.py         <- append r_squared as a real last column of the excluded tables
+  migrate_rti_lti.py          <- rewrite tables into the RTI/LTI schema, no refit; --recheck audits
   stage_worm_table.py         <- publish the C. elegans table, repairing Excel-mangled gene names
   generate_fourparam.py       <- generate ONE fourparam table from ONE matrix (raw or excluded)
   generate_all.py             <- driver: both tables for every tissue -> 108 tables
@@ -205,7 +223,7 @@ table is step 2. Everything else — the finite filter, the `MIN_OBS = 10` floor
 the failure rows, the columns — is default behaviour shared by both.
 
 > Note on downstream analysis filters: some analyses additionally keep only
-> `fit_success == True`, `0 < truncationindex < 1`, and raise the floor to
+> `fit_success == True`, `0 < rti < 1`, and raise the floor to
 > `n_obs >= 30`. Those are **analysis-time** filters you apply when *using* a
 > table — they are deliberately **not** baked into the generated tables, which
 > keep every gene (with `fit_success` flags) so nothing is thrown away up front.
@@ -223,13 +241,15 @@ One row per gene. Columns, in order:
 | `x0` | fitted peak centre |
 | `w` | fitted width (`w = sigma * sqrt(2)`) |
 | `sumsquarevalue` | residual sum of squares of the fit (lower = better). **Unnormalised** — it tracks `n_obs` (ρ = 0.99 across tissues) and cannot compare two genes. Use `r_squared` from `r2/` for that; see "Fit quality" |
-| `ti_fourparam_sigma_dist` | `(x_max − x0)/(w/√2)` — how many σ the ceiling sits above the peak; **lower = more truncated** |
-| `truncationindex` | **height-ratio truncation index**, `f(x_max)/f(peak)` with the curve's interval-minimum subtracted from both; **bounded [0, 1]**; higher = more truncated (0 = ceiling at curve min, 1 = ceiling at peak) |
+| `rti_sigma_dist` | `(x_max − x0)/(w/√2)` — how many σ the **ceiling** sits above the peak; **lower = more truncated** |
+| `rti` | **right height-ratio truncation index**, `f(x_max)/f(peak)` with the curve's interval-minimum subtracted from both; **bounded [0, 1]**; higher = more truncated (0 = ceiling at curve min, 1 = ceiling at peak) |
+| `lti_sigma_dist` | `(x0 − x_min)/(w/√2)` — how many σ the **floor** sits below the peak; **lower = more truncated**. The mirror of `rti_sigma_dist` |
+| `lti` | **left height-ratio truncation index**, `f(x_min)/f(peak)` on the same baseline and the same denominator as `rti`; **bounded [0, 1]** |
 | `min`, `max` | min / max of the values used for the fit |
 | `mean`, `std` | mean and **sample** std (ddof=1) of those values |
 | `skew`, `kurt` | skewness and **Fisher excess** kurtosis (normal → 0) of those values |
-| `right` | the truncation ceiling `x_max` used by the metrics (the data max) |
-| `maxheight`, `rightheight` | curve height at the peak / at `x_max`, above the curve's interval-minimum baseline (`truncationindex = rightheight/maxheight`) |
+| `left`, `right` | the truncation floor `x_min` / ceiling `x_max` used by the metrics (the data min / max). Blank on a `fit_success = False` row, where `min`/`max` still carry values |
+| `maxheight`, `rightheight`, `leftheight` | curve height at the peak / at `x_max` / at `x_min`, above the curve's interval-minimum baseline (`rti = rightheight/maxheight`, `lti = leftheight/maxheight`) |
 | `n_obs` | number of finite values fit (after any exclusion) |
 | `fit_success` | `True` if the fit converged with `n_obs >= 10`, else `False` (metrics `NaN`) |
 | `hist` | 40-character thumbnail histogram, one character per bin from `A-Za-z0-9+/` (= 0–63), each `round(count * 63 / hist_max)`. **Not analysis data** — quantised and lossy to 1/63 of the peak. Read by the browser's **gene page**, which decodes it into real bars and overlays the fitted curve on the same count axis. Not by the table's Shape cells, which draw the fitted curve alone. Empty when `n_obs = 0`. Written whenever `n_obs >= 1`, **independent of `fit_success`**, so a gene whose fit failed still shows its real distribution. Bin edges are not stored: they are `linspace(min, max, 41)`, and numpy widens a zero-width range to `[min-0.5, max+0.5]` |
@@ -268,9 +288,9 @@ typo or an absent symbol is loud rather than quietly empty.
 ## Distribution sheets (`diagrams/`, `excluded_diagrams/`, `make_diagrams.py`)
 
 One PNG per table — 54 tissues × 2 filters = **108 sheets, 540 histograms** —
-covering `truncationindex`, `sumsquarevalue`, `mean`, `std`, and
-`ti_fourparam_sigma_dist` over the genes in that table, plus a panel stating what
-was excluded. File names mirror the table names, so a sheet sorts next to its
+covering `rti`, `lti`, `sumsquarevalue`, `mean`, `std`, `rti_sigma_dist` and
+`lti_sigma_dist` over the genes in that table, plus a panel stating what was
+excluded. Seven metric panels plus the info panel, laid out 2 x 4. File names mirror the table names, so a sheet sorts next to its
 source.
 
 **The two filters go to two directories** — raw sheets to `diagrams/`, excluded
@@ -293,10 +313,11 @@ dropped counts are printed on the sheet rather than silently omitted.
 shape, so one rule cannot serve them all. Do not "simplify" them to a common
 linear axis; each choice is load-bearing:
 
-- `truncationindex` is bounded [0, 1] and violently zero-inflated (~91% of liver
-  genes sit at exactly 0). Fixed [0, 1] domain with a **log count axis**; on a
-  linear one the panel is a single bar and the tail is invisible.
-- `ti_fourparam_sigma_dist` spans ~6 orders of magnitude either side of zero
+- `rti` / `lti` are bounded [0, 1] and violently zero-inflated (~91% of liver
+  genes sit at exactly 0 for `rti`; `lti` is the zeroed side for the rest).
+  Fixed [0, 1] domain with a **log count axis**; on a linear one the panel is a
+  single bar and the tail is invisible. Both sides share the rule.
+- `rti_sigma_dist` / `lti_sigma_dist` span ~6 orders of magnitude either side of zero
   (degenerate fits with `w ≈ 1e-4` reach 1e5 while the meaningful range is single
   digits). **Symlog x**, linear within ±1, with symlog-spaced bins. Nothing is
   clipped — no linear window shows the bulk without hiding ~10% of the genes.
@@ -539,6 +560,43 @@ silently.
 > the browser picks it up with no further change: `wormStatCols()` adds an `R²`
 > column exactly when the header has one, and the summary strip gains a median.
 
+## Migrating a table to the RTI/LTI schema (`migrate_rti_lti.py`)
+
+The tables were generated before LTI existed. `migrate_rti_lti.py` rewrites them
+in place **without refitting**:
+
+```bash
+cd fourparam
+python migrate_rti_lti.py --all --verify      # rewrite every table in outputs/
+python migrate_rti_lti.py --all --recheck     # audit tables already migrated
+python migrate_rti_lti.py --input ../worm/worm_fourparam_excluded_at_or_below_-1.csv
+```
+
+It renames `ti_fourparam_sigma_dist` -> `rti_sigma_dist` and `truncationindex`
+-> `rti`, derives `lti_sigma_dist`, `lti`, `left` and `leftheight` from the
+stored `y0, A, x0, w, min, max`, and reorders into the schema. It is re-runnable
+and skips a table that already has `rti`.
+
+**Nothing is refit and no carried-over value is re-serialised.** Every field
+that already existed is copied as text, which is what keeps the byte-identity
+guarantee with `extract_genes.py` alive -- parsing a float and writing it back
+silently shortens it (`0.012596832467784065` -> `0.012596832467784`).
+
+**The curve grid must be built with `np.linspace`, not `lo + (hi-lo)*t`.** They
+are mathematically identical and numerically are not, and `BhuvanFitter` uses
+`np.linspace`. For a collapsed fit (`w ~ 1e-6`) a one-ulp shift in x moves the
+curve height by percent, and the stored heights stop reproducing.
+
+**Errors are measured as a fraction of the curve's height, never of the value
+being checked.** A ceiling far out in the tail leaves `rightheight` at ~5e-17 on
+a curve ~1e3 tall -- a floating-point zero both sides agree on. Dividing by that
+value reports a 100% error and condemns a migration that is exactly right.
+
+**An extra column keeps the position it had**, anchored to the column it
+followed rather than to an absolute index: the schema gained four columns, so
+`r_squared` at old index 22 is not at new index 22. That is also what keeps the
+worm table's `wormbasegeneid` between `gene` and `genename`.
+
 ## Fit quality (`r2/`, `compute_r2.py`, `build_r2.py`)
 
 `r_squared` for **every** gene in all 54 excluded tables, joined on `gene`.
@@ -772,7 +830,7 @@ to whichever tab you came from with its table intact.
 |---|---|---|
 | Distribution in the focus tissue | `hist` / `hist_max` decoded against `min`/`max`, plus `R²` from `r2/` | 40 real bars plus toggleable overlays: the 4-param fit, a moment-matched normal from `mean`/`std`, `y0`, `x0`, `x_max`, `min`, ±1σ/±2σ. The stat strip carries `R²` next to `fit`, so "the fit converged" and "the fit is any good" are never confused |
 | `mean` across all 54 tissues | gene-major shard | zero-anchored bars + a ranking sentence |
-| `truncationindex` / `ti_fourparam_sigma_dist` across all 54 tissues | gene-major shard | same, with a metric toggle |
+| `rti` / `lti` / `rti_sigma_dist` / `lti_sigma_dist` across all 54 tissues | gene-major shard | same, with a four-way metric toggle |
 | What this gene is | **mygene.info**, live | name, summary, aliases, locus |
 | Associated phenotypes | `docs/overexpression_phenotypes.tsv` + **Ensembl**, live | curated over-expression drivers first, then every Ensembl association |
 
@@ -799,7 +857,7 @@ Four things about it are load-bearing:
    from this repository. Both are optional — a blocked, offline or slow request
    (9 s timeout) leaves that panel saying so and changes nothing else. They are
    labelled as external wherever they appear.
-4. **Ties are named, not hidden.** `truncationindex` is exactly 0 for most genes
+4. **Ties are named, not hidden.** `rti` is exactly 0 for most genes
    in most tissues, so "25th of 54" is usually a 30-way draw; the ranking
    sentence says how many tissues share the value rather than implying a
    position. The σ-distance bars clip to ±6σ (degenerate fits reach 10⁵) and
@@ -869,19 +927,20 @@ rust vertical is the ceiling `x_max`. Coverage adds a dotted curve below `min`
   comparable. That is the honest cost of real units, and precisely what the
   column next to it exists to fix.
 
-**Curve coverage** — `shapeCell()`, reads `ti_fourparam_sigma_dist`, `w`, `x0`,
+**Curve coverage** — `shapeCell()`, reads `rti_sigma_dist`, `w`, `x0`,
 `min`.
 
 - **The bell is universal; only the window is per-gene.** `((x − x0)/w)²` is
   exactly `z²/2` for `z = (x − x0)/σ`, `σ = w/√2`. So in z units every gene's
   fitted curve is the same `exp(−z²/2)` once `y0` and `A` divide out — there is
   no per-gene shape to draw. The content is `z_min = (min − x0)/σ` to
-  `z_max = (max − x0)/σ`, and `z_max` **is** `ti_fourparam_sigma_dist`.
+  `z_max = (max − x0)/σ`, and `z_max` **is** `rti_sigma_dist`. The left edge
+  `z_min` is `lti_sigma_dist` negated.
 - **Marking `z_min` is what makes a degenerate fit visible, and is the whole
   reason this is not just a canonical bell with a cut.** APP in kidney cortex
   fits `w = 22.7` (σ = 16.0) to a 3.95-unit data span, so its entire observed
-  range is a **0.25σ sliver** at the apex. `ti_fourparam_sigma_dist` reads
-  0.124 — apparently maximal truncation — and `truncationindex` reads 0, and
+  range is a **0.25σ sliver** at the apex. `rti_sigma_dist` reads
+  0.124 — apparently maximal truncation — and `rti` reads 0, and
   neither means anything. Here that row is a thin spike, not a plausible bell.
 - **The axis is fixed and never data-derived**, so cells are comparable by
   construction and nothing is rescaled to its own range. Both edges clamp to the
@@ -899,7 +958,7 @@ missing or non-finite.
 >
 > - A **synthetic sparkline** over the peak's own ±3.4σ, which never showed the
 >   data. For APP that window is [−52, 66], rendering the ceiling at 99% of full
->   height while `truncationindex` is 0 — table and picture normalising over
+>   height while `rti` is 0 — table and picture normalising over
 >   windows ~30× apart. See `specs/2026-08-05-histogram-thumbnail-design.md`.
 > - The **real 40-bin histogram** from `hist` / `hist_max` with the curve
 >   overlaid on the count axis. Correct in principle, but `outputs/` does not
@@ -1038,6 +1097,13 @@ quietly loses data.
 | `build_gene_major.SHARD_HEADER` | what the gene-major mirror expects **and** emits |
 | `extract_genes.STAT_COLUMNS` | what the CLI extract emits |
 | `docs/manifest.json` `"columns"` | what the browser's CSV export follows |
+
+`build_gene_major.py` accepts a header that *starts* with the schema and drops
+any extra trailing columns (the excluded tables end with `r_squared`, which is
+deliberately not in `SHARD_HEADER`). Demanding an exact match is what left the
+mirror a schema behind: every excluded table was rejected, so the last rebuild
+predates `append_r2_column.py`. A header that differs any other way is still
+refused.
 
 Drift is silent and expensive: `build_gene_major.py` rejects every table with
 "unexpected header" (it fails safe, but the whole run dies), or the browser

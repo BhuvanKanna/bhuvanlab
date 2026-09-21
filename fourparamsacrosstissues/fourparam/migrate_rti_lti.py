@@ -182,11 +182,87 @@ def migrate_table(src, dest, verify=False):
     # Only 4 of the 108 tables carry hist/hist_max, so the schema is applied as
     # an ordering over the columns this table actually has, not as a requirement.
     ordered = [c for c in NEW_COLUMNS if c in df.columns]
-    extras = [c for c in df.columns if c not in NEW_COLUMNS]
-    out = df[ordered + extras]
+    # A column outside the schema keeps the position it had. `r_squared` is last
+    # and stays last; the worm table's `wormbasegeneid` sits between `gene` and
+    # `genename` and has to stay there rather than being swept to the end.
+    # Anchored to the column it originally followed, not to an absolute index:
+    # the schema gained four columns, so index 22 in the old header is not index
+    # 22 in the new one and r_squared would land in the middle.
+    original = list(df.columns)
+    for i, extra in enumerate(original):
+        if extra in NEW_COLUMNS:
+            continue
+        prev = original[i - 1] if i else None
+        if prev in ordered:
+            ordered.insert(ordered.index(prev) + 1, extra)
+        else:
+            ordered.insert(0, extra)
+    out = df[ordered]
     dest.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(dest, index=False, lineterminator="\n")
     return stats
+
+
+def recheck_table(path):
+    """
+    Audit an **already migrated** table: re-derive every truncation metric from
+    the stored ``y0, A, x0, w, min, max`` and compare against what the table
+    says, both sides included.
+
+    This is the check that can be run after the fact, with no original to
+    compare against -- ``migrate_table(..., verify=True)`` only runs during the
+    rewrite. Errors are measured as a fraction of the curve's own height, since
+    an edge height of ~5e-17 on a curve ~1e3 tall is a floating-point zero that
+    both sides agree on.
+
+    Returns ``{rows_checked, max_err, mismatches}``.
+    """
+    path = Path(path)
+    df = pd.read_csv(path, dtype=str, keep_default_na=False)
+    need = ["y0", "A", "x0", "w", "min", "max", "maxheight", "rightheight",
+            "leftheight", "rti", "lti", "rti_sigma_dist", "lti_sigma_dist"]
+    missing = [c for c in need if c not in df.columns]
+    if missing:
+        raise SystemExit(f"{path.name}: not a migrated table (missing {missing})")
+
+    num = {c: pd.to_numeric(df[c], errors="coerce").to_numpy(dtype=float)
+           for c in need}
+    usable = (np.isfinite(num["y0"]) & np.isfinite(num["A"])
+              & np.isfinite(num["x0"]) & np.isfinite(num["w"])
+              & np.isfinite(num["min"]) & np.isfinite(num["max"])
+              & (num["w"] != 0) & (num["max"] > num["min"]))
+
+    n = len(df)
+    mh = np.full(n, np.nan); rh = np.full(n, np.nan); lh = np.full(n, np.nan)
+    idx = np.flatnonzero(usable)
+    for s in range(0, idx.size, BLOCK):
+        b = idx[s:s + BLOCK]
+        _, mh[b], rh[b], lh[b] = _curve_geometry(
+            num["y0"][b], num["A"][b], num["x0"][b], num["w"][b],
+            num["min"][b], num["max"][b])
+
+    sigma = num["w"] / np.sqrt(2.0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        expect = {
+            "maxheight": mh, "rightheight": rh, "leftheight": lh,
+            "rti": _ratio(rh, mh), "lti": _ratio(lh, mh),
+            "rti_sigma_dist": (num["max"] - num["x0"]) / sigma,
+            "lti_sigma_dist": (num["x0"] - num["min"]) / sigma,
+        }
+
+    max_err, mismatches = 0.0, 0
+    for name, got in expect.items():
+        stored = num[name]
+        cmp = usable & np.isfinite(stored) & np.isfinite(got)
+        # Heights scale with the curve; the ratios and sigma-distances are
+        # already dimensionless, so they are compared against 1.
+        scale = np.maximum(np.abs(mh[cmp]), 1e-12) if "height" in name else 1.0
+        err = np.abs(got[cmp] - stored[cmp]) / scale
+        if err.size:
+            max_err = max(max_err, float(err.max()))
+            mismatches += int((err > 1e-6).sum())
+    return {"rows_checked": int(usable.sum()), "max_err": max_err,
+            "mismatches": mismatches}
 
 
 def discover(outputs, tissues=None):
@@ -209,6 +285,10 @@ def main(argv=None):
                     default=Path(__file__).resolve().parents[1] / "outputs")
     ap.add_argument("--verify", action="store_true",
                     help="recompute maxheight/rightheight and compare to stored")
+    ap.add_argument("--recheck", action="store_true",
+                    help="audit ALREADY migrated tables: re-derive every "
+                         "truncation metric from the stored parameters and "
+                         "compare. Writes nothing.")
     args = ap.parse_args(argv)
 
     if args.input:
@@ -221,6 +301,23 @@ def main(argv=None):
 
     if not jobs:
         print("nothing to do")
+        return 0
+
+    if args.recheck:
+        worst, bad, checked = 0.0, 0, 0
+        for i, (src, _) in enumerate(jobs, 1):
+            st = recheck_table(src)
+            worst = max(worst, st["max_err"])
+            bad += st["mismatches"]
+            checked += st["rows_checked"]
+            print(f"[{i}/{len(jobs)}] {src.name}: {st['rows_checked']:,} rows, "
+                  f"max err {st['max_err']:.2e}, {st['mismatches']} mismatches",
+                  flush=True)
+        print(f"\nrechecked {checked:,} rows over {len(jobs)} tables")
+        print(f"worst error {worst:.2e}, {bad} mismatches")
+        if bad:
+            print("FAIL: a table does not match its own parameters", file=sys.stderr)
+            return 1
         return 0
 
     worst, done, skipped = 0.0, 0, 0

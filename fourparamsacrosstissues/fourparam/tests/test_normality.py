@@ -207,12 +207,12 @@ def test_bh_fdr_recovers_strong_signal():
 
 
 def test_robust_z_is_not_moved_by_an_extreme_outlier():
-    """The exact failure that breaks mean/SD rules on ti_fourparam_sigma_dist,
+    """The exact failure that breaks mean/SD rules on rti_sigma_dist,
     where degenerate fits reach 1e5."""
     x = np.concatenate([np.random.default_rng(7).normal(0, 1, 500), [1e5]])
     z = N.robust_z(x)
     assert abs(z[-1]) > 3.5
     assert np.nanmax(np.abs(z[:-1])) < 20
 
-    # Over half the values identical (as for truncationindex) -> MAD is 0.
+    # Over half the values identical (as for rti) -> MAD is 0.
     assert np.all(np.isnan(N.robust_z(np.concatenate([np.zeros(96), np.arange(4)]))))

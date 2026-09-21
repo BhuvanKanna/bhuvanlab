@@ -122,6 +122,52 @@ def test_table_without_hist_columns_migrates(tmp_path):
         + ["r_squared"]
 
 
+def test_recheck_passes_on_a_migrated_table(tmp_path):
+    """recheck_table re-derives every metric from the stored parameters and
+    compares against what the table says, so an already-migrated table can be
+    audited without the original in hand."""
+    src = write_old(tmp_path, [old_row_from(fitted_gene(s)) for s in range(5)])
+    out = tmp_path / "out.csv"
+    M.migrate_table(src, out)
+    st = M.recheck_table(out)
+    assert st["rows_checked"] == 5
+    assert st["max_err"] < 1e-9
+    assert st["mismatches"] == 0
+
+
+def test_recheck_catches_a_corrupted_lti(tmp_path):
+    """The check has to be able to fail, or it proves nothing."""
+    src = write_old(tmp_path, [old_row_from(fitted_gene())])
+    out = tmp_path / "out.csv"
+    M.migrate_table(src, out)
+    head, row = out.read_text(encoding="utf-8").splitlines()
+    fields = row.split(",")
+    fields[head.split(",").index("lti")] = "0.5"
+    out.write_text(head + "\n" + ",".join(fields) + "\n", encoding="utf-8",
+                   newline="")
+    st = M.recheck_table(out)
+    assert st["mismatches"] == 1
+
+
+def test_extra_columns_keep_their_original_position(tmp_path):
+    """The worm table carries `wormbasegeneid` between gene and genename. An
+    extra column is not part of the schema, so it must stay where it was rather
+    than being swept to the end with r_squared."""
+    bf = fitted_gene()
+    old_cols = OLD_HEADER.split(",")
+    vals = dict(zip(old_cols, old_row_from(bf).split(",")))
+    vals["wormbasegeneid"] = "WBGene00000156"
+    cols = ["gene", "wormbasegeneid"] + old_cols[1:]
+    src = tmp_path / "worm.csv"
+    src.write_text(",".join(cols) + "\n" + ",".join(vals[c] for c in cols) + "\n",
+                   encoding="utf-8", newline="")
+    out = tmp_path / "out.csv"
+    M.migrate_table(src, out)
+    got = out.read_text(encoding="utf-8").splitlines()[0].split(",")
+    assert got[:3] == ["gene", "wormbasegeneid", "genename"]
+    assert got[-1] == "r_squared"
+
+
 def test_verify_recomputes_maxheight_and_agrees(tmp_path):
     """--verify proves the reconstructed curve is the one that was fit."""
     src = write_old(tmp_path, [old_row_from(fitted_gene(s)) for s in range(5)])

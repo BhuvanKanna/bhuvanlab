@@ -371,12 +371,12 @@ def robust_z(values):
     Iglewicz-Hoaglin modified z-score, ``0.6745 * (x - median) / MAD``.
 
     Median and MAD rather than mean and SD because these parameter distributions
-    are exactly the ones that break moment-based rules: ``ti_fourparam_sigma_dist``
+    are exactly the ones that break moment-based rules: ``rti_sigma_dist``
     reaches 1e5 from degenerate fits, and a single such value moves the SD enough
     to hide every genuine outlier. |z| > 3.5 is the conventional cut.
 
     Returns all-NaN when the MAD is zero -- which happens when over half the
-    values are identical, as for ``truncationindex`` where 96% are exactly 0.
+    values are identical, as for ``rti`` where 96% are exactly 0.
     That is a signal to threshold within the nonzero part instead, not to fall
     back to a mean.
     """
