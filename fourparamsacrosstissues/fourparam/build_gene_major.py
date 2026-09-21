@@ -70,9 +70,9 @@ SUPER_BUCKETS = 64       # pass-1 fan-out; bounds pass-2 memory
 # The shard header. Identical to extract_genes.py's output header, so a shard
 # and a CLI extract can be concatenated without reconciling columns.
 SHARD_HEADER = ("tissue,table,gene,genename,y0,A,x0,w,sumsquarevalue,"
-                "ti_fourparam_sigma_dist,truncationindex,min,max,mean,std,"
-                "skew,kurt,right,maxheight,rightheight,n_obs,fit_success,"
-                "hist,hist_max\n")
+                "rti_sigma_dist,rti,lti_sigma_dist,lti,min,max,mean,std,"
+                "skew,kurt,left,right,maxheight,rightheight,leftheight,"
+                "n_obs,fit_success,hist,hist_max\n")
 
 TABLE_HEADER = SHARD_HEADER[len("tissue,table,"):]
 

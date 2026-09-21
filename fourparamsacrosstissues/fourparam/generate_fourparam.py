@@ -84,9 +84,10 @@ MIN_OBS = 10
 # Column order == the keys BhuvanFitter.fit("fourparam") returns, exactly.
 COLUMNS = [
     "gene", "y0", "A", "x0", "w", "sumsquarevalue",
-    "ti_fourparam_sigma_dist", "truncationindex",
+    "rti_sigma_dist", "rti", "lti_sigma_dist", "lti",
     "min", "max", "mean", "std", "skew", "kurt",
-    "right", "maxheight", "rightheight", "n_obs", "fit_success",
+    "left", "right", "maxheight", "rightheight", "leftheight",
+    "n_obs", "fit_success",
     # Thumbnail histogram for the browser's Shape column. Quantised and lossy —
     # a rendering aid, not analysis data. See bhuvanfitter.encode_histogram.
     "hist", "hist_max",
