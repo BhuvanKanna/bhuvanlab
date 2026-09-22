@@ -933,8 +933,10 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
       <h1>Truncation Browser<span class="dim"> / GTEx v11</span></h1>
       <p class="tagline">
         Every gene's expression across a tissue's donors is fit with a 4-parameter
-        Gaussian. The truncation index measures how hard the right tail is capped —
-        a candidate signal for genes whose over-expression is not tolerated.
+        Gaussian. The truncation indices measure how hard each tail is capped —
+        <strong>RTI</strong> the upper one, a candidate signal for genes whose
+        over-expression is not tolerated, and <strong>LTI</strong> the lower one,
+        for genes where too little is not tolerated.
       </p>
     </div>
     <dl class="mast-stats">
@@ -1056,7 +1058,9 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
         <span class="key"><strong>Curve coverage</strong> — every gene on one −4σ … +4σ ruler.
           Solid band = how much of the fitted curve the data actually spans, so a sliver
           means σ dwarfs the data. Ceiling sits at σ-dist.</span>
-        <span class="key">TI = f(x_max)/f(peak), baseline removed</span>
+        <span class="key">RTI = f(x_max)/f(peak) · LTI = f(x_min)/f(peak), baseline
+          removed from both. Only one is ever non-zero — the baseline is whichever
+          edge sits farther from the peak, so that side reads 0.</span>
       </div>
     </section>
   </div>
