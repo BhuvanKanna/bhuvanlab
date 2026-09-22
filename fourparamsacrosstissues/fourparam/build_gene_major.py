@@ -110,6 +110,45 @@ def gene_order(reference: Path):
 # --------------------------------------------------------------------------- #
 # pass 1 - split each table into SUPER_BUCKETS temp files
 # --------------------------------------------------------------------------- #
+def _schema_prefix(header):
+    """
+    How many leading fields of a source row the mirror keeps.
+
+    ``0`` means the header is exactly the schema and the whole row is kept;
+    ``None`` means it is not the schema at all and the table must be rejected.
+    A table may carry extra columns past ``fit_success`` -- ``hist``/``hist_max``,
+    ``r_squared``, both or neither -- and those are dropped.
+    """
+    header = header.replace("\r\n", "\n")
+    if header == TABLE_HEADER:
+        return 0
+    if header.startswith(TABLE_HEADER.rstrip("\n") + ","):
+        return len(TABLE_HEADER.strip().split(","))
+    return None
+
+
+def _trim(line, n_keep):
+    """
+    Cut a row to its first ``n_keep`` fields (``0`` keeps the whole row).
+
+    No field in these tables may contain a comma -- the browser parses them with
+    a plain ``split(",")`` -- so cutting at the n'th comma is safe, and it is a
+    string slice, so no value is ever re-serialised.
+
+    Both the writer and ``verify`` go through here. When only the writer trimmed,
+    the byte-comparison measured a 24-field shard row against a 27-field source
+    row and called every row DIFFERS.
+    """
+    if not n_keep:
+        return line
+    cut = -1
+    for _ in range(n_keep):
+        cut = line.find(",", cut + 1)
+        if cut < 0:
+            return line
+    return line[:cut]
+
+
 def _split_table(job):
     tissue, kind, path, tmp_dir, super_of_gene, n_super = job
     prefix = f"{tissue},{kind},"
@@ -118,20 +157,8 @@ def _split_table(job):
     n_rows, unknown = 0, 0
     try:
         with path.open("r", encoding="utf-8", newline="") as fh:
-            header = fh.readline().replace("\r\n", "\n")
-            # A table may carry extra columns past the schema -- the 54 excluded
-            # tables end with `r_squared`, which is deliberately not in
-            # SHARD_HEADER (the browser joins it from r2/ by gene index so both
-            # load routes get it). Those are dropped rather than carried, so the
-            # shard is exactly SHARD_HEADER and stays byte-identical to
-            # extract_genes.py. Demanding an exact match here is what left the
-            # mirror a schema behind, since every excluded table was rejected.
-            n_keep = 0
-            if header == TABLE_HEADER:
-                pass
-            elif header.startswith(TABLE_HEADER.rstrip("\n") + ","):
-                n_keep = len(TABLE_HEADER.strip().split(","))
-            else:
+            n_keep = _schema_prefix(fh.readline())
+            if n_keep is None:
                 return False, f"{path.name}: unexpected header", 0
             for line in fh:
                 if not line.strip():
@@ -140,19 +167,7 @@ def _split_table(job):
                 # older pandas carries CRLF, and copying that verbatim would
                 # leave shards with mixed line endings and a stray \r glued to
                 # the last field.
-                line = line.rstrip("\r\n")
-                if n_keep:
-                    # No field in these tables may contain a comma, so cutting
-                    # after the n_keep'th one is safe -- and it is a string
-                    # slice, so no value is ever re-serialised.
-                    cut = -1
-                    for _ in range(n_keep):
-                        cut = line.find(",", cut + 1)
-                        if cut < 0:
-                            break
-                    if cut >= 0:
-                        line = line[:cut]
-                line += "\n"
+                line = _trim(line.rstrip("\r\n"), n_keep) + "\n"
                 gene = line[:line.index(",")]
                 bucket = super_of_gene.get(gene)
                 if bucket is None:
@@ -235,11 +250,19 @@ def verify(outputs: Path, dest_dir: Path, shard_ids: list[int], n_tables: int) -
                 problems += 1
                 continue
             with src.open("r", encoding="utf-8", newline="") as fh:
-                fh.readline()
+                # Trim the source row exactly as the writer did, or a 24-field
+                # shard row is compared against a 27-field table row and every
+                # row reads as DIFFERS.
+                n_keep = _schema_prefix(fh.readline())
+                if n_keep is None:
+                    print(f"  shard {shard:04d}: {src.name} has an unexpected header",
+                          file=sys.stderr)
+                    problems += 1
+                    continue
                 for line in fh:
                     gene = line[:line.index(",")]
                     if gene in rows:
-                        if rows[gene] != line.rstrip("\r\n"):
+                        if rows[gene] != _trim(line.rstrip("\r\n"), n_keep):
                             print(f"  shard {shard:04d}: {tissue}/{kind}/{gene} DIFFERS",
                                   file=sys.stderr)
                             problems += 1
