@@ -527,6 +527,70 @@ footer p { margin: 0 0 7px; max-width: 78ch; }
 .tabs button[aria-selected="true"] .count-pill { background: var(--accent); color: var(--accent-ink); }
 .tabpanel[hidden] { display: none; }
 
+/* --- Background / People -------------------------------------------------
+   Prose panels, so they get a reading measure rather than the full table
+   width. Everything here is scoped under .prose so it cannot reach the
+   data tables, whose density is deliberate. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+/* The Pierce Lab entry leaves the site, so it is an <a> that borrows the tab
+   look without claiming to be a tab. */
+.tabs .tablink {
+  display: inline-flex; align-items: center; gap: .35em;
+  padding: .55rem .9rem; text-decoration: none; color: var(--muted);
+  border-bottom: 2px solid transparent; font: inherit;
+}
+.tabs .tablink:hover { color: var(--accent); }
+.tabs .tablink .ext { font-size: .85em; opacity: .7; }
+
+.prose .panel { max-width: 62ch; line-height: 1.62; }
+.prose h2 { margin: 0 0 .6rem; font-size: 1.5rem; }
+.prose h3 {
+  margin: 2rem 0 .5rem; font-size: 1.05rem; letter-spacing: .01em;
+  color: var(--accent);
+}
+.prose p { margin: 0 0 .9rem; }
+.prose .lede { font-size: 1.06rem; color: var(--ink); }
+.prose ul { margin: 0 0 1rem; padding-left: 1.15rem; }
+.prose li { margin-bottom: .55rem; }
+.prose code { font-size: .92em; }
+/* Stated limits and assumptions. Marked so they read as part of the argument
+   rather than as small print to be skimmed past. */
+.prose .caveat {
+  border-left: 3px solid var(--ceiling); padding: .55rem .9rem;
+  background: color-mix(in srgb, var(--ceiling) 7%, transparent);
+  border-radius: 0 6px 6px 0; color: var(--muted);
+}
+/* A plain aside. Distinct from .caveat, which is reserved for stated limits on
+   what the science supports and should not be spent on housekeeping notes. */
+.prose .note { color: var(--muted); font-size: .92rem; font-style: italic; }
+.prose .metric-list { list-style: none; padding-left: 0; }
+.prose .metric-list li {
+  padding: .5rem .8rem; margin-bottom: .45rem; border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.people { list-style: none; padding-left: 0; margin-top: 1.4rem; }
+.people li {
+  display: flex; gap: 1.1rem; align-items: flex-start; margin-bottom: 1.8rem;
+}
+.people img {
+  width: 104px; height: 104px; flex: 0 0 104px; border-radius: 10px;
+  object-fit: cover; object-position: center top;
+  background: var(--sunken);
+}
+.people h3 { margin: 0 0 .15rem; color: var(--ink); font-size: 1.08rem; }
+.people .role {
+  margin: 0 0 .5rem; color: var(--accent); font-size: .9rem;
+  font-weight: 600; letter-spacing: .02em;
+}
+.people div p { margin-bottom: .5rem; }
+@media (max-width: 560px) {
+  .people li { flex-direction: column; gap: .7rem; }
+}
+
 /* ---------- worm summary strip ---------- */
 .wormstats {
   display: flex; flex-wrap: wrap; gap: 0 30px; margin: 0;
@@ -890,6 +954,17 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
       <span class="count-pill" id="wsCount">0</span></button>
     <button type="button" id="tabWorm" role="tab" aria-selected="false"
             aria-controls="panelWorm">Worm data</button>
+    <button type="button" id="tabBackground" role="tab" aria-selected="false"
+            aria-controls="panelBackground">Background</button>
+    <button type="button" id="tabPeople" role="tab" aria-selected="false"
+            aria-controls="panelPeople">People</button>
+    <!-- Leaves the site, so it is an anchor rather than a tab: it gets no
+         role="tab" and no aria-selected, because it never becomes the
+         selected view. -->
+    <a class="tablink" href="https://sites.utexas.edu/piercelab/"
+       target="_blank" rel="noopener noreferrer">Pierce Lab<span
+       class="ext" aria-hidden="true">↗</span><span class="sr-only">
+       (opens in a new tab)</span></a>
   </div>
 
   <div class="banner updatebanner" id="updateBanner" hidden role="status"
@@ -1034,6 +1109,158 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
   <!-- One gene, everywhere it was measured. Entered by clicking any gene name;
        leaves by the Back button or the browser's own back, which are wired to
        the same history entry. -->
+  <div class="tabpanel prose" id="panelBackground" role="tabpanel"
+       aria-labelledby="tabBackground" hidden>
+    <section class="panel">
+      <h2>What this project is asking</h2>
+      <p class="lede">Some genes are <strong>dosage-sensitive</strong>: the cell
+        needs the amount of their product to stay inside a window. For some,
+        too much is harmful (triplosensitivity); for others, too little is
+        (haploinsufficiency). Those genes are enriched among the causes of
+        developmental disorders, and they are the ones where a duplication or a
+        deletion is most likely to matter.</p>
+
+      <h3>Why look at healthy people</h3>
+      <p>The usual way to find a dosage-sensitive gene is to study patients who
+        have a disorder. This project asks the opposite question: what can you
+        learn from people who are <em>fine</em>?</p>
+      <p>If expressing too much of a gene is harmful, then among healthy people
+        you should not find anyone expressing it past some ceiling — those
+        individuals are not in the cohort. The gene's expression distribution
+        across the population is then <strong>truncated</strong>: the upper tail
+        a normal distribution would predict is missing. The same logic runs
+        downward for a gene where too little is harmful, cutting off the lower
+        tail instead.</p>
+      <p>So a constraint that would normally be studied through disease leaves a
+        footprint in a healthy population — a distribution with an edge where a
+        tail should be. The <strong>truncation index</strong> is an attempt to
+        measure that edge.</p>
+
+      <h3>The data</h3>
+      <p><a href="https://gtexportal.org/" target="_blank"
+        rel="noopener noreferrer">GTEx</a> v11: bulk RNA-seq across
+        <strong>54 human tissues</strong>, one expression value per gene per
+        donor, transformed to <code>log2(TPM + 1) − 1</code>. Donor counts range
+        from 11 (kidney medulla) to 818 (skeletal muscle), and that range turns
+        out to govern almost everything below.</p>
+      <p class="caveat">GTEx donors are deceased organ donors — people without
+        the disorder in question, not a screened healthy cohort. "Healthy" here
+        means "not selected against by whatever the gene does", which is the
+        assumption the whole method rests on.</p>
+
+      <h3>The measurement</h3>
+      <p>Each gene's expression histogram (40 bins) gets a 4-parameter Gaussian
+        fit. The index then asks <em>how high the fitted curve still is where
+        the observed data stops</em>:</p>
+      <ul class="metric-list">
+        <li><strong>RTI</strong> — <code>f(x_max) / f(peak)</code>. The
+          <em>right</em>, or upper, edge. The overexpression-is-harmful side.</li>
+        <li><strong>LTI</strong> — <code>f(x_min) / f(peak)</code>. The
+          <em>left</em>, or lower, edge. The haploinsufficiency side.</li>
+      </ul>
+      <p>Both are bounded [0,&nbsp;1]; higher means the edge cuts closer to the
+        peak, so more of the distribution is missing. The two σ-distance columns
+        are the same geometry expressed in standard deviations instead.</p>
+      <p>The two sides share a baseline — the curve's minimum across the
+        observed range — which is whichever edge sits <em>farther</em> from the
+        peak. That edge therefore reads exactly 0, so <strong>only one of RTI
+        and LTI is non-zero for any given gene</strong>. They name which side is
+        closer; they are not two independent measurements.</p>
+
+      <h3>Approaches</h3>
+      <ul>
+        <li><strong>4-parameter Gaussian</strong> on the histogram — fast, but
+          biased by construction, because it is fit to data that is already
+          truncated.</li>
+        <li><strong>Truncated-Gaussian MLE</strong> on the raw values — slower,
+          but models the missing tail explicitly, so it recovers the
+          distribution the population would have had.</li>
+        <li><strong>A distribution-classification cascade</strong> that rules
+          out zero-inflation, multimodality and ordinary skew before anything is
+          called truncated, with thresholds calibrated against simulated null
+          data rather than textbook constants.</li>
+        <li><strong>Control gene sets</strong> — known dosage-sensitive genes
+          (pTriplo, DECIPHER dominant) scored against genes that tolerate extra
+          copies (duplication-tolerant, olfactory receptors).</li>
+      </ul>
+
+      <h3>What has actually come out of it so far</h3>
+      <p>Read this before treating any candidate list as biology.</p>
+      <ul>
+        <li><strong>Power is the binding constraint.</strong> At ~100 donors, a
+          ceiling 2–3σ out from the peak removes too little of the distribution
+          to see. 20 of the 54 tissues have fewer than 200 donors, so a null
+          result there means "underpowered", not "no truncation".</li>
+        <li><strong>The one real excess is probably an artefact.</strong> In
+          skeletal muscle (n = 818) the rate of truncated-looking genes runs
+          about 3× the calibrated null. But the genes are that tissue's own
+          highly-expressed identity markers, sitting at the 92nd–93rd percentile
+          of expression, and the candidate lists from two tissues do not overlap
+          at all. Donor-to-donor differences in tissue composition and RNA
+          quality produce exactly that pattern, and are indistinguishable from a
+          real expression ceiling by this statistic.</li>
+        <li><strong>The index tracks expression level.</strong> Once control
+          genes are matched on expression, the signal has so far been at
+          chance.</li>
+        <li><strong>LTI has its own version of that problem.</strong> The lower
+          edge of the data is also the detection floor, so a gene that is barely
+          expressed looks left-truncated for purely technical reasons. Read it
+          beside mean expression, never alone.</li>
+      </ul>
+      <p class="caveat">This is a method under test, not a finished result. The
+        browser exists so the numbers can be inspected gene by gene rather than
+        taken on trust.</p>
+
+      <h3>Worms</h3>
+      <p>The truncation index was developed and applied in <em>C. elegans</em>
+        by <strong>Swetha Iyer</strong> and <strong>Sophie Sanchez</strong> in
+        the Pierce Lab, which is where this project starts from. The
+        <em>Worm data</em> tab carries that dataset — 25,849 transcripts, fit
+        the same way over the same 40 bins, so every column means what it means
+        for a human tissue.</p>
+      <p>A worm is a useful counterpart to GTEx: the animals are near-isogenic
+        and reared in a controlled environment, so a truncated distribution
+        there is much harder to explain away as sample heterogeneity.</p>
+    </section>
+  </div>
+
+  <div class="tabpanel prose" id="panelPeople" role="tabpanel"
+       aria-labelledby="tabPeople" hidden>
+    <section class="panel">
+      <h2>People</h2>
+      <p class="lede">This work is carried out in the
+        <a href="https://sites.utexas.edu/piercelab/" target="_blank"
+           rel="noopener noreferrer">Pierce Lab</a> at The University of Texas
+        at Austin.</p>
+      <ul class="people">
+        <li>
+          <img src="people/jon-pierce.jpg" alt="Dr. Jon Pierce" loading="lazy">
+          <div>
+            <h3>Dr. Jon Pierce</h3>
+            <p class="role">Principal Investigator</p>
+            <p>Leads the Pierce Lab, which uses <em>C. elegans</em> to
+              investigate the genetic mechanisms behind behaviour and
+              neurological disorders.</p>
+            <p><a href="https://neuroscience.utexas.edu/directory/jonathan-pierce"
+                  target="_blank" rel="noopener noreferrer">Department of
+                  Neuroscience profile ↗</a></p>
+          </div>
+        </li>
+        <li>
+          <img src="people/bhuvan-kanna.jpg" alt="Bhuvan Kanna" loading="lazy">
+          <div>
+            <h3>Bhuvan Kanna</h3>
+            <p class="role">Creator</p>
+            <p>Built the truncation-index pipeline and this browser: the
+              distribution fitting, the per-gene metrics across all 54 GTEx
+              tissues, and the interface for reading them.</p>
+          </div>
+        </li>
+      </ul>
+      <p class="note">More lab members to be added.</p>
+    </section>
+  </div>
+
   <div class="tabpanel" id="panelDetail" role="region" aria-label="Gene page" hidden>
     <div class="detail-top">
       <button class="backbtn" id="detailBack" type="button">
@@ -4649,8 +4876,10 @@ function readHash() {
    Tabs
    ===================================================================== */
 function showTab(which) {
-  const tabs = { select: "panelSelect", working: "panelWorking", worm: "panelWorm" };
-  const buttons = { select: "tabSelect", working: "tabWorking", worm: "tabWorm" };
+  const tabs = { select: "panelSelect", working: "panelWorking", worm: "panelWorm",
+                 background: "panelBackground", people: "panelPeople" };
+  const buttons = { select: "tabSelect", working: "tabWorking", worm: "tabWorm",
+                    background: "tabBackground", people: "tabPeople" };
   if (!tabs[which]) which = "select";
 
   for (const [id, panel] of Object.entries(tabs)) {
@@ -4742,6 +4971,8 @@ async function boot() {
   $("tabSelect").addEventListener("click", () => showTab("select"));
   $("tabWorking").addEventListener("click", () => showTab("working"));
   $("tabWorm").addEventListener("click", () => showTab("worm"));
+  $("tabBackground").addEventListener("click", () => showTab("background"));
+  $("tabPeople").addEventListener("click", () => showTab("people"));
 
   // --- worm tab ---
   $("wormFilter").addEventListener("input", (e) => {
