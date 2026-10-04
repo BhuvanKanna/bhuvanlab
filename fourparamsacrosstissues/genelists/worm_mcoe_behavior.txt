@@ -1,4 +1,4 @@
-# multicopy over-expression phenotype, behavioural
+# multicopy over-expression phenotype, behavioral
 # C. elegans transcript ids (the worm table's `gene` column), one per line.
 # Source: genes_of_interest.json (human HSA21 gene -> worm ortholog, phenotype flags).
 # Genes with no transcript in the worm table carry no line.

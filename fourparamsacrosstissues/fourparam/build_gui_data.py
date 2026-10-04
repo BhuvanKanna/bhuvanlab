@@ -83,7 +83,7 @@ PATCHED_BLOCKS = ("qc", "r2")
 #
 # `polarity` is what the control sets are FOR: positive sets should come out
 # truncated if the hypothesis holds, negative sets should not. The browser
-# colours the buttons by it.
+# colors the buttons by it.
 GENESETS_DIR = "genelists"
 GENESETS = [
     {"id": "pos_pTriplo",
@@ -127,13 +127,13 @@ WORM_GENESETS = [
     {"id": "worm_mcoe_dev", "file": "worm_mcoe_dev.txt",
      "label": "mcOE dev", "note": "multicopy over-expression phenotype, developmental"},
     {"id": "worm_mcoe_behavior", "file": "worm_mcoe_behavior.txt",
-     "label": "mcOE behavior", "note": "multicopy over-expression phenotype, behavioural"},
+     "label": "mcOE behavior", "note": "multicopy over-expression phenotype, behavioral"},
     {"id": "worm_lof_any", "file": "worm_lof_any.txt",
      "label": "LOF any", "note": "loss-of-function phenotype, any"},
     {"id": "worm_lof_dev", "file": "worm_lof_dev.txt",
      "label": "LOF dev", "note": "loss-of-function phenotype, developmental"},
     {"id": "worm_lof_behavior", "file": "worm_lof_behavior.txt",
-     "label": "LOF behavior", "note": "loss-of-function phenotype, behavioural"},
+     "label": "LOF behavior", "note": "loss-of-function phenotype, behavioral"},
     {"id": "worm_no_phenotype", "file": "worm_no_phenotype.txt",
      "label": "No phenotype",
      "note": "neither an over-expression nor a loss-of-function phenotype"},
@@ -154,7 +154,7 @@ def geneset_block(src_dir: Path, docs: Path, df) -> dict:
     silently stops resolving is loud on the next rebuild.
 
     Globs are deliberately NOT expanded. A published set is an exact roster,
-    and the browser reports an unexpanded `ALDH*` as unrecognised rather than
+    and the browser reports an unexpanded `ALDH*` as unrecognized rather than
     quietly turning it into 27 chips.
     """
     by_symbol = {s.upper() for s in df["genename"] if s}

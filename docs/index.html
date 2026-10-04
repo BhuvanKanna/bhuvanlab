@@ -67,7 +67,7 @@
    It has to be stated four times for the same reason the base palette is —
    the theme has three states (explicit dark, explicit light, and the system
    default that stamps nothing) — and these blocks sit *after* the theme
-   blocks so equal-specificity selectors resolve in the worm view's favour.
+   blocks so equal-specificity selectors resolve in the worm view's favor.
    `--ceiling` and `--ok` stay put: those are semantic, not decorative. */
 :root[data-view="worm"] {
   --accent:#1d6b3c; --accent-ink:#ffffff; --accent-wash:#dcefe2; --curve:#1d6b3c;
@@ -101,7 +101,7 @@ body {
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 
 /* ---------- masthead ----------
-   The masthead ground is dark in BOTH themes, so its foreground colours are
+   The masthead ground is dark in BOTH themes, so its foreground colors are
    fixed literals. Using --paper here would invert them to dark-on-dark. */
 .masthead {
   background: #0c1116;
@@ -279,10 +279,10 @@ select:hover { border-color: var(--accent); }
 .filternote { font-family: var(--mono); font-size: .74rem; color: var(--muted); }
 .filternote strong { color: var(--ink); font-weight: 600; }
 
-/* Control-gene sets. One button per published roster, coloured by what the set
+/* Control-gene sets. One button per published roster, colored by what the set
    is FOR rather than by hue for its own sake: a positive set should come out
    truncated if the hypothesis holds, a negative set should not. The polarity
-   is spelled out in the +/- glyph and in the title, never carried by colour
+   is spelled out in the +/- glyph and in the title, never carried by color
    alone. */
 .setrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin-top: 10px; }
 .setrow-label {
@@ -322,8 +322,8 @@ select:hover { border-color: var(--accent); }
 }
 .wormlist textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
 
-/* Unrecognised tokens from a pasted list. Rust ink plus a rule, so it reads as
-   a caveat rather than a failure -- the recognised genes were still added. */
+/* Unrecognized tokens from a pasted list. Rust ink plus a rule, so it reads as
+   a caveat rather than a failure -- the recognized genes were still added. */
 .genewarn {
   margin-top: 9px; padding: 8px 11px;
   border: 1px solid var(--rule); border-left: 3px solid var(--ceiling);
@@ -443,7 +443,7 @@ thead th .sub {
 
 /* the signature: the fitted curve on a fixed −4σ…+4σ axis, with the slice the
    observations actually cover filled in. Three states of one curve — dotted
-   below `min` (modelled, never seen), solid+filled across the observed window,
+   below `min` (modeled, never seen), solid+filled across the observed window,
    dashed past the ceiling (censored). The axis never rescales, so the width of
    that filled band is directly comparable between rows: a wide band is a
    well-determined fit, a sliver is a fit whose sigma dwarfs its own data. */
@@ -1066,7 +1066,7 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
       <div id="resultArea"></div>
       <div class="legend" id="legend" hidden>
         <span class="key"><span class="swatch f"></span> observed range, <code>min</code> to <code>x_max</code></span>
-        <span class="key"><span class="swatch o"></span> modelled below <code>min</code>, never observed</span>
+        <span class="key"><span class="swatch o"></span> modeled below <code>min</code>, never observed</span>
         <span class="key"><span class="swatch d"></span> censored beyond the ceiling</span>
         <span class="key"><span class="swatch m"></span> data floor <code>min</code></span>
         <span class="key"><span class="swatch v"></span> ceiling <code>x_max</code></span>
@@ -1134,7 +1134,7 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
       <div id="wormArea"></div>
       <div class="legend" id="wormLegend" hidden>
         <span class="key"><span class="swatch f"></span> observed range, <code>min</code> to <code>x_max</code></span>
-        <span class="key"><span class="swatch o"></span> modelled below <code>min</code>, never observed</span>
+        <span class="key"><span class="swatch o"></span> modeled below <code>min</code>, never observed</span>
         <span class="key"><span class="swatch d"></span> censored beyond the ceiling</span>
         <span class="key sep">Same fit, same columns, same two shape cells as the
           human tables — one <em>C. elegans</em> dataset rather than 54 tissues,
@@ -1228,7 +1228,7 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
           ceiling 2–3σ out from the peak removes too little of the distribution
           to see. 20 of the 54 tissues have fewer than 200 donors, so a null
           result there means "underpowered", not "no truncation".</li>
-        <li><strong>The one real excess is probably an artefact.</strong> In
+        <li><strong>The one real excess is probably an artifact.</strong> In
           skeletal muscle (n = 818) the rate of truncated-looking genes runs
           about 3× the calibrated null. But the genes are that tissue's own
           highly-expressed identity markers, sitting at the 92nd–93rd percentile
@@ -1276,7 +1276,7 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
             <h3>Dr. Jon Pierce</h3>
             <p class="role">Principal Investigator</p>
             <p>Leads the Pierce Lab, which uses <em>C. elegans</em> to
-              investigate the genetic mechanisms behind behaviour and
+              investigate the genetic mechanisms behind behavior and
               neurological disorders.</p>
             <p><a href="https://neuroscience.utexas.edu/directory/jonathan-pierce"
                   target="_blank" rel="noopener noreferrer">Department of
@@ -1408,7 +1408,7 @@ const MB_PER_SHARD = 0.22;
    both CSV exports always operate on every loaded row, never on this subset. */
 const RENDER_LIMIT = 800;
 
-/* A whole-tissue load materialises one row object per gene per tissue, so the
+/* A whole-tissue load materializes one row object per gene per tissue, so the
    ceiling here is memory rather than bandwidth: a tissue table is ~8 MB of
    text but ~60k rows once every line is split into fields. Past this the tab
    is at real risk of dying, so the load is refused with a way out rather than
@@ -1446,7 +1446,7 @@ const DIST_COL = "__dist_class";
    column cannot render twice.
 
    Read this *instead of* `sumsquarevalue` whenever comparing fits: the stored
-   SSR is unnormalised and tracks donor count (ρ = 0.99 across tissues), so it
+   SSR is unnormalized and tracks donor count (ρ = 0.99 across tissues), so it
    cannot rank two genes. R² has an n dependence of its own — at 40 fixed bins
    1 − R² ≈ 1.1 × bins/n — so read it beside `n_obs`, never alone. */
 const R2_COL = "__r_squared";
@@ -1490,7 +1490,7 @@ let filters = [];
    choice was only ever a way to get a worse answer. This stays a named value
    rather than being inlined because it is the join key for the table, qc/ and
    r2/ caches and for the gene-major `kind_ids` lookup. A `table=raw` in an old
-   shared link is now ignored rather than honoured. */
+   shared link is now ignored rather than honored. */
 const currentKind = "excluded";
 let showAllCols = false;
 let sortCol = null, sortDir = 1;
@@ -2484,7 +2484,7 @@ async function loadTables() {
     $("progress").hidden = true;
   }
 
-  // A cancelled run still keeps whatever it managed to collect.
+  // A canceled run still keeps whatever it managed to collect.
   if (rows.length || !cancelRequested) {
     loadedRows = rows;
     loadedHeader = header; loadedColIdx = colIdx;
@@ -2494,7 +2494,7 @@ async function loadTables() {
     loadedMeta = {
       missing, failed, kind, route, unitLabel,
       tissues: Array.from(new Set(rows.map((r) => r.tissue))),
-      cancelled: cancelRequested,
+      canceled: cancelRequested,
       unitsDone: done, unitsTotal
     };
     resultsStale = false;
@@ -2750,8 +2750,8 @@ function render() {
     msg += ` · <span style="color:var(--ceiling)">${m.failed.length} ` +
            `${escapeHtml(m.unitLabel)}${m.failed.length === 1 ? "" : "s"} failed</span>`;
   }
-  if (m.cancelled) {
-    msg += ` · <span style="color:var(--ceiling)">cancelled at ${m.unitsDone}` +
+  if (m.canceled) {
+    msg += ` · <span style="color:var(--ceiling)">canceled at ${m.unitsDone}` +
            `/${m.unitsTotal} ${escapeHtml(m.unitLabel)}s</span>`;
   }
   if (activeFilters().length) {
@@ -2811,7 +2811,7 @@ function addGene(gi) {
 
    Unlike extract_genes.py this does NOT expand globs. A pasted list is meant
    to be an exact roster, and "ALDH*" quietly becoming 27 chips is the kind of
-   surprise the warning exists to prevent; it is reported as unrecognised
+   surprise the warning exists to prevent; it is reported as unrecognized
    instead.
    ===================================================================== */
 const LIST_SEPARATORS = /[\s,;|]+/;      // commas, but also newlines and tabs,
@@ -2855,7 +2855,7 @@ function showGeneWarning(result, addedCount) {
     const more = unknown.length > WARN_TOKENS_SHOWN
       ? ` <span class="toks">+${unknown.length - WARN_TOKENS_SHOWN} more</span>` : "";
     parts.push(
-      `<b>${unknown.length} not recognised</b> and skipped: ` +
+      `<b>${unknown.length} not recognized</b> and skipped: ` +
       `<span class="toks">${shown}</span>${more}`);
   }
   if (dupes.length) {
@@ -2871,7 +2871,7 @@ function clearGeneWarning() {
   if (box) { box.hidden = true; box.innerHTML = ""; }
 }
 
-/* Add every recognised gene in one go, then report. Genes are added even when
+/* Add every recognized gene in one go, then report. Genes are added even when
    some tokens fail: a list of 200 with 3 typos should still give you 197. */
 function addGeneList(text) {
   const result = resolveGeneTokens(text);
@@ -3243,7 +3243,7 @@ function loadExampleSet() {
 
    One button per published roster. Each is a plain one-token-per-line file,
    so a click is exactly a paste: it goes through addGeneList(), which resolves
-   symbol-first then version-stripped id, adds what it recognises, and reports
+   symbol-first then version-stripped id, adds what it recognizes, and reports
    what it did not. That keeps a set identical in the browser, in
    extract_genes.py, and in the control-gene analysis, and it means the sets
    need no resolution code of their own.
@@ -3970,7 +3970,7 @@ function renderDistPanel() {
     chart = svg;
     note = bars
       ? `40 bins over the observed range, decoded from the table's <code>hist</code>
-         column. Bar heights are quantised to 1/63 of the tallest bin
+         column. Bar heights are quantized to 1/63 of the tallest bin
          (<strong>${Math.round(row.histMax)}</strong> donors) — the curve was fitted to the
          exact counts, not to these.`
       : histAvailabilityNote();
@@ -5371,7 +5371,7 @@ async function boot() {
 
   render();
 
-  // A shared link already names its genes and tissues, so honour it rather than
+  // A shared link already names its genes and tissues, so honor it rather than
   // making the recipient press Load to see what they were sent.
   if (hadHash && selected.length && selectedTissues.length) loadTables();
 

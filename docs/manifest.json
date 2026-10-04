@@ -281,7 +281,7 @@
           "id": "worm_mcoe_behavior",
           "file": "worm_mcoe_behavior.txt",
           "label": "mcOE behavior",
-          "note": "multicopy over-expression phenotype, behavioural",
+          "note": "multicopy over-expression phenotype, behavioral",
           "n_tokens": 39,
           "n_rows": 38
         },
@@ -305,7 +305,7 @@
           "id": "worm_lof_behavior",
           "file": "worm_lof_behavior.txt",
           "label": "LOF behavior",
-          "note": "loss-of-function phenotype, behavioural",
+          "note": "loss-of-function phenotype, behavioral",
           "n_tokens": 20,
           "n_rows": 20
         },
