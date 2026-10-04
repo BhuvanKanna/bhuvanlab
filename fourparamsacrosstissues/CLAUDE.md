@@ -59,6 +59,7 @@ fourparam/                    <- all the code (kept separate from the data)
   make_diagrams.py            <- 5-histogram summary sheet per table -> diagrams/ + excluded_diagrams/
   make_r2_diagrams.py         <- one R^2 histogram per tissue -> r2_histograms/
   verify_hist_columns.py      <- check hist/hist_max invariants in outputs/
+  backfill_hist.py            <- add hist/hist_max to an excluded table that predates them, no refit
   tests/                      <- pytest suite: `python -m pytest tests/ -q`
 data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
@@ -74,7 +75,7 @@ worm/                         <- C. elegans, one table (see "Worm data")
 gene_major/                   <- the same rows re-oriented for the browser
   shard_NNNN.csv              <- 16 genes x all 54 tissues x both filters
 hist_major/                   <- just hist/hist_max, sharded the same way
-  shard_NNNN.csv              <- one gene's histograms for ~5 KB
+  shard_NNNN.csv              <- 16 genes' histograms, all 54 tissues, ~84 KB
 diagrams/                     <- one 5-histogram summary sheet per RAW table
   v11_log2_<tissue>_fourparam.png
 excluded_diagrams/            <- the same sheets for the EXCLUDED (<= -1) tables
@@ -181,6 +182,30 @@ cannot defend itself against: uniform field counts (one stray comma in `hist`
 shifts every column index after it), fixed 40-char `hist`, integer `hist_max`,
 `hist` empty exactly when `n_obs = 0`, and — the one that has already bitten
 once — **no histogram shipped without its `min`/`max` bin edges**.
+
+### Backfilling `hist` into a table that predates it (`backfill_hist.py`)
+
+```bash
+cd fourparam
+python backfill_hist.py                  # every excluded table without hist
+python backfill_hist.py --check uterus   # recompute one that has it, compare only
+```
+
+All 54 excluded tables were generated before `hist` existed except uterus and
+vagina. Rather than refit (~852 MB of push), this recomputes the histogram from
+`data/` with the generator's own filter and `encode_histogram`, and splices
+`hist,hist_max` in after `fit_success` as text — `r_squared` stays last, every
+other field stays byte-identical. `--check uterus,vagina` reproduces all
+74,628 published strings exactly, which is the proof the two paths agree.
+
+**One field does change: blank `min` / `max` on a failed row.** The older
+generator wrote them blank whenever the fit failed; the current one fills them,
+because they are the histogram's bin edges and a histogram without them cannot
+be drawn. The backfill fills exactly those (673,682 cells across the 52
+tables), with `repr()` — the same text pandas writes — and refuses a tissue if
+any `n_obs`, or any `min` / `max` that was not blank, disagrees with the matrix.
+Since `min` / `max` are gene-major columns too, **rebuild `gene_major/` after a
+backfill**, or the gene page reads blank bin edges for those rows.
 
 ### The two table types differ by exactly one filter
 
@@ -542,6 +567,22 @@ organism in there would sweep it into `build_gene_major.py`, the manifest's
 between `gene` and `genename`. `genename` is *not* unique — 9,755 rows share a
 name with another, because isoforms of one gene carry it.
 
+**Gene subsets** (`genelists/worm_*.txt`, `manifest.worm.genesets`). The tab
+carries one button per curated subset — the 51 worm orthologs of human HSA21
+genes from the notebook's `genes_of_interest.json`, split by phenotype (mcOE
+any / dev / behavior, LOF any / dev / behavior, no phenotype) — plus a box to
+paste your own list. Unlike the human control sets these **restrict** the table
+rather than adding to a selection: one subset at a time, the filter box narrows
+within it, and the summary strip, sort and CSV export all follow it. Matching
+is exact and case-insensitive against `gene`, `wormbasegeneid` or `genename`
+(the filter box is substring; a roster must not turn `unc-1` into `unc-10`), so
+a gene name selects every isoform and a transcript id exactly one row. The
+published sets are transcript ids, because that is what the curated list chose.
+`build_gui_data.py` copies them into `docs/genelists/` and publishes each set's
+row count; to add one, drop a file in `genelists/` and add it to
+`WORM_GENESETS`. Two transcripts appear twice in `worm_hsa21_all` (one worm
+gene, two human orthologs), so it is 103 lines and 93 rows.
+
 **Excel had eaten eleven gene names.** `mar-1` … `mar-6`, `apr-1`, `jun-1`,
 `sep-1`, `oct-1`, `oct-2` are month abbreviations, and the table arrived with
 them as `2025-04-01 00:00:00` — 24 rows across those 11 names. `stage_worm_table.py`
@@ -627,7 +668,7 @@ comparison of fits; `sumsquarevalue` is only meaningful within one gene.**
 `R² = 1 − SSR/TSS`, and SSR is already in the table as `sumsquarevalue`. Only
 `TSS = Σ(count − mean_count)²` over the 40 bins was never stored, and it is
 **not** recoverable from the published columns — `hist` is quantised to 1/63 of
-peak and exists in only 2 of the 54 excluded tables. So `compute_r2.py` re-bins
+peak (it was in only 2 of the 54 excluded tables when this was written). So `compute_r2.py` re-bins
 each gene from the source matrix (the cheap half of the pipeline) and reuses the
 stored `y0, A, x0, w` untouched. No `curve_fit` call happens.
 
@@ -844,7 +885,7 @@ Four things about it are load-bearing:
    histogram is needed is already known. `hist` lives only in the tissue-major
    tables, though, and reaching into one costs ~8 MB to read 43 bytes — so the
    two columns are mirrored into `hist_major/` (see below) and the page fetches
-   a **~5 KB shard**, in parallel with the gene-major shard rather than after
+   a **~84 KB shard**, in parallel with the gene-major shard rather than after
    it. There is no large download anywhere in this path and nothing to press.
 
    A tissue whose table has no `hist` yet says so and offers a one-click jump to
@@ -867,7 +908,7 @@ Four things about it are load-bearing:
 
 ```bash
 cd fourparam
-python build_hist_major.py            # 4,665 shards, ~24 MB, seconds
+python build_hist_major.py            # 4,665 shards, ~400 MB, ~20 s
 python build_hist_major.py --verify   # re-reads a sample against outputs/
 ```
 
@@ -875,12 +916,13 @@ python build_hist_major.py --verify   # re-reads a sample against outputs/
 rule and the same shard numbers** as `gene_major/`, so `docs/genes.tsv`'s third
 column addresses both and the browser needs no second index. Only tables that
 actually carry `hist` contribute rows, so the sidecar is sized by what has been
-generated (4 tables → 285,933 rows, ~5 KB per shard) rather than by the gene set.
+generated rather than by the gene set — all 54 excluded tables now: 3,891,737
+rows, ~400 MB, ~84 KB per shard.
 Genes with `n_obs = 0` have no histogram and are simply absent.
 
 **Why a sidecar and not two more columns on `gene_major/`:** that directory is
-2.46 GB and every shard would be rewritten to carry columns that are empty for
-104 of the 108 tables — a ~1 GB push to publish ~24 MB of real data. It would
+2.46 GB and every shard would be rewritten to carry columns that were then empty
+for 104 of the 108 tables (and are still empty for all 54 raw ones). It would
 also mean touching `SHARD_HEADER`, one of the four hardcoded column lists that
 must agree and the one underwriting byte-identity with `extract_genes.py`. The
 sidecar adds nothing to that contract.
@@ -1100,7 +1142,7 @@ quietly loses data.
 
 **`SHARD_HEADER` is the schema *minus* `hist`/`hist_max`** — see `SHARD_EXCLUDED`.
 The mirror deliberately does not carry the histogram (that is what `hist_major/`
-is for), and only uterus and vagina have those columns at all. When `hist` was
+is for). When `hist` was
 added to `COLUMNS` it was also added to `SHARD_HEADER`, which made **every** table
 fail the header check and the mirror silently unbuildable — it stayed that way
 until the RTI/LTI migration, and the published shards were a schema behind

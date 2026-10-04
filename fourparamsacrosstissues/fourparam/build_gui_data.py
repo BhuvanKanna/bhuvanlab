@@ -108,6 +108,37 @@ GENESETS = [
      "note": "the cleanest negative control there is"},
 ]
 
+# Gene subsets for the Worm Data tab, same directory and same one-token-per-line
+# format. Tokens are worm transcript ids (the table's `gene` column), because
+# that is what the notebook's genes_of_interest.json named -- a gene-name token
+# would silently pick up isoforms the curated list never chose. The browser
+# matches a token against `gene`, `wormbasegeneid` or `genename`, exactly and
+# case-insensitively, so a hand-written list of names works too.
+#
+# These are not controls, so they carry no polarity: mcOE and LOF are two
+# phenotype classes of the same 51 HSA21 orthologs, and `worm_no_phenotype` is
+# the remainder.
+WORM_GENESETS = [
+    {"id": "worm_hsa21_all", "file": "worm_hsa21_all.txt",
+     "label": "All HSA21 orthologs",
+     "note": "every worm ortholog of a human chromosome-21 gene in the curated list"},
+    {"id": "worm_mcoe_any", "file": "worm_mcoe_any.txt",
+     "label": "mcOE any", "note": "multicopy over-expression phenotype, any"},
+    {"id": "worm_mcoe_dev", "file": "worm_mcoe_dev.txt",
+     "label": "mcOE dev", "note": "multicopy over-expression phenotype, developmental"},
+    {"id": "worm_mcoe_behavior", "file": "worm_mcoe_behavior.txt",
+     "label": "mcOE behavior", "note": "multicopy over-expression phenotype, behavioural"},
+    {"id": "worm_lof_any", "file": "worm_lof_any.txt",
+     "label": "LOF any", "note": "loss-of-function phenotype, any"},
+    {"id": "worm_lof_dev", "file": "worm_lof_dev.txt",
+     "label": "LOF dev", "note": "loss-of-function phenotype, developmental"},
+    {"id": "worm_lof_behavior", "file": "worm_lof_behavior.txt",
+     "label": "LOF behavior", "note": "loss-of-function phenotype, behavioural"},
+    {"id": "worm_no_phenotype", "file": "worm_no_phenotype.txt",
+     "label": "No phenotype",
+     "note": "neither an over-expression nor a loss-of-function phenotype"},
+]
+
 # `adh_aldh_plus.txt` is deliberately NOT in that list. It carries `#` comments
 # and an unexpanded `ALDH*` glob, and the page already has its own button that
 # expands that glob against the live index at runtime. Publishing it here as a
@@ -191,7 +222,54 @@ def hist_availability(raw_tables, exc_tables) -> dict:
     return {"excluded": exc}
 
 
-def worm_block(worm_dir: Path) -> dict:
+def read_tokens(src: Path) -> list[str]:
+    """One token per line, `#` comments (whole-line and trailing) stripped."""
+    tokens = []
+    for line in src.read_text(encoding="utf-8").splitlines():
+        tok = line.split("#", 1)[0].strip()
+        if tok:
+            tokens.append(tok)
+    return tokens
+
+
+def worm_geneset_block(src_dir: Path, docs: Path, worm_path: Path) -> dict:
+    """Publish the worm subsets beside the human ones and count what resolves.
+
+    Resolution mirrors the browser's worm tab: exact, case-insensitive, against
+    any of `gene`, `wormbasegeneid` or `genename`. `n_rows` is how many table
+    rows the set selects (a name selects every isoform), `n_tokens` how many
+    lines it has, so a token that stops resolving is loud on the next rebuild.
+    """
+    df = pd.read_csv(worm_path, usecols=["gene", "wormbasegeneid", "genename"],
+                     dtype=str, keep_default_na=False)
+    keys = [df[c].str.upper() for c in ("gene", "wormbasegeneid", "genename")]
+
+    out_dir = docs / GENESETS_DIR
+    sets = []
+    for spec in WORM_GENESETS:
+        src = src_dir / spec["file"]
+        if not src.is_file():
+            print(f"  WARNING: worm set {spec['id']} not found at {src} - skipped",
+                  file=sys.stderr)
+            continue
+        tokens = read_tokens(src)
+        want = {t.upper() for t in tokens}
+        hit = keys[0].isin(want) | keys[1].isin(want) | keys[2].isin(want)
+        known = set(keys[0]) | set(keys[1]) | set(keys[2])
+        missing = [t for t in tokens if t.upper() not in known]
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / spec["file"]).write_text("\n".join(tokens) + "\n",
+                                            encoding="utf-8", newline="\n")
+        sets.append({**spec, "n_tokens": len(tokens), "n_rows": int(hit.sum())})
+        print(f"  {spec['id']:18s} {len(tokens):5d} tokens -> {int(hit.sum()):5d} "
+              f"worm rows" + (f", {len(missing)} not found" if missing else ""),
+              file=sys.stderr)
+
+    return {"available": bool(sets), "base_url": GENESETS_DIR, "sets": sets}
+
+
+def worm_block(worm_dir: Path, genelists: Path, docs: Path) -> dict:
     """Describe the C. elegans table for the browser's Worm Data tab.
 
     A second organism rather than a 55th tissue: its identifiers are WormBase,
@@ -223,6 +301,7 @@ def worm_block(worm_dir: Path) -> dict:
         "file": WORM_FILE,
         "n_genes": n_genes,
         "columns": header,
+        "genesets": worm_geneset_block(genelists, docs, path),
     }
 
 
@@ -423,7 +502,7 @@ def main(argv=None) -> int:
         # Reusable gene sets, one button each in the browser. See geneset_block().
         "genesets": genesets,
         # C. elegans, read by its own tab. See worm_block().
-        "worm": worm_block(args.worm),
+        "worm": worm_block(args.worm, args.genelists, args.docs),
     }
     manifest_path = args.docs / "manifest.json"
 

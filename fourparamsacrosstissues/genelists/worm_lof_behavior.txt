@@ -1,0 +1,24 @@
+# loss-of-function phenotype, behavioural
+# C. elegans transcript ids (the worm table's `gene` column), one per line.
+# Source: genes_of_interest.json (human HSA21 gene -> worm ortholog, phenotype flags).
+# Genes with no transcript in the worm table carry no line.
+w7274_B0024.15.1  # B0024.15 (B3GALT5)
+w730_C36B1.1b.1  # cle-1 (COL18A1)
+w731_C36B1.1c.1  # cle-1 (COL18A1)
+w732_C36B1.1d.1  # cle-1 (COL18A1)
+w16736_C24H12.5b.2  # dnsn-1 (DONSON)
+w16737_C24H12.5c.2  # dnsn-1 (DONSON)
+w16738_C24H12.5e.1  # dnsn-1 (DONSON)
+w9806_F32A7.3a.1  # eva-1 (EVA1C)
+w9807_F32A7.3a.2  # eva-1 (EVA1C)
+w9808_F32A7.3c.1  # eva-1 (EVA1C)
+w10233_F43G9.12a.1  # F43G9.12 (PAXBP1)
+w17044_C33C12.9.1  # mtq-2 (N6AMT1)
+w17995_F02G3.1a.1  # ncam-1 (NCAM2)
+w11466_K10G9.3b.1  # pad-2 (POFUT2)
+w23549_Y71H10A.1a.1  # pfk-1.1 (PFKL)
+w5204_B0414.2.1  # rnt-1 (RUNX1)
+w8486_C47E12.7.2  # rrp-1 (RRP1B)
+w6668_JC8.10a.2  # unc-26 (SYNJ1)
+w6669_JC8.10b.1  # unc-26 (SYNJ1)
+w6670_JC8.10c.1  # unc-26 (SYNJ1)

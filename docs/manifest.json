@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-22T05:49:32Z",
+  "generated_utc": "2026-10-04T05:14:48Z",
   "data_base_url": "https://raw.githubusercontent.com/BhuvanKanna/bhuvanlab/main/fourparamsacrosstissues/outputs",
   "file_prefix": "v11_log2_",
   "table_kinds": [
@@ -106,8 +106,60 @@
   },
   "hist": {
     "excluded": [
+      "adipose_subcutaneous",
+      "adipose_visceral_omentum",
+      "adrenal_gland",
+      "artery_aorta",
+      "artery_coronary",
+      "artery_tibial",
+      "bladder",
+      "brain_amygdala",
+      "brain_anterior_cingulate_cortex_ba24",
+      "brain_caudate_basal_ganglia",
+      "brain_cerebellar_hemisphere",
+      "brain_cerebellum",
+      "brain_cortex",
+      "brain_frontal_cortex_ba9",
+      "brain_hippocampus",
+      "brain_hypothalamus",
+      "brain_nucleus_accumbens_basal_ganglia",
+      "brain_putamen_basal_ganglia",
+      "brain_spinal_cord_cervical_c-1",
+      "brain_substantia_nigra",
+      "breast_mammary_tissue",
+      "cells_cultured_fibroblasts",
+      "cells_ebv-transformed_lymphocytes",
+      "cervix_ectocervix",
+      "cervix_endocervix",
+      "colon_sigmoid",
+      "colon_transverse",
+      "esophagus_gastroesophageal_junction",
+      "esophagus_mucosa",
+      "esophagus_muscularis",
+      "fallopian_tube",
+      "heart_atrial_appendage",
+      "heart_left_ventricle",
+      "kidney_cortex",
+      "kidney_medulla",
+      "liver",
+      "lung",
+      "minor_salivary_gland",
+      "muscle_skeletal",
+      "nerve_tibial",
+      "ovary",
+      "pancreas",
+      "pituitary",
+      "prostate",
+      "skin_not_sun_exposed_suprapubic",
+      "skin_sun_exposed_lower_leg",
+      "small_intestine_terminal_ileum",
+      "spleen",
+      "stomach",
+      "testis",
+      "thyroid",
       "uterus",
-      "vagina"
+      "vagina",
+      "whole_blood"
     ],
     "gene_major": {
       "available": true,
@@ -196,7 +248,77 @@
       "leftheight",
       "n_obs",
       "fit_success"
-    ]
+    ],
+    "genesets": {
+      "available": true,
+      "base_url": "genelists",
+      "sets": [
+        {
+          "id": "worm_hsa21_all",
+          "file": "worm_hsa21_all.txt",
+          "label": "All HSA21 orthologs",
+          "note": "every worm ortholog of a human chromosome-21 gene in the curated list",
+          "n_tokens": 103,
+          "n_rows": 93
+        },
+        {
+          "id": "worm_mcoe_any",
+          "file": "worm_mcoe_any.txt",
+          "label": "mcOE any",
+          "note": "multicopy over-expression phenotype, any",
+          "n_tokens": 65,
+          "n_rows": 55
+        },
+        {
+          "id": "worm_mcoe_dev",
+          "file": "worm_mcoe_dev.txt",
+          "label": "mcOE dev",
+          "note": "multicopy over-expression phenotype, developmental",
+          "n_tokens": 44,
+          "n_rows": 35
+        },
+        {
+          "id": "worm_mcoe_behavior",
+          "file": "worm_mcoe_behavior.txt",
+          "label": "mcOE behavior",
+          "note": "multicopy over-expression phenotype, behavioural",
+          "n_tokens": 39,
+          "n_rows": 38
+        },
+        {
+          "id": "worm_lof_any",
+          "file": "worm_lof_any.txt",
+          "label": "LOF any",
+          "note": "loss-of-function phenotype, any",
+          "n_tokens": 45,
+          "n_rows": 44
+        },
+        {
+          "id": "worm_lof_dev",
+          "file": "worm_lof_dev.txt",
+          "label": "LOF dev",
+          "note": "loss-of-function phenotype, developmental",
+          "n_tokens": 33,
+          "n_rows": 33
+        },
+        {
+          "id": "worm_lof_behavior",
+          "file": "worm_lof_behavior.txt",
+          "label": "LOF behavior",
+          "note": "loss-of-function phenotype, behavioural",
+          "n_tokens": 20,
+          "n_rows": 20
+        },
+        {
+          "id": "worm_no_phenotype",
+          "file": "worm_no_phenotype.txt",
+          "label": "No phenotype",
+          "note": "neither an over-expression nor a loss-of-function phenotype",
+          "n_tokens": 20,
+          "n_rows": 20
+        }
+      ]
+    }
   },
   "qc": {
     "available": true,

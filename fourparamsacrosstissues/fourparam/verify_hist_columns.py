@@ -14,7 +14,8 @@ before pushing them.
 
 Invariants checked, per table:
 
-1. `hist` and `hist_max` are the last two columns, in that order.
+1. `hist` and `hist_max` are the last two columns, in that order (or the two
+   before `r_squared`, which append_r2_column.py adds after them).
 2. Every line splits into exactly len(header) fields, and no double-quote
    appears anywhere. The browser parses these CSVs with a plain split(",") and
    has no quoted-field handling, so one stray comma shifts every column index
@@ -50,8 +51,12 @@ def check_table(path: Path) -> list[str]:
     lines = text.strip().split("\n")
     header = lines[0].split(",")
 
-    if header[-2:] != ["hist", "hist_max"]:
-        return [f"last two columns are {header[-2:]}, expected ['hist', 'hist_max']"]
+    # `r_squared` is appended after them on the excluded tables
+    # (append_r2_column.py), so they are last only once it is set aside.
+    tail = header[:-1] if header[-1] == "r_squared" else header
+    if tail[-2:] != ["hist", "hist_max"]:
+        return [f"columns end {header[-3:]}, expected hist, hist_max "
+                f"(then optionally r_squared)"]
 
     widths = {len(line.split(",")) for line in lines}
     if widths != {len(header)}:

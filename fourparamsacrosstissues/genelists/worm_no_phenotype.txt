@@ -1,0 +1,24 @@
+# neither an over-expression nor a loss-of-function phenotype
+# C. elegans transcript ids (the worm table's `gene` column), one per line.
+# Source: genes_of_interest.json (human HSA21 gene -> worm ortholog, phenotype flags).
+# Genes with no transcript in the worm table carry no line.
+w107_T20H4.4.1  # adr-2 (ADARB1)
+w25188_D1086.20  # D1086.9 (CLIC6)
+w19056_F38B6.4.1  # F38B6.4 (GART)
+w19057_F38B6.4.2  # F38B6.4 (GART)
+w19084_F39H12.4.1  # igcm-1 (DSCAM)
+w19085_F39H12.4.2  # igcm-1 (DSCAM)
+w2773_C04F12.3.1  # ikb-1 (POTED)
+w6050_Y116A8C.36a.1  # itsn-1 (ITSN1)
+w6051_Y116A8C.36a.2  # itsn-1 (ITSN1)
+w6052_Y116A8C.36b.1  # itsn-1 (ITSN1)
+w6053_Y116A8C.36d.1  # itsn-1 (ITSN1)
+w6054_Y116A8C.36e.1  # itsn-1 (ITSN1)
+w3460_T04C10.1.1  # mbk-1 (DYRK1A)
+w3461_T04C10.1.2  # mbk-1 (DYRK1A)
+w23722_Y92H12BR.6.1  # set-29 (SETD4)
+w6532_Y87G2A.9.1  # ubc-14 (UBE2G2)
+w6533_Y87G2A.9.2  # ubc-14 (UBE2G2)
+w23783_Y102E9.2a.1  # wdr-4 (WDR4)
+w23784_Y102E9.2b.2  # wdr-4 (WDR4)
+w21903_T25D10.2b.1  # zig-10 (JAM2)
