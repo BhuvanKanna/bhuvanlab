@@ -1461,16 +1461,21 @@ const R2_COL = "__r_squared";
    Both are blank where the tail fit is not `usable` (too few detected donors,
    or a degenerate fit with its peak above the observed ceiling).
 
-   idkLTI rides in the same file but is NOT the tail model: it is the old
-   4-parameter LTI, forced to 0 when the gene's smallest detected value is
-   <= -0.75 (its left edge is the detection floor). See compute_idklti.py.
-
    Only some tissues have been computed (manifest.tailmodel.files), so these
    columns appear only when a loaded tissue has them. */
 const NEW_RTI_COL = "__rti_missing";
 const NEW_LTI_COL = "__lti_missing";
+const TAIL_COLS = [NEW_RTI_COL, NEW_LTI_COL];
+
+/* idkLTI is NOT the tail model and needs no extra file: it is the row's own
+   4-parameter `lti`, forced to 0 when the row's `min` (smallest detected value)
+   is <= IDK_FLOOR -- the gene's left edge is the detection floor, so its LTI is
+   not measurable. -0.75 is TPM 0.19, the QC cascade's FLOOR. Computed here for
+   every tissue, from fields both load routes carry; compute_idklti.py writes the
+   identical values to idklti/ and tests/test_idklti.py pins the two cut-offs. */
 const IDK_LTI_COL = "__idklti";
-const TAIL_COLS = [NEW_RTI_COL, NEW_LTI_COL, IDK_LTI_COL];
+const IDK_FLOOR = -0.75;
+const JOINED_COLS = [R2_COL, IDK_LTI_COL, NEW_RTI_COL, NEW_LTI_COL];
 
 const SHORT_LABEL = {
   rti: "RTI",
@@ -1865,9 +1870,25 @@ function tailLoaded() {
   return loadedRows.some((r) => tailCache.get(r.tissue));
 }
 
-// The joined numeric columns (R², newRTI, newLTI): value or null.
+/* idkLTI as the tables' own text: "0" when forced, the `lti` string verbatim
+   when kept (so the export matches idklti/ byte for byte), "" when no fit. */
+function idkltiText(r) {
+  const i = loadedColIdx ? loadedColIdx.lti : undefined;
+  const raw = i === undefined ? "" : String(r.fields[i] ?? "").trim();
+  if (!Number.isFinite(Number(raw)) || raw === "") return "";
+  return numOf(r.fields, loadedColIdx, "min") <= IDK_FLOOR ? "0" : raw;
+}
+
+function idkltiOf(r) {
+  const t = idkltiText(r);
+  return t === "" ? null : Number(t);
+}
+
+// The computed numeric columns (R², idkLTI, newRTI, newLTI): value or null.
 function joinedValueOf(r, col) {
-  return col === R2_COL ? rSquaredOf(r) : tailOf(r, col);
+  if (col === R2_COL) return rSquaredOf(r);
+  if (col === IDK_LTI_COL) return idkltiOf(r);
+  return tailOf(r, col);
 }
 
 /* ---------------------------------------------------------------------
@@ -2179,7 +2200,7 @@ function visibleStatCols(header, all) {
   const skip = new Set(["gene", "genename", "hist", "hist_max", "r_squared"]);
   const stats = header.filter((c) => !skip.has(c));
   const compact = COMPACT_COLS.filter((c) => stats.includes(c))
-    .concat(DIST_COL, R2_COL, tailLoaded() ? TAIL_COLS : []);
+    .concat(DIST_COL, R2_COL, IDK_LTI_COL, tailLoaded() ? TAIL_COLS : []);
   if (!all) return compact;
   // Compact block keeps its position and order; the remainder follows in the
   // table's own order. Toggling "All columns" therefore only ever appends.
@@ -2216,7 +2237,8 @@ function filterCols() {
   const base = (loadedHeader || manifest.columns || [])
     .filter((c) => !FILTER_SKIP.has(c));
   const tm = manifest.tailmodel;
-  return base.concat(R2_COL, DIST_COL, tm && tm.available ? TAIL_COLS : []);
+  return base.concat(R2_COL, IDK_LTI_COL, DIST_COL,
+                     tm && tm.available ? TAIL_COLS : []);
 }
 
 function opsFor(col) { return CATEGORICAL_COLS.has(col) ? CAT_OPS : NUM_OPS; }
@@ -2236,7 +2258,7 @@ function catOptionsFor(col) {
 }
 
 function filterValueOf(r, col) {
-  if (col === R2_COL || TAIL_COLS.includes(col)) {
+  if (JOINED_COLS.includes(col)) {
     const v = joinedValueOf(r, col);
     return v === null ? NaN : v;
   }
@@ -2598,7 +2620,7 @@ const DIST_LABEL = {
 
 function sortRows(rows, col, dir, colIdx) {
   const out = rows.slice();
-  if (col === R2_COL || TAIL_COLS.includes(col)) {
+  if (JOINED_COLS.includes(col)) {
     // Blanks sink whichever way the sort points, matching the metric columns.
     out.sort((a, b) => {
       const x = joinedValueOf(a, col), y = joinedValueOf(b, col);
@@ -2739,15 +2761,19 @@ function render() {
           ? '<td><span class="nil" title="No R² for this gene">—</span></td>'
           : `<td>${v.toFixed(3)}</td>`;
       }
+      if (c === IDK_LTI_COL) {
+        const v = fmt(idkltiText(r), "lti");
+        return v === null
+          ? '<td><span class="nil" title="No 4-parameter fit for this gene">—</span></td>'
+          : `<td>${escapeHtml(v)}</td>`;
+      }
       if (TAIL_COLS.includes(c)) {
         const v = tailOf(r, c);
         const why = !tailCache.get(r.tissue)
           ? "Not computed for this tissue"
-          : c === IDK_LTI_COL
-            ? "4-parameter fit failed"
-            : c === NEW_LTI_COL
-              ? "Undefined: donors censored at the detection floor, or the fit is not usable"
-              : "Tail fit failed or not usable";
+          : c === NEW_LTI_COL
+            ? "Undefined: donors censored at the detection floor, or the fit is not usable"
+            : "Tail fit failed or not usable";
         return v === null
           ? `<td><span class="nil" title="${why}">—</span></td>`
           : `<td>${v.toFixed(5)}</td>`;
@@ -3082,7 +3108,7 @@ function wsAdd(r) {
     t: r.tissue, k: r.kind, g: NOVER[r.gi],
     gid: GID[r.gi], sym: SYM[r.gi] || "", v, r2: rSquaredOf(r),
     tr: tailOf(r, NEW_RTI_COL), tl: tailOf(r, NEW_LTI_COL),
-    ti: tailOf(r, IDK_LTI_COL)
+    ti: idkltiText(r)
   });
 }
 
@@ -3416,9 +3442,10 @@ function renderGeneSetButtons() {
    outputs/. Appending rather than placing it beside `sumsquarevalue` keeps every
    column to its left in the position existing sheets and scripts expect. The
    value comes from the r2/ join (see R2_COL) rather than from the table's own
-   column, so the gene-major route exports it too. `rti_missing`,
-   `lti_missing` and `idklti` (newRTI / newLTI / idkLTI, the tailmodel/ join)
-   follow it, blank for a tissue they have not been computed for.
+   column, so the gene-major route exports it too. `rti_missing` and
+   `lti_missing` (newRTI / newLTI, the tailmodel/ join, blank for a tissue the
+   tail model has not been run on) follow it, then `idklti` (every tissue,
+   computed from the row, text-identical to idklti/).
    ===================================================================== */
 function csvCell(v) {
   const s = String(v ?? "");
@@ -3457,7 +3484,7 @@ function downloadCsv() {
         return i === undefined ? "" : r.fields[i];
       }), csvR2(rSquaredOf(r)), csvTail(tailOf(r, NEW_RTI_COL)),
           csvTail(tailOf(r, NEW_LTI_COL)),
-          csvTail(tailOf(r, IDK_LTI_COL))).map(csvCell).join(","));
+          idkltiText(r)).map(csvCell).join(","));
   }
   const nT = new Set(out.map((r) => r.tissue)).size;
   saveCsv(lines, `fourparam_${nT}tissues_${currentKind}_${out.length}rows.csv`);
@@ -3472,7 +3499,7 @@ function exportWorkingSet() {
   for (const { e } of wsRows()) {
     lines.push([e.t, e.k, e.gid, e.sym]
       .concat(cols.map((c) => e.v[c]), csvR2(e.r2), csvTail(e.tr),
-              csvTail(e.tl), csvTail(e.ti)).map(csvCell).join(","));
+              csvTail(e.tl), e.ti ?? "").map(csvCell).join(","));
   }
   saveCsv(lines, `working_set_${lines.length - 1}rows_${stamp()}.csv`);
 }

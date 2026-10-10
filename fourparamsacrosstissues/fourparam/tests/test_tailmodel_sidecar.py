@@ -29,7 +29,6 @@ def test_round_trip_in_gene_order_with_blanks(tmp_path):
         "rti_missing": [0.00122, 0.5],
         "lti_missing": [np.nan, 0.123456],
         "usable": [True, True],
-        "idklti": [0.0, 0.4],
     }).to_csv(csv, index=False)
     order = ["ENSG1", "ENSG3", "ENSG2"]                   # ENSG3 absent from the table
 
@@ -41,18 +40,15 @@ def test_round_trip_in_gene_order_with_blanks(tmp_path):
     assert np.isnan(_decode(text, 1, 0)) and np.isnan(_decode(text, 1, 1))
     assert _decode(text, 2, 0) == pytest.approx(0.00122)
     assert np.isnan(_decode(text, 2, 1))                  # censored: unknown, not 0
-    assert _decode(text, 0, 2) == pytest.approx(0.4)
-    assert _decode(text, 2, 2) == 0.0                     # zeroed, not blank
-    assert counts == {"rti_missing": 2, "lti_missing": 1, "idklti": 2}
+    assert counts == {"rti_missing": 2, "lti_missing": 1}
 
 
-def test_unusable_fit_blanks_tail_fields_but_not_idklti(tmp_path):
+def test_unusable_fit_is_blank(tmp_path):
     csv = tmp_path / "v11_log2_x_tailmodel.csv"
-    pd.DataFrame({"gene": ["ENSG1"], "rti_missing": [1.0], "lti_missing": [np.nan],
-                  "usable": [False], "idklti": [0.0]}).to_csv(csv, index=False)
+    pd.DataFrame({"gene": ["ENSG1"], "rti_missing": [1.0], "lti_missing": [0.2],
+                  "usable": [False]}).to_csv(csv, index=False)
     text, _ = B.encode(csv, ["ENSG1"])
-    assert np.isnan(_decode(text, 0, 0))
-    assert _decode(text, 0, 2) == 0.0
+    assert np.isnan(_decode(text, 0, 0)) and np.isnan(_decode(text, 0, 1))
 
 
 def test_refuses_a_value_that_is_not_a_fraction(tmp_path):

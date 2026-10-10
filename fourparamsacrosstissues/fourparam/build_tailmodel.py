@@ -2,19 +2,19 @@
 """
 build_tailmodel.py
 
-Publish the tail model's ``rti_missing`` / ``lti_missing`` and ``idklti`` to the
-browser, as the page's **newRTI**, **newLTI** and **idkLTI** columns.
+Publish the tail model's ``rti_missing`` / ``lti_missing`` to the browser, as
+the page's **newRTI** and **newLTI** columns. (idkLTI is computed by the page
+from the loaded row's own ``min`` and ``lti``; see compute_idklti.py.)
 
 Same trade as ``build_r2.py``: one fixed-width record per gene in **genes.tsv
 order**, so the browser reads gene ``gi`` as a fixed-offset slice with no join
-and nothing to parse. Each record is three ``%7.5f`` fields -- rti_missing,
-lti_missing, idklti -- so 21 characters per gene, ~1.6 MB per tissue. Five decimals because the values that
+and nothing to parse. Each record is two ``%7.5f`` fields -- rti_missing then
+lti_missing -- so 14 characters per gene, ~1 MB per tissue. Five decimals because the values that
 matter are small: under a true Gaussian of N donors ``rti_missing`` is ~1/(N+1),
 0.00122 in muscle. Both are fractions in [0, 1], so nothing needs clamping. A
 missing value is seven spaces: a failed or not-``usable`` tail fit blanks
 rti/lti (a degenerate fit is not a number worth showing), as does an LTI that is
-undefined because donors are censored at the floor. ``idklti`` comes from the
-4-parameter fit, not the tail model, so it does not depend on ``usable``.
+undefined because donors are censored at the floor.
 
     cd fourparam
     python build_tailmodel.py                          # every tailmodel/ table
@@ -39,7 +39,7 @@ DOCS_OUT = DOCS / "tailmodel"
 GENES_TSV = DOCS / "genes.tsv"
 MANIFEST = DOCS / "manifest.json"
 
-FIELDS = ["rti_missing", "lti_missing", "idklti"]
+FIELDS = ["rti_missing", "lti_missing"]
 GATED = {"rti_missing", "lti_missing"}       # blanked unless the fit is usable
 WIDTH = 7                 # "%7.5f" -> "0.00122"
 DECIMALS = 5

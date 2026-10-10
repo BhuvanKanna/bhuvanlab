@@ -535,8 +535,7 @@
     "decimals": 5,
     "fields": [
       "rti_missing",
-      "lti_missing",
-      "idklti"
+      "lti_missing"
     ],
     "files": {
       "muscle_skeletal": "v11_log2_muscle_skeletal_tailmodel.txt"

@@ -63,8 +63,8 @@ fourparam/                    <- all the code (kept separate from the data)
   tailmodel.py                <- censored-left / truncated-right MLE: truncation as fraction missing (candidate RTI/LTI replacement)
   simulate_truncation.py      <- simulation harness scoring old vs new truncation metrics -> results/truncation_sim/
   compute_tailmodel.py        <- fit the tail model to ONE tissue's RAW rows -> tailmodel/ (muscle_skeletal only so far)
-  compute_idklti.py           <- append idklti (old LTI, 0 where the floor is the left edge) to a tailmodel/ table
-  build_tailmodel.py          <- publish newRTI / newLTI / idkLTI to the browser -> docs/tailmodel/ + manifest
+  compute_idklti.py           <- idklti (old LTI, 0 where the floor is the left edge), all 54 tissues -> idklti/
+  build_tailmodel.py          <- publish newRTI / newLTI to the browser -> docs/tailmodel/ + manifest
   tests/                      <- pytest suite: `python -m pytest tests/ -q`
 data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
@@ -74,6 +74,8 @@ outputs/                      <- the generated tables go here (starts empty)
 qc/                           <- distribution class + fit-validity, joined on `gene`
   v11_log2_<tissue>_qc[_excluded_at_or_below_-1].csv
 r2/                           <- r_squared alone, joined on `gene` (see "Fit quality")
+idklti/                       <- idklti alone, joined on `gene`, every excluded table (see "Tail model")
+tailmodel/                    <- tail-model fit per gene, muscle_skeletal only (see "Tail model")
   v11_log2_<tissue>_r2[_excluded_at_or_below_-1].csv
 worm/                         <- C. elegans, one table (see "Worm data")
   worm_fourparam_excluded_at_or_below_-1.csv
@@ -631,13 +633,23 @@ ACTA1, MYL3, MYH7, TPM3, TNNI1, MYH1 (fiber type), KDM5D, DDX3Y (Y-linked: sex)
 and FKBP5, PDK4 (stress/fasting response). That is composition, sex and agonal
 state, exactly the skew problem above, **not** lethality.
 
-### `idklti` (`compute_idklti.py`)
+### `idklti` (`idklti/`, `compute_idklti.py`) -- all 54 tissues
+
+```bash
+cd fourparam
+python compute_idklti.py --all            # 54 excluded tables, ~25 s, nothing refit
+```
 
 The old 4-parameter LTI, **forced to 0 where the gene's left edge is the
 detection floor**: smallest detected value (`min` in the excluded table)
 ≤ −0.75, which is TPM ≤ 0.19, the same `FLOOR` as `normality.py`. Otherwise it
-equals `lti`. It is appended to the same `tailmodel/` CSV but does not depend on
-the tail fit or on `usable`.
+equals `lti`, **copied as text** so it is byte-identical to the table; a failed
+fit is blank. Not part of the tail model and independent of `usable`.
+
+`idklti/v11_log2_<tissue>_idklti_excluded_at_or_below_-1.csv` is `gene,idklti`
+for every gene of every excluded table, ~85 MB in all. Across the 54 tissues:
+3,032,717 defined, **2,106,146 (69.4%) forced to 0** by the rule, 386,026
+non-zero.
 
 Muscle: 61,172 defined. The floor rule covers **49,308 (80.6%)**; another 2,813
 already had `lti` exactly 0 (the shared RTI/LTI baseline), so 52,121 read 0 in
@@ -650,15 +662,24 @@ only. A marginal comparison rewards the rule. Genes just above the cut
 
 ### In the browser
 
-`build_tailmodel.py` writes `docs/tailmodel/<stem>.txt`: three `%7.5f` fields
-per gene (`rti_missing`, `lti_missing`, `idklti`), 21 characters, in
-`genes.tsv` order, plus a `manifest.tailmodel` block (`build_gui_data.py`
-carries it over via `PATCHED_BLOCKS`). `rti_missing` / `lti_missing` are
-blanked unless `usable`. The page shows them as virtual columns **newRTI**,
-**newLTI** and **idkLTI** (`TAIL_COLS`, joined by gene index exactly like R²).
-They appear only when a loaded tissue has a tailmodel file, and show "—" with a
-reason for any other row. Both CSV exports append `rti_missing,lti_missing,idklti`
-after `r_squared`, so every earlier column keeps its position.
+**idkLTI** is shown for **every tissue** and needs no file: the page computes
+it from the loaded row's own `min` and `lti` (`idkltiText()`, cut-off
+`IDK_FLOOR`), which both load routes carry. It yields the same text as
+`idklti/` -- verified against all 1,389 rows of a tissue-major thyroid load and
+a gene-major load across three tissues, zero mismatches -- and
+`tests/test_idklti.py` fails if `IDK_FLOOR` and `compute_idklti.FLOOR_CUT` ever
+drift apart.
+
+**newRTI / newLTI** come from `build_tailmodel.py`, which writes
+`docs/tailmodel/<stem>.txt`: two `%7.5f` fields per gene (`rti_missing`,
+`lti_missing`), 14 characters, in `genes.tsv` order, plus a `manifest.tailmodel`
+block (`build_gui_data.py` carries it over via `PATCHED_BLOCKS`). Both are
+blanked unless `usable`. They are virtual columns (`TAIL_COLS`, joined by gene
+index exactly like R²) that appear only when a loaded tissue has a tailmodel
+file, and show "—" with a reason for any other row.
+
+Both CSV exports append `rti_missing,lti_missing,idklti` after `r_squared`, so
+every earlier column keeps its position.
 
 ## Worm data (`worm/`, `stage_worm_table.py`)
 

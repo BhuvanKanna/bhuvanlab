@@ -21,8 +21,6 @@ missing past each edge; lti is NaN when any donor is censored), rti_lr, lti_lr,
 n_total, n_censored, left_mode, success, usable. Read the metrics only where
 ``usable`` is True (see tailmodel.fit_tail_model). Under a true Gaussian of N
 donors ``rti_missing`` is ~1/(N+1), not 0.
-
-``compute_idklti.py`` later appends an ``idklti`` column to this same file.
 """
 import argparse
 import os
