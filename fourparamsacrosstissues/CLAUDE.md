@@ -657,6 +657,22 @@ Partial Spearman with continuous pTriplo, controlling for expression: old +0.01,
 new −0.03. The canonical duplication-syndrome genes (PMP22, LMNB1, SNCA, PLP1,
 MECP2, APP, DYRK1A, RAI1) all read ≤ 0.009.
 
+**Removing donor covariates does not uncover a signal (2026-10-10).** Per gene,
+OLS on detected donors removed sex, age, Hardy scale, RIN, ischemic time and
+exonic rate (GTEx v11 `SampleAttributesDS` / `SubjectPhenotypesDS`), then
+optionally the top 10 expression PCs; both indices were refit. Censored donors
+stayed at −1, which approximates their shifted censoring point. The adjustment
+works: fiber-type genes leave the top of `rti_missing`, and its correlation with
+expression falls from +0.26 to +0.14 (known covariates) and +0.07 (+PCs). But
+on matched controls `rti_missing` moves further **below** chance (pTriplo ≥ 0.94
+vs duplication-tolerant: 0.413 → 0.378 → 0.377), and old `rti` drifts below too
+with PCs (0.475). Partial correlation with pTriplo controlling for expression:
+`rti_missing` −0.03 → −0.05 → −0.08. The new top hits are pseudogenes
+(RPS28P7, GPX1P1, UQCRFS1P1) and Y-linked genes detected only in males
+(TXLNGY), i.e. mapping and censoring artifacts. In muscle, neither index carries
+a dosage-sensitivity signal, with or without covariate adjustment. Analysis
+scripts were run from a session scratchpad and are not in the repo.
+
 ### `idklti` (`idklti/`, `compute_idklti.py`) -- all 54 tissues
 
 ```bash
