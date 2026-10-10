@@ -627,11 +627,35 @@ The whole top of the ranking was such genes. `usable` adds the QC-gate analogs:
 | `usable` | **49,560** |
 | `usable` with a defined `lti_missing` (no donor censored) | 14,660 |
 
-Among usable genes, Spearman(`rti_missing`, `mu`) = **−0.06**, so the
-expression confound is gone on real data too. But the top `rti_missing` genes are
-ACTA1, MYL3, MYH7, TPM3, TNNI1, MYH1 (fiber type), KDM5D, DDX3Y (Y-linked: sex)
-and FKBP5, PDK4 (stress/fasting response). That is composition, sex and agonal
-state, exactly the skew problem above, **not** lethality.
+**The expression confound is reduced, not gone.** Spearman(`rti_missing`, `mu`)
+= −0.06, but `mu` is the model's own latent mean. Against observed expression
+(the excluded table's `mean`) it is **+0.26** (old `rti`: +0.36). It tracks
+left skew harder than the old index does: Spearman with `skew` is **−0.55**
+(old: −0.39). The top `rti_missing` genes are ACTA1, MYL3, MYH7, TPM3, TNNI1,
+MYH1 (fiber type), KDM5D, DDX3Y (Y-linked: sex) and FKBP5, PDK4
+(stress/fasting response). That is composition, sex and agonal state, exactly
+the skew problem above, **not** lethality.
+
+**Validation in muscle (2026-10-10): newRTI does not identify dosage-sensitive
+genes, and on matched controls it points the wrong way.** On 49,434 genes where
+both indices exist, 1:1 matched on `mean` (caliper 0.1, matched expression AUC
+0.50), AUC = P(positive reads more truncated), 95% bootstrap CI:
+
+| positives vs negatives | n pairs | old `rti` | `rti_missing` |
+|---|---|---|---|
+| OMIM over-expression (51) vs pTriplo ≤ 0.10 | 49 | 0.558 [0.48–0.63] | 0.464 [0.38–0.54] |
+| pTriplo ≥ 0.94 vs pTriplo ≤ 0.10 | 551 | 0.505 [0.49–0.52] | **0.455 [0.43–0.48]** |
+| pTriplo ≥ 0.94 vs duplication-tolerant | 323 | 0.511 [0.49–0.53] | **0.413 [0.38–0.44]** |
+| DECIPHER vs duplication-tolerant | 112 | 0.500 [0.46–0.54] | 0.437 [0.39–0.49] |
+
+Unmatched, both look predictive (`rti_missing` up to 0.74), but only because the
+positives are more highly expressed (expression alone: AUC 0.73–0.85). After
+matching, old `rti` is at chance and `rti_missing` is **below** it, because
+tolerant genes are slightly *more* left-skewed than matched sensitive ones
+(left-skew AUC 0.46–0.48), and `rti_missing` is mostly a left-skew detector.
+Partial Spearman with continuous pTriplo, controlling for expression: old +0.01,
+new −0.03. The canonical duplication-syndrome genes (PMP22, LMNB1, SNCA, PLP1,
+MECP2, APP, DYRK1A, RAI1) all read ≤ 0.009.
 
 ### `idklti` (`idklti/`, `compute_idklti.py`) -- all 54 tissues
 
