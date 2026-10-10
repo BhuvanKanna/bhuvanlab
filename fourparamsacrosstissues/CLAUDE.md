@@ -60,6 +60,8 @@ fourparam/                    <- all the code (kept separate from the data)
   make_r2_diagrams.py         <- one R^2 histogram per tissue -> r2_histograms/
   verify_hist_columns.py      <- check hist/hist_max invariants in outputs/
   backfill_hist.py            <- add hist/hist_max to an excluded table that predates them, no refit
+  tailmodel.py                <- censored-left / truncated-right MLE: truncation as fraction missing (candidate RTI/LTI replacement)
+  simulate_truncation.py      <- simulation harness scoring old vs new truncation metrics -> results/truncation_sim/
   tests/                      <- pytest suite: `python -m pytest tests/ -q`
 data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
@@ -544,6 +546,55 @@ they come from the GTEx sample attributes file.
 
 `right_truncated` requires **both** skew below the null band and `d_aic` past the
 calibrated threshold. Either alone is common noise.
+
+## Tail model: truncation as fraction missing (`tailmodel.py`, `simulate_truncation.py`)
+
+A candidate replacement for RTI / LTI. **Not yet run on real data and not in
+`outputs/`.** It exists because both indices turned out to measure expression
+level rather than truncation (see "Read LTI beside `mean`" above).
+
+The two edges of a gene's distribution are lost in different ways, and the
+model treats each one the way it actually happened:
+
+- **Left = censoring.** Donors at TPM = 0 (exactly −1) exist, and we know how
+  many there are. They enter the likelihood as `n_cens · log Φ((−1 − μ)/σ)`. This
+  is why `fit_tail_model` takes the **raw** row, not the excluded one: the
+  censored count is the information the excluded tables throw away.
+- **Right = truncation** at `x_max`. Donors past it are absent, and every donor
+  pays `−log Φ((x_max − μ)/σ)`.
+
+Outputs are `rti_missing = 1 − Φ((x_max − μ)/σ)`, the estimated fraction of the
+population missing above the ceiling, and `lti_missing`, its mirror below
+`x_min`. **`lti_missing` is NaN whenever any donor is censored.** Left truncation
+cannot be told apart from the detection limit there, so the answer is "unknown",
+not 0. `rti_lr` / `lti_lr` are the likelihood-ratio gains for truncating each side.
+
+```bash
+cd fourparam
+python simulate_truncation.py              # 168 cells x 200 reps, ~7 min on 11 workers
+python simulate_truncation.py --reps 40 --n 300
+```
+
+Simulated with latent σ = 1, μ from −1.5 to 3 (≈69% to 0% of donors censored),
+n ∈ {100, 300, 800}, and the cut 0.5/1/2σ from the mean, the numbers were:
+
+| check | old `rti` / `lti` | new `rti_missing` / `lti_missing` |
+|---|---|---|
+| untruncated low- vs high-expression gene (ideal AUC 0.5) | `lti` **0.86–1.00**, `rti` **0.28–0.30** | `rti_missing` **0.44–0.53** |
+| power, 1σ right cut, μ ≤ −0.5 | `rti` 0.50–0.61 (blind) | 0.96–1.00 |
+| missing fraction recovered (n=800, true 15.9%) | n/a | 16.0–18.4% |
+| left-skewed but **untruncated** read as truncated | `rti_sigma_dist` 0.57–1.00 | **0.68–1.00** |
+
+**The last row is the open problem.** A naturally short tail (left skew) and a
+cut tail look the same to any Gaussian tail model, and the new metric is fooled
+at least as much as the old one. Do not read `rti_missing` as lethality
+without a skew-robust check (e.g. a generalized-Pareto tail-shape fit) or the
+covariate regression described under "What the first two tissues actually
+showed".
+
+Both cut points sit at the observed extremes, so under a true Gaussian of N
+donors the expected `rti_missing` is about `1/(N+1)`, not 0. Judge it against a
+simulated null at the same N, as with `d_aic`.
 
 ## Worm data (`worm/`, `stage_worm_table.py`)
 
