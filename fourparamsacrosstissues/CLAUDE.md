@@ -62,6 +62,9 @@ fourparam/                    <- all the code (kept separate from the data)
   backfill_hist.py            <- add hist/hist_max to an excluded table that predates them, no refit
   tailmodel.py                <- censored-left / truncated-right MLE: truncation as fraction missing (candidate RTI/LTI replacement)
   simulate_truncation.py      <- simulation harness scoring old vs new truncation metrics -> results/truncation_sim/
+  compute_tailmodel.py        <- fit the tail model to ONE tissue's RAW rows -> tailmodel/ (muscle_skeletal only so far)
+  compute_idklti.py           <- append idklti (old LTI, 0 where the floor is the left edge) to a tailmodel/ table
+  build_tailmodel.py          <- publish newRTI / newLTI / idkLTI to the browser -> docs/tailmodel/ + manifest
   tests/                      <- pytest suite: `python -m pytest tests/ -q`
 data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
@@ -549,9 +552,11 @@ calibrated threshold. Either alone is common noise.
 
 ## Tail model: truncation as fraction missing (`tailmodel.py`, `simulate_truncation.py`)
 
-A candidate replacement for RTI / LTI. **Not yet run on real data and not in
-`outputs/`.** It exists because both indices turned out to measure expression
-level rather than truncation (see "Read LTI beside `mean`" above).
+A candidate replacement for RTI / LTI. **Run on muscle_skeletal only**, as a
+side-car in `tailmodel/` joined on `gene` (not in `outputs/`, for the same
+reasons as `qc/` and `r2/`). It exists because both indices turned out to
+measure expression level rather than truncation (see "Read LTI beside `mean`"
+above).
 
 The two edges of a gene's distribution are lost in different ways, and the
 model treats each one the way it actually happened:
@@ -595,6 +600,65 @@ showed".
 Both cut points sit at the observed extremes, so under a true Gaussian of N
 donors the expected `rti_missing` is about `1/(N+1)`, not 0. Judge it against a
 simulated null at the same N, as with `d_aic`.
+
+### Real data: muscle skeletal (`tailmodel/`, `compute_tailmodel.py`)
+
+```bash
+cd fourparam
+python compute_tailmodel.py --input ../data/v11_log2_muscle_skeletal.csv.gz   # ~9 min
+python compute_idklti.py --tissue muscle_skeletal
+python build_tailmodel.py
+```
+
+**Read the metrics only where `usable` is True.** The first real run exposed a
+degeneracy the simulation never hit: a gene with ~800 of 818 donors at the
+floor and a handful detected "fits" as the lower sliver of an enormous
+distribution (μ ≈ 10⁵) with almost all of it missing, so `rti_missing` = 1.0.
+The whole top of the ranking was such genes. `usable` adds the QC-gate analogs:
+≥ 30 detected donors, `mu <= x_max` (the `x0_in_range` analog), and
+`sigma <= x_max − lower edge` (the `sigma_span_ratio` analog).
+
+| | genes |
+|---|---|
+| total | 74,628 |
+| fit converged | 61,729 |
+| `usable` | **49,560** |
+| `usable` with a defined `lti_missing` (no donor censored) | 14,660 |
+
+Among usable genes, Spearman(`rti_missing`, `mu`) = **−0.06**, so the
+expression confound is gone on real data too. But the top `rti_missing` genes are
+ACTA1, MYL3, MYH7, TPM3, TNNI1, MYH1 (fiber type), KDM5D, DDX3Y (Y-linked: sex)
+and FKBP5, PDK4 (stress/fasting response). That is composition, sex and agonal
+state, exactly the skew problem above, **not** lethality.
+
+### `idklti` (`compute_idklti.py`)
+
+The old 4-parameter LTI, **forced to 0 where the gene's left edge is the
+detection floor**: smallest detected value (`min` in the excluded table)
+≤ −0.75, which is TPM ≤ 0.19, the same `FLOOR` as `normality.py`. Otherwise it
+equals `lti`. It is appended to the same `tailmodel/` CSV but does not depend on
+the tail fit or on `usable`.
+
+Muscle: 61,172 defined. The floor rule covers **49,308 (80.6%)**; another 2,813
+already had `lti` exactly 0 (the shared RTI/LTI baseline), so 52,121 read 0 in
+total and 9,051 are non-zero. The cut sits on a plateau (72.7% at −0.9, 80.6% at
+−0.75, 84.1% at −0.5), but
+zeroing is itself expression-dependent: median mean expression is −0.86 for
+zeroed genes vs 2.24 for kept. So score `idklti` on expression-matched controls
+only. A marginal comparison rewards the rule. Genes just above the cut
+(min ≈ −0.7, mostly small RNAs and pseudogenes) still carry `lti` = 1.
+
+### In the browser
+
+`build_tailmodel.py` writes `docs/tailmodel/<stem>.txt`: three `%7.5f` fields
+per gene (`rti_missing`, `lti_missing`, `idklti`), 21 characters, in
+`genes.tsv` order, plus a `manifest.tailmodel` block (`build_gui_data.py`
+carries it over via `PATCHED_BLOCKS`). `rti_missing` / `lti_missing` are
+blanked unless `usable`. The page shows them as virtual columns **newRTI**,
+**newLTI** and **idkLTI** (`TAIL_COLS`, joined by gene index exactly like R²).
+They appear only when a loaded tissue has a tailmodel file, and show "—" with a
+reason for any other row. Both CSV exports append `rti_missing,lti_missing,idklti`
+after `r_squared`, so every earlier column keeps its position.
 
 ## Worm data (`worm/`, `stage_worm_table.py`)
 

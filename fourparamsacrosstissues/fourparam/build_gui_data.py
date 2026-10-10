@@ -70,7 +70,7 @@ PHENOTYPES_FILE = "overexpression_phenotypes.tsv"
 
 # Manifest blocks owned by another script, which patches manifest.json in place.
 # This script rewrites the file wholesale and must carry these forward verbatim.
-PATCHED_BLOCKS = ("qc", "r2")
+PATCHED_BLOCKS = ("qc", "r2", "tailmodel")
 
 
 # Reusable gene sets published beside the page, one token per line, so the

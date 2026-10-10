@@ -43,6 +43,11 @@ from scipy.special import log_ndtr
 
 FLOOR = -1.0
 MIN_DETECTED = 10
+# Validity gates for ``usable``, the absolute-threshold analogs of the QC gates
+# in normality.py. On real data a gene with ~800 of 818 donors at the floor
+# "fits" as the lower sliver of a huge distribution (mu ~ 1e5) with almost all
+# of it missing, so rti_missing reads 1.0. These gates catch exactly that.
+MIN_USABLE_DETECTED = 30     # as MIN_QC_OBS
 
 # Same finite stand-in for an impossible likelihood as bhuvanfitter: inf
 # collapses Nelder-Mead's simplex instead of steering it away.
@@ -125,7 +130,7 @@ def _empty(n_total, n_cens, left_mode):
             "rti_missing": nan, "lti_missing": nan,
             "rti_lr": nan, "lti_lr": nan,
             "n_total": int(n_total), "n_censored": int(n_cens),
-            "left_mode": left_mode, "success": False}
+            "left_mode": left_mode, "success": False, "usable": False}
 
 
 def fit_tail_model(values, floor: float = FLOOR) -> dict:
@@ -139,7 +144,12 @@ def fit_tail_model(values, floor: float = FLOOR) -> dict:
     be missing past each edge), ``rti_lr`` / ``lti_lr`` (2 x log-likelihood
     gain of truncating that side over leaving it untruncated; same caveat about
     a simulated null), ``n_total``, ``n_censored``, ``left_mode``
-    (``"censored"`` or ``"truncated"``) and ``success``.
+    (``"censored"`` or ``"truncated"``), ``success`` and ``usable``.
+
+    ``usable`` additionally requires >= 30 detected donors, a latent peak no
+    higher than the observed ceiling (``mu <= x_max``, the ``x0_in_range``
+    analog) and ``sigma`` no wider than the observed span down to the floor (the
+    ``sigma_span_ratio`` analog). Read the metrics only where it is True.
     """
     arr = np.asarray(values, dtype=float)
     arr = arr[np.isfinite(arr)]
@@ -171,9 +181,12 @@ def fit_tail_model(values, floor: float = FLOOR) -> dict:
         lti_lr = 2.0 * (no_left.fun - full.fun)
         lti_missing = float(np.exp(log_ndtr((x_min - mu) / sigma)))
 
+    lower = floor if n_cens else x_min
+    usable = bool(y.size >= MIN_USABLE_DETECTED and mu <= x_max
+                  and sigma <= x_max - lower)
     return {"mu": mu, "sigma": sigma, "x_min": x_min, "x_max": x_max,
             "rti_missing": float(np.exp(log_ndtr((mu - x_max) / sigma))),
             "lti_missing": lti_missing,
             "rti_lr": float(rti_lr), "lti_lr": float(lti_lr),
             "n_total": int(arr.size), "n_censored": n_cens,
-            "left_mode": left_mode, "success": True}
+            "left_mode": left_mode, "success": True, "usable": usable}

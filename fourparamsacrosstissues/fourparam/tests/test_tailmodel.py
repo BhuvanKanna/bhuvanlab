@@ -84,6 +84,21 @@ def test_location_and_scale_invariance():
     assert a["rti_missing"] == pytest.approx(b["rti_missing"], abs=1e-4)
 
 
+def test_nearly_all_censored_gene_is_not_usable():
+    """The real-data degeneracy: ~800/818 at the floor fits as a huge distribution."""
+    rng = np.random.default_rng(8)
+    detected = rng.uniform(-0.9, 1.5, 18)
+    x = np.concatenate([np.full(800, FLOOR), detected])
+    r = fit_tail_model(x)
+    assert not r["usable"]
+
+
+def test_ordinary_gene_is_usable():
+    rng = np.random.default_rng(9)
+    r = fit_tail_model(censor(latent(rng, 818, mu=1.0)))
+    assert r["success"] and r["usable"]
+
+
 def test_too_few_observations_fail_softly():
     r = fit_tail_model([0.1, 0.2, 0.3])
     assert not r["success"]
