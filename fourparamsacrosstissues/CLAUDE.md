@@ -66,6 +66,9 @@ fourparam/                    <- all the code (kept separate from the data)
   compute_idklti.py           <- idklti (old LTI, 0 where the floor is the left edge), all 54 tissues -> idklti/
   build_tailmodel.py          <- publish newRTI / newLTI to the browser -> docs/tailmodel/ + manifest
   build_gene_type.py          <- publish GENCODE v47 gene_type to the browser -> docs/genetype/ + manifest
+  utc.py                      <- upper-tail compression (UTC/LTC/VAR), quantile-based, expression-adjusted -> utc/
+  simulate_utc.py             <- UTC validation V1-V3 (truncation vs composition) -> utc/simulation.csv
+  evaluate_utc.py             <- the locked UTC tests P1-P4, S1 (see utc/PLAN.md) -> utc/evaluation.json
   tests/                      <- pytest suite: `python -m pytest tests/ -q`
 data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
@@ -77,6 +80,7 @@ qc/                           <- distribution class + fit-validity, joined on `g
 r2/                           <- r_squared alone, joined on `gene` (see "Fit quality")
 idklti/                       <- idklti alone, joined on `gene`, every excluded table (see "Tail model")
 tailmodel/                    <- tail-model fit per gene, muscle_skeletal only (see "Tail model")
+utc/                          <- upper-tail compression: PLAN.md (locked before scoring), scores, evaluation
   v11_log2_<tissue>_r2[_excluded_at_or_below_-1].csv
 worm/                         <- C. elegans, one table (see "Worm data")
   worm_fourparam_excluded_at_or_below_-1.csv
