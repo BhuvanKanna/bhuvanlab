@@ -89,7 +89,7 @@ TPM ≥ 1 medians and the regression need every donor.
 | id | statistic |
 |---|---|
 | `utc95`, `utc975`, `utc99` | −ln[(q_p − q50) / (q75 − q50)], p = 95, 97.5, 99 |
-| `xi_mom` | −ξ, Dekkers–Einmahl–de Haan moment estimator on the top 10% |
+| `xi_mom` | −ξ, Dekkers–Einmahl–de Haan moment estimator on the top 10% (replaced by `xi_pwm`, see Deviations) |
 | `xi_gpd` | −ξ, generalized Pareto MLE on exceedances over q90 |
 | `asym` | −(UTC975 − LTC975), upper relative to lower |
 | `edge_lr` | `mean` object only: signed √(2·ΔlogL) of a Gaussian latent truncated above at c plus known noise s_d² = σw²/k_d, against no truncation; also reports the missing fraction 1 − Φ((c − μ)/σ) |
@@ -170,4 +170,25 @@ validity (phases 3–4) stands on its own either way.
 
 ## Deviations
 
-None yet.
+1. **`xi_mom` → `xi_pwm`** (2026-10-13, before the benchmark ran). The
+   Dekkers–Einmahl–de Haan moment estimator works on log(X), so it depends on
+   where zero is and cannot be applied to standardized residuals that go
+   negative. Replaced with the probability-weighted-moments GPD estimator
+   (Hosking & Wallis 1987) on exceedances over q90, which is location- and
+   scale-invariant: −ξ = a0/(a0 − 2a1) − 2.
+2. **Realistic-strength confounds, added as a second benchmark**
+   (2026-10-13, after a 60-gene dry run and **before** the full benchmark
+   finished). The dry run showed every candidate firing on `skew` and
+   `comp_systemic`. Checked against 2,290 real genes (viability sample),
+   both confounds as locked are far outside the data: `skew` (a = 0.5) gives
+   a median donor-level Bowley skewness of −0.17, more left-skewed than 98.7%
+   of real genes (real median +0.004); `comp_systemic` (shift −1) gives a
+   median lower-tail weight (q50 − q2.5)/(q75 − q25) of 1.89, heavier than 97%
+   of real genes. A realistic-strength variant sets each so that the median
+   gene sits at the real 95th percentile: `skew` a = 0.25 (Bowley −0.083;
+   real 5th percentile −0.085) and `comp_systemic` shift −0.9 (weight ≈ 1.82;
+   real 95th percentile 1.822). Everything else is unchanged.
+   **Rule, fixed now:** the locked benchmark is reported in full and stays
+   primary. If it leaves no admissible candidate, selection uses the same rule
+   on the realistic-strength benchmark, and the write-up states that the
+   chosen metric is not robust to the locked (extreme) strengths.
