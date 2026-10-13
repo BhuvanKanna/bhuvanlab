@@ -65,6 +65,7 @@ fourparam/                    <- all the code (kept separate from the data)
   compute_tailmodel.py        <- fit the tail model to ONE tissue's RAW rows -> tailmodel/ (muscle_skeletal only so far)
   compute_idklti.py           <- idklti (old LTI, 0 where the floor is the left edge), all 54 tissues -> idklti/
   build_tailmodel.py          <- publish newRTI / newLTI to the browser -> docs/tailmodel/ + manifest
+  build_gene_type.py          <- publish GENCODE v47 gene_type to the browser -> docs/genetype/ + manifest
   tests/                      <- pytest suite: `python -m pytest tests/ -q`
 data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
@@ -718,7 +719,7 @@ blanked unless `usable`. They are virtual columns (`TAIL_COLS`, joined by gene
 index exactly like R²) that appear only when a loaded tissue has a tailmodel
 file, and show "—" with a reason for any other row.
 
-Both CSV exports append `rti_missing,lti_missing,idklti` after `r_squared`, so
+Both CSV exports append `rti_missing,lti_missing,idklti` (then `gene_type`) after `r_squared`, so
 every earlier column keeps its position.
 
 ## Worm data (`worm/`, `stage_worm_table.py`)
@@ -962,6 +963,36 @@ byte-identical to `extract_genes.py`.
   `<html>` moves `--accent` and `--curve`, which is why the sparklines change
   colour too. The block has to be repeated for all three theme states, and sits
   after the theme blocks so equal-specificity selectors go the worm's way.
+
+### Gene type: protein-coding vs non-coding (`docs/genetype/`, `build_gene_type.py`)
+
+```bash
+cd fourparam
+python build_gene_type.py                     # downloads GENCODE v47 (~59 MB)
+python build_gene_type.py --gtf gencode.v47.annotation.gtf.gz
+```
+
+GTEx v11 is annotated with **GENCODE v47**: all 74,628 versioned ids in
+`genes.tsv` match a v47 `gene` record exactly. `docs/genetype/gencode_v47.txt`
+is one character per gene in `genes.tsv` order (~75 KB, one file for every
+tissue), and `manifest.gene_type` maps each character to its `gene_type` and
+each type to a coarse group. `build_gui_data.py` carries the block over via
+`PATCHED_BLOCKS`, but re-run this whenever `genes.tsv` is rebuilt.
+
+| group | gene types | genes |
+|---|---|---|
+| `protein_coding` | `protein_coding` | 19,355 |
+| `lncRNA` | `lncRNA` | 33,964 |
+| `pseudogene` | every `*pseudogene`, including IG/TR ones | 13,754 |
+| `small_ncRNA` | miRNA, misc_RNA, snRNA, snoRNA, scaRNA, rRNA, Mt_tRNA, Mt_rRNA, ribozyme, vault_RNA, sRNA, scRNA | 6,180 |
+| `other` | TEC, artifact | 968 |
+| `IG_TR` | IG/TR gene segments | 407 |
+
+The browser shows `group` in the compact columns and the raw `gene type`
+under *All columns*. Both are categorical filters, and *Protein-coding only*
+/ *Non-coding only* set `group is / is not protein_coding`. Both CSV exports
+append `gene_type` as the last column, after `idklti`.
+`tests/test_gene_type_sidecar.py` pins the geometry.
 
 ### Pasting a gene list
 

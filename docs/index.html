@@ -1041,6 +1041,12 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
             <span class="sep">&middot;</span>
             <button class="linkbtn" id="clearFilters" type="button" disabled>Clear filters</button>
             <span class="sep">&middot;</span>
+            <button class="linkbtn" id="onlyCoding" type="button"
+                    title="GENCODE gene_type is protein_coding">Protein-coding only</button>
+            <span class="sep">&middot;</span>
+            <button class="linkbtn" id="onlyNoncoding" type="button"
+                    title="Every other GENCODE gene_type: lncRNA, small RNAs, pseudogenes, …">Non-coding only</button>
+            <span class="sep">&middot;</span>
             <span class="filternote" id="filterNote"></span>
           </div>
         </div>
@@ -1373,7 +1379,7 @@ const GENES_URL    = "genes.tsv";
    `BUILD_ID` and version.json are both written by docs/stamp_version.py --
    run it after editing this file, or the two silently drift apart.
    ===================================================================== */
-const BUILD_ID = "5327e777b5b6";
+const BUILD_ID = "6bff159c2ee3";
 const VERSION_URL = "version.json";
 const UPDATE_RECHECK_MS = 5 * 60 * 1000;
 
@@ -1477,6 +1483,16 @@ const IDK_LTI_COL = "__idklti";
 const IDK_FLOOR = -0.75;
 const JOINED_COLS = [R2_COL, IDK_LTI_COL, NEW_RTI_COL, NEW_LTI_COL];
 
+/* GENCODE gene_type, from genetype/ (build_gene_type.py): one character per
+   gene in genes.tsv order, like qc/, but one file for every tissue because the
+   annotation is a property of the gene. GENE_GROUP_COL is the coarse class
+   (protein_coding / lncRNA / small_ncRNA / pseudogene / IG_TR / other), so
+   "protein-coding only" or "lncRNA only" is one filter. */
+const GENE_TYPE_COL = "__gene_type";
+const GENE_GROUP_COL = "__gene_group";
+const GENE_GROUP_ORDER = ["protein_coding", "lncRNA", "small_ncRNA",
+                          "pseudogene", "IG_TR", "other"];
+
 const SHORT_LABEL = {
   rti: "RTI",
   lti: "LTI",
@@ -1490,6 +1506,8 @@ const SHORT_LABEL = {
   [NEW_RTI_COL]: "newRTI",
   [NEW_LTI_COL]: "newLTI",
   [IDK_LTI_COL]: "idkLTI",
+  [GENE_TYPE_COL]: "gene type",
+  [GENE_GROUP_COL]: "group",
   // The worm table carries R^2 as a real column rather than a join, so the
   // label has to exist under its own name too.
   r_squared: "R²",
@@ -1767,6 +1785,42 @@ async function getQcClasses(tissue, kind) {
     qcCache.set(key, null);
   }
   return qcCache.get(key);
+}
+
+/* ---------------------------------------------------------------------
+   Gene type (genetype/)
+
+   Fetched once at boot, ~75 KB. Optional: if the manifest has no gene_type
+   block or the fetch fails, both columns read "—" and nothing else changes.
+   --------------------------------------------------------------------- */
+let geneTypeText = null;
+
+async function loadGeneTypes() {
+  const gt = manifest.gene_type;
+  if (!gt || !gt.available) return;
+  try {
+    const res = await fetch(localUrl(`${gt.base_url}/${gt.file}`));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    // A short file would shift every gene's type onto its neighbor.
+    geneTypeText = text.length === GID.length ? text : null;
+  } catch (err) {
+    geneTypeText = null;
+  }
+}
+
+function geneTypeOf(gi) {
+  if (!geneTypeText || gi === undefined) return null;
+  return manifest.gene_type.classes[geneTypeText[gi]] || null;
+}
+
+function geneGroupOf(gi) {
+  const t = geneTypeOf(gi);
+  return t ? (manifest.gene_type.groups[t] || "other") : null;
+}
+
+function geneTypeCol(r, col) {
+  return col === GENE_TYPE_COL ? geneTypeOf(r.gi) : geneGroupOf(r.gi);
 }
 
 function distClassOf(row) {
@@ -2200,12 +2254,14 @@ function visibleStatCols(header, all) {
   const skip = new Set(["gene", "genename", "hist", "hist_max", "r_squared"]);
   const stats = header.filter((c) => !skip.has(c));
   const compact = COMPACT_COLS.filter((c) => stats.includes(c))
-    .concat(DIST_COL, R2_COL, IDK_LTI_COL, tailLoaded() ? TAIL_COLS : []);
+    .concat(DIST_COL, R2_COL, IDK_LTI_COL, tailLoaded() ? TAIL_COLS : [],
+            geneTypeText ? GENE_GROUP_COL : []);
   if (!all) return compact;
   // Compact block keeps its position and order; the remainder follows in the
   // table's own order. Toggling "All columns" therefore only ever appends.
   const shown = new Set(compact);
-  return compact.concat(stats.filter((c) => !shown.has(c)));
+  return compact.concat(stats.filter((c) => !shown.has(c)),
+                        geneTypeText ? GENE_TYPE_COL : []);
 }
 
 function kindLabelOf(kind) {
@@ -2226,7 +2282,8 @@ function kindLabelOf(kind) {
    threshold does not blank the table while it is being typed.
    ===================================================================== */
 const FILTER_SKIP = new Set(["gene", "genename", "hist", "hist_max", "r_squared"]);
-const CATEGORICAL_COLS = new Set(["fit_success", DIST_COL]);
+const CATEGORICAL_COLS = new Set(["fit_success", DIST_COL,
+                                  GENE_TYPE_COL, GENE_GROUP_COL]);
 const NUM_OPS = [[">=", "\u2265"], [">", ">"], ["<=", "\u2264"], ["<", "<"],
                  ["==", "="], ["!=", "\u2260"]];
 const CAT_OPS = [["==", "is"], ["!=", "is not"]];
@@ -2237,8 +2294,10 @@ function filterCols() {
   const base = (loadedHeader || manifest.columns || [])
     .filter((c) => !FILTER_SKIP.has(c));
   const tm = manifest.tailmodel;
+  const gt = manifest.gene_type;
   return base.concat(R2_COL, IDK_LTI_COL, DIST_COL,
-                     tm && tm.available ? TAIL_COLS : []);
+                     tm && tm.available ? TAIL_COLS : [],
+                     gt && gt.available ? [GENE_GROUP_COL, GENE_TYPE_COL] : []);
 }
 
 function opsFor(col) { return CATEGORICAL_COLS.has(col) ? CAT_OPS : NUM_OPS; }
@@ -2254,6 +2313,10 @@ function filterColLabel(col) {
 function catOptionsFor(col) {
   if (col === "fit_success") return ["True", "False"];
   if (col === DIST_COL) return Object.keys(DIST_LABEL);
+  if (col === GENE_GROUP_COL) return GENE_GROUP_ORDER;
+  if (col === GENE_TYPE_COL && manifest.gene_type) {
+    return Object.values(manifest.gene_type.classes).sort();
+  }
   return [];
 }
 
@@ -2263,6 +2326,7 @@ function filterValueOf(r, col) {
     return v === null ? NaN : v;
   }
   if (col === DIST_COL) return distClassOf(r) || "";
+  if (col === GENE_TYPE_COL || col === GENE_GROUP_COL) return geneTypeCol(r, col) || "";
   if (CATEGORICAL_COLS.has(col)) {
     const i = loadedColIdx ? loadedColIdx[col] : undefined;
     return i === undefined ? "" : String(r.fields[i]).trim();
@@ -2644,6 +2708,20 @@ function sortRows(rows, col, dir, colIdx) {
                        (SYM[a.gi] || "").localeCompare(SYM[b.gi] || ""));
     return out;
   }
+  if (col === GENE_TYPE_COL || col === GENE_GROUP_COL) {
+    // Groups sort in GENE_GROUP_ORDER (protein-coding first); raw types
+    // alphabetically. Rows with no annotation sink.
+    const key = (r) => {
+      const v = geneTypeCol(r, col);
+      if (!v) return "￿";
+      if (col === GENE_TYPE_COL) return v;
+      const i = GENE_GROUP_ORDER.indexOf(v);
+      return String(i < 0 ? 99 : i).padStart(2, "0");
+    };
+    out.sort((a, b) => key(a).localeCompare(key(b)) * dir ||
+                       (SYM[a.gi] || "").localeCompare(SYM[b.gi] || ""));
+    return out;
+  }
   if (col === "__tissue") {
     out.sort((a, b) => a.tissue.localeCompare(b.tissue) * dir ||
                        (SYM[a.gi] || "").localeCompare(SYM[b.gi] || ""));
@@ -2754,6 +2832,12 @@ function render() {
         return cls
           ? `<td class="tl"><span class="dc dc-${cls}">${escapeHtml(DIST_LABEL[cls] || cls)}</span></td>`
           : '<td class="tl"><span class="nil" title="No QC table for this tissue yet">—</span></td>';
+      }
+      if (c === GENE_TYPE_COL || c === GENE_GROUP_COL) {
+        const v = geneTypeCol(r, c);
+        return v
+          ? `<td class="tl">${escapeHtml(v)}</td>`
+          : '<td class="tl"><span class="nil" title="Not in the GENCODE annotation">—</span></td>';
       }
       if (c === R2_COL) {
         const v = rSquaredOf(r);
@@ -3476,7 +3560,8 @@ function downloadCsv() {
   if (!out.length) return;
   const cols = statCols();
   const lines = [["tissue", "table", "gene", "genename"]
-    .concat(cols, "r_squared", "rti_missing", "lti_missing", "idklti").join(",")];
+    .concat(cols, "r_squared", "rti_missing", "lti_missing", "idklti",
+            "gene_type").join(",")];
   for (const r of sortRows(out, sortCol, sortDir, loadedColIdx)) {
     lines.push([r.tissue, r.kind, GID[r.gi], SYM[r.gi]]
       .concat(cols.map((c) => {
@@ -3484,7 +3569,7 @@ function downloadCsv() {
         return i === undefined ? "" : r.fields[i];
       }), csvR2(rSquaredOf(r)), csvTail(tailOf(r, NEW_RTI_COL)),
           csvTail(tailOf(r, NEW_LTI_COL)),
-          idkltiText(r)).map(csvCell).join(","));
+          idkltiText(r), geneTypeOf(r.gi) || "").map(csvCell).join(","));
   }
   const nT = new Set(out.map((r) => r.tissue)).size;
   saveCsv(lines, `fourparam_${nT}tissues_${currentKind}_${out.length}rows.csv`);
@@ -3494,12 +3579,14 @@ function exportWorkingSet() {
   if (!workingSet.size) return;
   const cols = statCols();
   const lines = [["tissue", "table", "gene", "genename"]
-    .concat(cols, "r_squared", "rti_missing", "lti_missing", "idklti").join(",")];
+    .concat(cols, "r_squared", "rti_missing", "lti_missing", "idklti",
+            "gene_type").join(",")];
   // Export what is on screen, so a filter narrows the spreadsheet too.
   for (const { e } of wsRows()) {
     lines.push([e.t, e.k, e.gid, e.sym]
       .concat(cols.map((c) => e.v[c]), csvR2(e.r2), csvTail(e.tr),
-              csvTail(e.tl), e.ti ?? "").map(csvCell).join(","));
+              csvTail(e.tl), e.ti ?? "",
+              geneTypeOf(geneIndexByNover.get(e.g)) || "").map(csvCell).join(","));
   }
   saveCsv(lines, `working_set_${lines.length - 1}rows_${stamp()}.csv`);
 }
@@ -5230,6 +5317,7 @@ async function boot() {
     return;
   }
   $("statGenes").textContent = GID.length.toLocaleString();
+  await loadGeneTypes();
 
   const hadHash = location.hash.length > 1;
   const bootParams = new URLSearchParams(location.hash.replace(/^#/, ""));
@@ -5423,6 +5511,22 @@ async function boot() {
   $("clearFilters").addEventListener("click", () => {
     filters = []; renderFilters(); applyFilters();
   });
+
+  /* Shortcuts for the GENCODE group filter. Each replaces any existing group
+     filter rather than stacking, since "coding AND non-coding" matches nothing. */
+  const setCodingFilter = (op) => {
+    filters = filters.filter((f) => f.col !== GENE_GROUP_COL);
+    filters.push({ col: GENE_GROUP_COL, op, value: "protein_coding" });
+    renderFilters(); applyFilters();
+  };
+  const gtOk = manifest.gene_type && manifest.gene_type.available && geneTypeText;
+  $("onlyCoding").hidden = $("onlyNoncoding").hidden = !gtOk;
+  if ($("onlyNoncoding").previousElementSibling) {
+    $("onlyNoncoding").previousElementSibling.hidden = !gtOk;
+    $("onlyCoding").previousElementSibling.hidden = !gtOk;
+  }
+  $("onlyCoding").addEventListener("click", () => setCodingFilter("=="));
+  $("onlyNoncoding").addEventListener("click", () => setCodingFilter("!="));
 
   $("download").addEventListener("click", downloadCsv);
 
