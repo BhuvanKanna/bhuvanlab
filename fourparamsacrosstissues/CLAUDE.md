@@ -69,6 +69,12 @@ fourparam/                    <- all the code (kept separate from the data)
   utc.py                      <- upper-tail compression (UTC/LTC/VAR), quantile-based, expression-adjusted -> utc/
   simulate_utc.py             <- UTC validation V1-V3 (truncation vs composition) -> utc/simulation.csv
   evaluate_utc.py             <- the locked UTC tests P1-P4, S1 (see utc/PLAN.md) -> utc/evaluation.json
+  drti_prep.py                <- per-tissue residuals (covariates + 10 PCs, robust z) for dRTI, npz per tissue
+  drti_viability.py           <- dRTI viability: single tissue vs donor mean on spike-ins -> drti/viability.csv
+  drti_core.py                <- donor-level objects (mean/blup/factor) + right-truncation statistics
+  drti_bench.py               <- locked spike-in benchmark + selection rule -> drti/bench_*, selection*.json
+  drti_final.py               <- phase 5 scoring of the chosen recipe (written, not run: nothing admissible)
+  drti_evaluate.py            <- phase 6 locked pTriplo test (written, not run)
   tests/                      <- pytest suite: `python -m pytest tests/ -q`
 data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
@@ -81,6 +87,7 @@ r2/                           <- r_squared alone, joined on `gene` (see "Fit qua
 idklti/                       <- idklti alone, joined on `gene`, every excluded table (see "Tail model")
 tailmodel/                    <- tail-model fit per gene, muscle_skeletal only (see "Tail model")
 utc/                          <- upper-tail compression: PLAN.md (locked before scoring), scores, evaluation
+drti/                         <- donor-level right truncation: PLAN.md (locked), benchmark, RESULTS.md
   v11_log2_<tissue>_r2[_excluded_at_or_below_-1].csv
 worm/                         <- C. elegans, one table (see "Worm data")
   worm_fourparam_excluded_at_or_below_-1.csv
@@ -725,6 +732,39 @@ file, and show "—" with a reason for any other row.
 
 Both CSV exports append `rti_missing,lti_missing,idklti` (then `gene_type`) after `r_squared`, so
 every earlier column keeps its position.
+
+## Donor-level right truncation (`drti/`, `drti_*.py`)
+
+An attempt at the best possible right-truncation score, using every tissue
+at once. Full design in `drti/PLAN.md` (locked before the benchmark), outcome
+in `drti/RESULTS.md`.
+
+Truncation acts on a donor's shared latent level, and one tissue sees that
+level through heavy tissue-specific noise (median ICC 0.13). A 10% latent cut
+is detected in 2% of genes from one tissue and 50% from the donor mean. So
+dRTI scores the donor-level mean / BLUP / factor of residual expression
+(covariates + 10 PCs removed) with tail statistics, calibrated by kNN on
+(expression, ICC, donor count), and is chosen on spike-ins in 3,897 real
+genes with no dosage labels.
+
+**Result (2026-10-14): no candidate is admissible.** Truncation is detectable
+(AUC 0.62–0.70 for a 5–10% cut, 0.91–0.99 for a hard ceiling), and
+calibration removes the level/reliability confound (|ρ| ≤ 0.03). But every
+statistic reads natural left skew as truncation, even at realistic strength
+(AUC 0.62–0.90). Measurement noise turns a ceiling into a smoothly compressed
+tail, which is what skew is. The closest candidate, `blup.xi_pwm`, ignores
+composition, outliers and donor loss but not skew. The final scoring and
+biology test were therefore not run.
+
+```bash
+cd fourparam
+python drti_prep.py --meta <GTEx v11 annotations dir> --out <dir> --no-raw   # ~900 MB
+python drti_bench.py --prep <dir>                  # 4 workers, checkpointed, ~1.5 h
+python drti_bench.py --prep <dir> --realistic      # realistic-strength confounds
+```
+
+Memory: use ≤ 4 workers on a 16 GB machine. A 10-worker run was killed by
+the OS memory guard.
 
 ## Worm data (`worm/`, `stage_worm_table.py`)
 

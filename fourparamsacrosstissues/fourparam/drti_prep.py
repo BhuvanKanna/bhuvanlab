@@ -97,7 +97,7 @@ def robust_z(r: np.ndarray) -> np.ndarray:
 
 
 def prep_tissue(path: Path, cov: pd.DataFrame, keep_genes: set[str] | None,
-                pc: set[str]) -> dict | None:
+                pc: set[str], keep_raw: bool = True) -> dict | None:
     d = pd.read_csv(path, index_col=0).drop(columns=["Description"])
     if d.shape[1] < MIN_DONORS:
         return None
@@ -114,21 +114,23 @@ def prep_tissue(path: Path, cov: pd.DataFrame, keep_genes: set[str] | None,
     pcs = u[:, :N_PCS]
     r2 = residualize(r1, np.column_stack([X, pcs]))
     sel = np.isin(genes, list(keep_genes)) if keep_genes is not None else np.ones(len(genes), bool)
-    return {
+    out = {
         "tissue": path.name[len("v11_log2_"):-len(".csv.gz")],
         "genes": genes[sel],
         "donors": np.array([donor_of(s_) for s_ in samples]),
         "z": robust_z(r2[:, sel]).astype(np.float32),        # donors x genes
-        "z_raw": robust_z(x[:, sel]).astype(np.float32),
         "median_log": np.median(x[:, sel], axis=0).astype(np.float32),
         "pc_var": (sv[:N_PCS] ** 2 / (sv ** 2).sum()).astype(np.float32),
     }
+    if keep_raw:
+        out["z_raw"] = robust_z(x[:, sel]).astype(np.float32)
+    return out
 
 
 def _job(args):
-    path, meta, keep, out = args
+    path, meta, keep, out, keep_raw = args
     pc = set(protein_coding_ids())
-    res = prep_tissue(Path(path), load_covariates(Path(meta)), keep, pc)
+    res = prep_tissue(Path(path), load_covariates(Path(meta)), keep, pc, keep_raw)
     if res is None:
         return None
     np.savez_compressed(Path(out) / f"{res['tissue']}.npz", **res)
@@ -142,6 +144,8 @@ def main() -> None:
     p.add_argument("--out", type=Path, default=HERE.parent / "drti" / "prep")
     p.add_argument("--genes", type=int, default=None)
     p.add_argument("--jobs", type=int, default=4)
+    p.add_argument("--no-raw", action="store_true",
+                   help="Skip the unadjusted z_raw copy (only the viability check reads it).")
     args = p.parse_args()
 
     keep = None
@@ -151,7 +155,7 @@ def main() -> None:
         keep = set(rng.choice(allpc, size=args.genes, replace=False))
     args.out.mkdir(parents=True, exist_ok=True)
     paths = sorted(str(f) for f in DATA.glob("v11_log2_*.csv.gz"))
-    jobs = [(p_, str(args.meta), keep, str(args.out)) for p_ in paths]
+    jobs = [(p_, str(args.meta), keep, str(args.out), not args.no_raw) for p_ in paths]
     with ProcessPoolExecutor(args.jobs) as ex:
         for r in ex.map(_job, jobs):
             if r:
