@@ -9,7 +9,8 @@ and correlate them.
 Per gene, across the 54 excluded (<= -1) tables:
 
     rti_top10     mean of the top 10% of the gene's per-tissue RTI values
-    idklti_top10  same for idkLTI (old LTI, 0 where the left edge is the floor)
+    lti_top10     same for LTI, using the idkLTI values (old LTI, 0 where the
+                  left edge is the floor); labeled plain "LTI" at the user's request
     expr_mean     mean of the gene's per-tissue ``mean`` (expression covariate)
 
 "Top 10%" = the k = ceil(0.1 * n) largest values, where n is the number of tissues
@@ -40,7 +41,7 @@ OUTPUTS = HERE.parent / "outputs"
 IDKLTI = HERE.parent / "idklti"
 OUT_DIR = HERE.parent / "results" / "collins_mmc7"
 SUFFIX = "_fourparam_excluded_at_or_below_-1.csv"
-SCORES = ["rti_top10", "idklti_top10"]
+SCORES = ["rti_top10", "lti_top10"]
 
 
 def top10_mean(values: pd.Series) -> float:
@@ -71,7 +72,7 @@ def per_gene(long: pd.DataFrame) -> pd.DataFrame:
     out = pd.DataFrame({
         "genename": g["genename"].first(),
         "rti_top10": g["rti"].agg(top10_mean),
-        "idklti_top10": g["idklti"].agg(top10_mean),
+        "lti_top10": g["idklti"].agg(top10_mean),
         "n_tissues": g["rti"].count(),
         "expr_mean": g["mean"].mean(),
     }).reset_index()
@@ -119,7 +120,7 @@ def main():
     print(f"mmc7 {len(mmc7)} genes, ours {len(genes)}, common {len(merged)}")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    merged.to_csv(OUT_DIR / "mmc7_with_rti_idklti_top10.csv", index=False)
+    merged.to_csv(OUT_DIR / "mmc7_with_rti_lti_top10.csv", index=False)
     corr = correlate(merged, measures)
     corr.to_csv(OUT_DIR / "mmc7_correlations.csv", index=False)
     with pd.option_context("display.width", 200, "display.precision", 3):
