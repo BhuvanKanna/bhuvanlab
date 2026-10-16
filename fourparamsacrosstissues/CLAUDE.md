@@ -75,6 +75,7 @@ fourparam/                    <- all the code (kept separate from the data)
   drti_bench.py               <- locked spike-in benchmark + selection rule -> drti/bench_*, selection*.json
   drti_final.py               <- phase 5 scoring of the chosen recipe (written, not run: nothing admissible)
   drti_evaluate.py            <- phase 6 locked pTriplo test (written, not run)
+  collins_mmc7.py             <- top-10%-of-tissues RTI / idkLTI joined to Collins 2022 Table S7 + Spearman / partial -> results/collins_mmc7/
   tests/                      <- pytest suite: `python -m pytest tests/ -q`
 data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
