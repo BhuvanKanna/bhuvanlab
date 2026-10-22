@@ -953,7 +953,8 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
         Gaussian. The truncation indices measure how hard each tail is capped —
         <strong>RTI</strong> the upper one, a candidate signal for genes whose
         over-expression is not tolerated, and <strong>LTI</strong> the lower one,
-        for genes where too little is not tolerated.
+        for genes where too little is not tolerated (<strong>oldLTI</strong> with
+        genes whose lower edge is the detection floor set to 0).
       </p>
     </div>
     <dl class="mast-stats">
@@ -1081,7 +1082,7 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
         <span class="key"><strong>Curve coverage</strong> — every gene on one −4σ … +4σ ruler.
           Solid band = how much of the fitted curve the data actually spans, so a sliver
           means σ dwarfs the data. Ceiling sits at σ-dist.</span>
-        <span class="key">RTI = f(x_max)/f(peak) · LTI = f(x_min)/f(peak), baseline
+        <span class="key">RTI = f(x_max)/f(peak) · oldLTI = f(x_min)/f(peak), baseline
           removed from both. Only one is ever non-zero — the baseline is whichever
           edge sits farther from the peak, so that side reads 0.</span>
       </div>
@@ -1198,8 +1199,11 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
       <ul class="metric-list">
         <li><strong>RTI</strong> — <code>f(x_max) / f(peak)</code>. The
           <em>right</em>, or upper, edge. The overexpression-is-harmful side.</li>
-        <li><strong>LTI</strong> — <code>f(x_min) / f(peak)</code>. The
+        <li><strong>oldLTI</strong> — <code>f(x_min) / f(peak)</code>. The
           <em>left</em>, or lower, edge. The haploinsufficiency side.</li>
+        <li><strong>LTI</strong> — oldLTI, set to 0 wherever the gene's lowest
+          detected value is at the detection floor, since there the lower edge
+          is the assay's limit rather than biology.</li>
       </ul>
       <p>Both are bounded [0,&nbsp;1]; higher means the edge cuts closer to the
         peak, so more of the distribution is missing. The two σ-distance columns
@@ -1207,7 +1211,7 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
       <p>The two sides share a baseline — the curve's minimum across the
         observed range — which is whichever edge sits <em>farther</em> from the
         peak. That edge therefore reads exactly 0, so <strong>only one of RTI
-        and LTI is non-zero for any given gene</strong>. They name which side is
+        and oldLTI is non-zero for any given gene</strong>. They name which side is
         closer; they are not two independent measurements.</p>
 
       <h3>Approaches</h3>
@@ -1245,10 +1249,11 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
         <li><strong>The index tracks expression level.</strong> Once control
           genes are matched on expression, the signal has so far been at
           chance.</li>
-        <li><strong>LTI has its own version of that problem.</strong> The lower
+        <li><strong>oldLTI has its own version of that problem.</strong> The lower
           edge of the data is also the detection floor, so a gene that is barely
-          expressed looks left-truncated for purely technical reasons. Read it
-          beside mean expression, never alone.</li>
+          expressed looks left-truncated for purely technical reasons. LTI zeroes
+          the genes that sit on the floor, but still read it beside mean
+          expression, never alone.</li>
       </ul>
       <p class="caveat">This is a method under test, not a finished result. The
         browser exists so the numbers can be inspected gene by gene rather than
@@ -1379,7 +1384,7 @@ const GENES_URL    = "genes.tsv";
    `BUILD_ID` and version.json are both written by docs/stamp_version.py --
    run it after editing this file, or the two silently drift apart.
    ===================================================================== */
-const BUILD_ID = "6bff159c2ee3";
+const BUILD_ID = "d313addffae6";
 const VERSION_URL = "version.json";
 const UPDATE_RECHECK_MS = 5 * 60 * 1000;
 
@@ -1493,11 +1498,22 @@ const GENE_GROUP_COL = "__gene_group";
 const GENE_GROUP_ORDER = ["protein_coding", "lncRNA", "small_ncRNA",
                           "pseudogene", "IG_TR", "other"];
 
+/* Column names as the browser shows them in tooltips, filters and CSV
+   exports. The data files keep their original names (`lti`, `idklti`); only
+   what the browser shows is renamed: the 4-parameter `lti` is oldLTI and the
+   floor-zeroed idklti is LTI. */
+const EXPORT_NAME = {
+  lti: "old_lti",
+  lti_sigma_dist: "old_lti_sigma_dist",
+  [IDK_LTI_COL]: "lti"
+};
+function exportName(col) { return EXPORT_NAME[col] || col.replace(/^__/, ""); }
+
 const SHORT_LABEL = {
   rti: "RTI",
-  lti: "LTI",
+  lti: "oldLTI",
   rti_sigma_dist: "RTI σ-dist",
-  lti_sigma_dist: "LTI σ-dist",
+  lti_sigma_dist: "oldLTI σ-dist",
   sumsquarevalue: "SSR",
   n_obs: "n",
   fit_success: "fit",
@@ -1505,7 +1521,7 @@ const SHORT_LABEL = {
   [R2_COL]: "R²",
   [NEW_RTI_COL]: "newRTI",
   [NEW_LTI_COL]: "newLTI",
-  [IDK_LTI_COL]: "idkLTI",
+  [IDK_LTI_COL]: "LTI",
   [GENE_TYPE_COL]: "gene type",
   [GENE_GROUP_COL]: "group",
   // The worm table carries R^2 as a real column rather than a join, so the
@@ -2305,7 +2321,7 @@ function opsFor(col) { return CATEGORICAL_COLS.has(col) ? CAT_OPS : NUM_OPS; }
 /* The real column name leads, because that is what the CSV export and the
    column tooltips use; the table's short label rides along when it differs. */
 function filterColLabel(col) {
-  const raw = col.replace(/^__/, "");
+  const raw = exportName(col);
   const short = SHORT_LABEL[col];
   return short && short !== raw ? raw + " (" + short + ")" : raw;
 }
@@ -2809,7 +2825,7 @@ function render() {
 
   const sortableHead = (c, label, cls) => {
     const arrow = sortCol === c ? `<span class="arrow">${sortDir > 0 ? "▲" : "▼"}</span>` : "";
-    return `<th class="${cls || ""}" data-col="${escapeHtml(c)}" title="${escapeHtml(c.replace(/^__/, ""))}">${escapeHtml(label)}${arrow}</th>`;
+    return `<th class="${cls || ""}" data-col="${escapeHtml(c)}" title="${escapeHtml(exportName(c))}">${escapeHtml(label)}${arrow}</th>`;
   };
 
   const head =
@@ -3528,8 +3544,9 @@ function renderGeneSetButtons() {
    value comes from the r2/ join (see R2_COL) rather than from the table's own
    column, so the gene-major route exports it too. `rti_missing` and
    `lti_missing` (newRTI / newLTI, the tailmodel/ join, blank for a tissue the
-   tail model has not been run on) follow it, then `idklti` (every tissue,
-   computed from the row, text-identical to idklti/).
+   tail model has not been run on) follow it, then idklti under the header
+   `lti` (every tissue, computed from the row, text-identical to idklti/). See
+   EXPORT_NAME for the browser's renamed headers.
    ===================================================================== */
 function csvCell(v) {
   const s = String(v ?? "");
@@ -3560,8 +3577,8 @@ function downloadCsv() {
   if (!out.length) return;
   const cols = statCols();
   const lines = [["tissue", "table", "gene", "genename"]
-    .concat(cols, "r_squared", "rti_missing", "lti_missing", "idklti",
-            "gene_type").join(",")];
+    .concat(cols.map(exportName), "r_squared", "rti_missing", "lti_missing",
+            exportName(IDK_LTI_COL), "gene_type").join(",")];
   for (const r of sortRows(out, sortCol, sortDir, loadedColIdx)) {
     lines.push([r.tissue, r.kind, GID[r.gi], SYM[r.gi]]
       .concat(cols.map((c) => {
@@ -3579,8 +3596,8 @@ function exportWorkingSet() {
   if (!workingSet.size) return;
   const cols = statCols();
   const lines = [["tissue", "table", "gene", "genename"]
-    .concat(cols, "r_squared", "rti_missing", "lti_missing", "idklti",
-            "gene_type").join(",")];
+    .concat(cols.map(exportName), "r_squared", "rti_missing", "lti_missing",
+            exportName(IDK_LTI_COL), "gene_type").join(",")];
   // Export what is on screen, so a filter narrows the spreadsheet too.
   for (const { e } of wsRows()) {
     lines.push([e.t, e.k, e.gid, e.sym]
@@ -4160,9 +4177,9 @@ function renderDistPanel() {
     ["σ = w/√2", sig(sigma)],
     ["x_max", sig(n("right"))],
     ["RTI", sig(n("rti"), 4)],
-    ["LTI", sig(n("lti"), 4)],
+    ["oldLTI", sig(n("lti"), 4)],
     ["RTI σ-dist", sig(n("rti_sigma_dist"))],
-    ["LTI σ-dist", sig(n("lti_sigma_dist"))],
+    ["oldLTI σ-dist", sig(n("lti_sigma_dist"))],
     ["R²", (() => {
       const v = rSquaredOf({ tissue: detailTissue, kind: currentKind, gi: detailGI });
       return v === null ? "—" : v.toFixed(3);
@@ -4427,13 +4444,13 @@ const TI_METRICS = {
             (the ceiling cuts in closer to the peak).`
   },
   lti: {
-    label: "LTI (height ratio)", descending: true, places: 4, clamp: null,
-    shortName: "left truncation index", unit: "", rankSense: "more truncated",
+    label: "oldLTI (height ratio)", descending: true, places: 4, clamp: null,
+    shortName: "old left truncation index", unit: "", rankSense: "more truncated",
     topWord: "most truncated", bottomWord: "least truncated",
     blurb: `<code>f(x_min)/f(peak)</code>, the mirror of RTI — bounded
             [0,&nbsp;1], <strong>higher = more left-truncated</strong> (the floor
             cuts in closer to the peak). Read it beside <code>mean</code>: the
-            data floor is also where the detection limit sits, so a high LTI on a
+            data floor is also where the detection limit sits, so a high oldLTI on a
             barely-expressed gene may be the floor rather than biology.`
   },
   rti_sigma_dist: {
@@ -4446,8 +4463,8 @@ const TI_METRICS = {
             caret and the printed number is always the real one.`
   },
   lti_sigma_dist: {
-    label: "LTI σ-distance", descending: false, places: 3, clamp: SIGMA_BAR_CLAMP,
-    shortName: "left σ-distance", unit: "σ", rankSense: "more truncated",
+    label: "oldLTI σ-distance", descending: false, places: 3, clamp: SIGMA_BAR_CLAMP,
+    shortName: "oldLTI σ-distance", unit: "σ", rankSense: "more truncated",
     topWord: "most truncated", bottomWord: "least truncated",
     blurb: `<code>(x₀ − x_min)/σ</code> — how many σ the floor sits below the
             peak, <strong>lower = more truncated</strong>. Same clipping and same
@@ -4971,9 +4988,9 @@ function renderWormStats(rows) {
     ["Fitted", fitted.toLocaleString()],
     ["Median n", wormMedian(rows, "n_obs")],
     ["Median RTI", wormMedian(rows, "rti")],
-    ["Median LTI", wormMedian(rows, "lti")],
+    ["Median oldLTI", wormMedian(rows, "lti")],
     ["Median RTI σ-dist", wormMedian(rows, "rti_sigma_dist")],
-    ["Median LTI σ-dist", wormMedian(rows, "lti_sigma_dist")],
+    ["Median oldLTI σ-dist", wormMedian(rows, "lti_sigma_dist")],
     ["Median R²", wormMedian(rows, "r_squared")]
   ];
   el.innerHTML = cells
@@ -5034,7 +5051,7 @@ function renderWorm() {
   const sortableHead = (c, label, cls) => {
     const arrow = wormSortCol === c
       ? `<span class="arrow">${wormSortDir > 0 ? "▲" : "▼"}</span>` : "";
-    return `<th class="${cls || ""}" data-col="${escapeHtml(c)}" title="${escapeHtml(c.replace(/^__/, ""))}">${escapeHtml(label)}${arrow}</th>`;
+    return `<th class="${cls || ""}" data-col="${escapeHtml(c)}" title="${escapeHtml(exportName(c))}">${escapeHtml(label)}${arrow}</th>`;
   };
 
   const head =
