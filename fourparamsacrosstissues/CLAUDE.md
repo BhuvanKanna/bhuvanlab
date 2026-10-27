@@ -342,7 +342,10 @@ coarsen (0.72 at 40, 0.95–0.97 at 9–11), which is the bins-per-n effect unde
 `..._rti_by_binning_...png` plots per-gene RTI under each rule against the
 40-bin RTI of the same gene, for the 11,377 genes with RTI > 0 under any rule.
 On that subset ρ is 0.964 (Sturges) to 0.987 (18); the table's higher ρ also
-counts the ~30k genes at RTI = 0 under every rule.
+counts the ~30k genes at RTI = 0 under every rule. `..._rti_hist_by_binning_...png`
+is the `make_diagrams.py` RTI panel once per rule on a shared y axis: the shapes
+match, except the spike at RTI = 1 (24 genes at 40 bins, 33 at 18) nearly
+vanishes under Scott (3) and FD (1).
 
 ## Extracting a gene set (`extract_genes.py`)
 
