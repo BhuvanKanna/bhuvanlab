@@ -48,6 +48,8 @@ fourparam/                    <- all the code (kept separate from the data)
   migrate_rti_lti.py          <- rewrite tables into the RTI/LTI schema, no refit; --recheck audits
   stage_worm_table.py         <- publish the C. elegans table, repairing Excel-mangled gene names
   generate_fourparam.py       <- generate ONE fourparam table from ONE matrix (raw or excluded)
+  generate_fourparam_adaptive_bins.py <- refit ONE tissue at the linear n-dependent bin count -> results/adaptive_bins/
+  generate_fourparam_auto_bins.py     <- refit ONE tissue under Igor's Sturges/Scott/FD auto-bin rules vs 40 -> results/auto_binning/
   generate_all.py             <- driver: both tables for every tissue -> 108 tables
   run_cluster.py              <- same 108 tables, spread over several machines
   convert_gct_to_log2.py      <- (reference) raw GTEx GCT -> log2(TPM+1)-1 CSV
@@ -307,6 +309,35 @@ Reflective) minimising the residual sum of squares; the truncation ceiling
 `x_max` defaults to the gene's observed max. The `mean/std/skew/kurt` are plain
 summary statistics of the (post-exclusion) values and are reported regardless of
 whether the fit converged (NaN on a `fit_success=False` row).
+
+## Bin-count sensitivity (`results/auto_binning/`, `generate_fourparam_auto_bins.py`)
+
+Does the fixed 40 bins drive RTI / LTI? Igor Pro's three auto-bin rules
+(Sturges `ceil(1 + log2 n)`; Scott width `3.49·sd·n^(-1/3)`; Freedman–Diaconis
+width `2·IQR·n^(-1/3)`) are applied **per gene** to its excluded values, so
+Scott and FD give a bin count per gene, not per tissue. Each rule, plus fixed 40
+and the linear rule's 18, is a full refit, ~20 min per arm at `--jobs 4`;
+the script is resumable per arm.
+
+```bash
+cd fourparam
+python generate_fourparam_auto_bins.py \
+    --input ../data/v11_log2_brain_spinal_cord_cervical_c-1.csv.gz --threshold -1 --jobs 4
+```
+
+Spinal cord (n = 204), genes with `n_obs >= 30` fit in both arms, vs 40 bins:
+
+| arm | median bins (p5–p95) | fit_success | ρ rti | ρ lti | ρ rti_sigma_dist | side flips |
+|---|---|---|---|---|---|---|
+| 18 | 18 | 53,317 | 0.997 | 0.950 | 0.961 | 0.6% |
+| Sturges | 9 (5–9) | 52,266 | 0.994 | 0.877 | 0.917 | 0.8% |
+| Scott | 9 (5–12) | 42,278 | 0.994 | 0.874 | 0.917 | 0.6% |
+| FD | 11 (6–22) | 49,745 | 0.995 | 0.915 | 0.934 | 0.7% |
+
+**The ceiling ranking is insensitive to bin count; the floor is not.** Scott
+loses ~11k genes to fewer than 5 bins (`MIN_BINS`). Median R² rises as bins
+coarsen (0.72 at 40, 0.95–0.97 at 9–11), which is the bins-per-n effect under
+"Fit quality", not better fits — do not pick a rule by R².
 
 ## Extracting a gene set (`extract_genes.py`)
 
