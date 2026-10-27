@@ -339,6 +339,11 @@ loses ~11k genes to fewer than 5 bins (`MIN_BINS`). Median R² rises as bins
 coarsen (0.72 at 40, 0.95–0.97 at 9–11), which is the bins-per-n effect under
 "Fit quality", not better fits — do not pick a rule by R².
 
+`..._rti_by_binning_...png` plots per-gene RTI under each rule against the
+40-bin RTI of the same gene, for the 11,377 genes with RTI > 0 under any rule.
+On that subset ρ is 0.964 (Sturges) to 0.987 (18); the table's higher ρ also
+counts the ~30k genes at RTI = 0 under every rule.
+
 ## Extracting a gene set (`extract_genes.py`)
 
 Pulls the rows for a gene set out of all 108 tables into one tidy CSV, one row
