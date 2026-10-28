@@ -41,3 +41,12 @@ def test_browser_uses_the_same_cutoff():
     m = re.search(r"const IDK_FLOOR = (-?[0-9.]+);", html)
     assert m, "IDK_FLOOR not found in docs/index.html"
     assert float(m.group(1)) == C.FLOOR_CUT
+
+
+def test_worm_sidecar_matches_rule():
+    out = C.OUT_DIR / "worm_idklti_excluded_at_or_below_-1.csv"
+    src = pd.read_csv(C.WORM_TABLE, usecols=["gene", "min", "lti"], dtype=str,
+                      keep_default_na=False)
+    got = pd.read_csv(out, dtype=str, keep_default_na=False)
+    assert got["gene"].tolist() == src["gene"].tolist()
+    assert got["idklti"].tolist() == C.idklti_text(src["lti"], src["min"]).tolist()

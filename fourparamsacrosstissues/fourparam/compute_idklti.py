@@ -31,6 +31,12 @@ cut-offs together.
     cd fourparam
     python compute_idklti.py --all
     python compute_idklti.py --tissues muscle_skeletal,liver
+    python compute_idklti.py --worm     # -> ../idklti/worm_idklti_excluded_at_or_below_-1.csv
+
+The C. elegans table in ``../worm/`` (same ``log2(TPM+1)-1`` scale, same -1
+floor) takes the identical rule. Its ``gene`` is a transcript id, so the
+side-car is per transcript. The cut does not sit on a plateau there: 31.8% of
+worm transcripts have ``min`` <= -0.9, 41.4% <= -0.75, 48.9% <= -0.5.
 """
 import argparse
 from pathlib import Path
@@ -42,6 +48,7 @@ HERE = Path(__file__).resolve().parent
 OUTPUTS = HERE.parent / "outputs"
 OUT_DIR = HERE.parent / "idklti"
 SUFFIX = "_fourparam_excluded_at_or_below_-1.csv"
+WORM_TABLE = HERE.parent / "worm" / "worm_fourparam_excluded_at_or_below_-1.csv"
 FLOOR_CUT = -0.75
 
 
@@ -61,12 +68,12 @@ def idklti_text(lti: pd.Series, xmin: pd.Series, cut=FLOOR_CUT) -> pd.Series:
     return out.mask(floor, "0")
 
 
-def run_one(table: Path) -> dict:
-    tissue = table.name[len("v11_log2_"):-len(SUFFIX)]
+def run_one(table: Path, tissue: str = None, out: Path = None) -> dict:
+    tissue = tissue or table.name[len("v11_log2_"):-len(SUFFIX)]
     df = pd.read_csv(table, usecols=["gene", "min", "lti"], dtype=str,
                      keep_default_na=False)
     df["idklti"] = idklti_text(df["lti"], df["min"])
-    out = OUT_DIR / f"v11_log2_{tissue}_idklti_excluded_at_or_below_-1.csv"
+    out = out or OUT_DIR / f"v11_log2_{tissue}_idklti_excluded_at_or_below_-1.csv"
     df[["gene", "idklti"]].to_csv(out, index=False, lineterminator="\n")
 
     lti_v = pd.to_numeric(df["lti"], errors="coerce")
@@ -83,7 +90,16 @@ def main() -> None:
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--all", action="store_true")
     g.add_argument("--tissues", type=str)
+    g.add_argument("--worm", action="store_true",
+                   help="the C. elegans table in ../worm/ instead of a tissue")
     a = p.parse_args()
+
+    if a.worm:
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        s = run_one(WORM_TABLE, tissue="worm",
+                    out=OUT_DIR / "worm_idklti_excluded_at_or_below_-1.csv")
+        print(pd.DataFrame([s]).to_string(index=False))
+        return
 
     tables = sorted(OUTPUTS.glob(f"v11_log2_*{SUFFIX}"))
     if a.tissues:

@@ -65,7 +65,7 @@ fourparam/                    <- all the code (kept separate from the data)
   tailmodel.py                <- censored-left / truncated-right MLE: truncation as fraction missing (candidate RTI/LTI replacement)
   simulate_truncation.py      <- simulation harness scoring old vs new truncation metrics -> results/truncation_sim/
   compute_tailmodel.py        <- fit the tail model to ONE tissue's RAW rows -> tailmodel/ (muscle_skeletal only so far)
-  compute_idklti.py           <- idklti (old LTI, 0 where the floor is the left edge), all 54 tissues -> idklti/
+  compute_idklti.py           <- idklti (old LTI, 0 where the floor is the left edge), all 54 tissues + worm -> idklti/
   build_tailmodel.py          <- publish newRTI / newLTI to the browser -> docs/tailmodel/ + manifest
   build_gene_type.py          <- publish GENCODE v47 gene_type to the browser -> docs/genetype/ + manifest
   utc.py                      <- upper-tail compression (UTC/LTC/VAR), quantile-based, expression-adjusted -> utc/
@@ -751,6 +751,14 @@ zeroing is itself expression-dependent: median mean expression is −0.86 for
 zeroed genes vs 2.24 for kept. So score `idklti` on expression-matched controls
 only. A marginal comparison rewards the rule. Genes just above the cut
 (min ≈ −0.7, mostly small RNAs and pseudogenes) still carry `lti` = 1.
+
+**Worm** (`python compute_idklti.py --worm` →
+`idklti/worm_idklti_excluded_at_or_below_-1.csv`, per transcript, same rule):
+25,819 defined, 8,807 forced to 0 by the floor rule, 19,960 read 0 in all
+(11,153 already had `lti` = 0), 5,859 non-zero. The cut is **not** on a
+plateau there (31.8% of transcripts at −0.9, 41.4% at −0.75, 48.9% at −0.5).
+Unlike human, old `lti` falls with expression in worm (Spearman with `mean`
+−0.71); idklti is +0.15. The browser's Worm tab does not show it yet.
 
 ### In the browser
 
