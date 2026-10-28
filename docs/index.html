@@ -4785,6 +4785,18 @@ async function getWormTable() {
         const line = lines[i].replace(/\r$/, "");
         if (line) rows.push(line.split(","));
       }
+      /* LTI (idkLTI) appended as one more field, by the same rule as the
+         human tissues: `lti` as text, "0" when `min` <= IDK_FLOOR, "" with no
+         fit -- identical to idklti/worm_idklti_excluded_at_or_below_-1.csv. */
+      if (colIdx.lti !== undefined && colIdx.min !== undefined) {
+        for (const f of rows) {
+          const raw = String(f[colIdx.lti] ?? "").trim();
+          f.push(raw === "" || !Number.isFinite(Number(raw)) ? ""
+            : Number(f[colIdx.min]) <= IDK_FLOOR ? "0" : raw);
+        }
+        colIdx[IDK_LTI_COL] = header.length;
+        header.push(IDK_LTI_COL);
+      }
       wormTable = { header, colIdx, rows };
       return wormTable;
     } finally {
@@ -4801,6 +4813,7 @@ function wormStatCols(header, all) {
   const skip = new Set(WORM_ID_COLS.concat("hist", "hist_max"));
   const stats = header.filter((c) => !skip.has(c));
   const compact = COMPACT_COLS.filter((c) => stats.includes(c));
+  if (stats.includes(IDK_LTI_COL)) compact.splice(compact.indexOf("lti") + 1, 0, IDK_LTI_COL);
   if (stats.includes("r_squared")) compact.push("r_squared");
   if (!all) return compact;
   const shown = new Set(compact);
@@ -4989,6 +5002,7 @@ function renderWormStats(rows) {
     ["Median n", wormMedian(rows, "n_obs")],
     ["Median RTI", wormMedian(rows, "rti")],
     ["Median oldLTI", wormMedian(rows, "lti")],
+    ["Median LTI", wormMedian(rows, IDK_LTI_COL)],
     ["Median RTI σ-dist", wormMedian(rows, "rti_sigma_dist")],
     ["Median oldLTI σ-dist", wormMedian(rows, "lti_sigma_dist")],
     ["Median R²", wormMedian(rows, "r_squared")]
@@ -5123,7 +5137,8 @@ function renderWorm() {
 function downloadWormCsv() {
   if (!wormTable) return;
   const rows = wormSort(wormMatches(wormQuery));
-  const lines = [wormTable.header.join(",")];
+  // Headers renamed as in the human exports: `lti` -> old_lti, idkLTI -> lti.
+  const lines = [wormTable.header.map(exportName).join(",")];
   for (const f of rows) lines.push(f.map(csvCell).join(","));
   const tag = !wormSubset ? "" : wormSubset.id === "__custom" ? "custom_" : `${wormSubset.id}_`;
   saveCsv(lines, `worm_fourparam_${tag}${rows.length}genes_${stamp()}.csv`);

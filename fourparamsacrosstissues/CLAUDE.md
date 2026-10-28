@@ -758,7 +758,10 @@ only. A marginal comparison rewards the rule. Genes just above the cut
 (11,153 already had `lti` = 0), 5,859 non-zero. The cut is **not** on a
 plateau there (31.8% of transcripts at −0.9, 41.4% at −0.75, 48.9% at −0.5).
 Unlike human, old `lti` falls with expression in worm (Spearman with `mean`
-−0.71); idklti is +0.15. The browser's Worm tab does not show it yet.
+−0.71); idklti is +0.15. The browser's Worm tab computes it from the row on
+load (same `IDK_FLOOR`, text-identical to the side-car on all 25,849 rows) and
+shows it as **LTI** beside oldLTI; the worm CSV export renames headers like the
+human ones (`lti` → `old_lti`, appended idklti → `lti`, last column).
 
 ### In the browser
 
