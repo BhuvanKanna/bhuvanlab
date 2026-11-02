@@ -94,6 +94,7 @@ drti/                         <- donor-level right truncation: PLAN.md (locked),
   v11_log2_<tissue>_r2[_excluded_at_or_below_-1].csv
 worm/                         <- C. elegans, one table (see "Worm data")
   worm_fourparam_excluded_at_or_below_-1.csv
+  worm_r2_excluded_at_or_below_-1.csv  <- r_squared alone, joined on `gene`
 gene_major/                   <- the same rows re-oriented for the browser
   shard_NNNN.csv              <- 16 genes x all 54 tissues x both filters
 hist_major/                   <- just hist/hist_max, sharded the same way
@@ -301,7 +302,7 @@ One row per gene. Columns, in order:
 | `fit_success` | `True` if the fit converged with `n_obs >= 10`, else `False` (metrics `NaN`) |
 | `hist` | 40-character thumbnail histogram, one character per bin from `A-Za-z0-9+/` (= 0–63), each `round(count * 63 / hist_max)`. **Not analysis data** — quantised and lossy to 1/63 of the peak. Read by the browser's **gene page**, which decodes it into real bars and overlays the fitted curve on the same count axis. Not by the table's Shape cells, which draw the fitted curve alone. Empty when `n_obs = 0`. Written whenever `n_obs >= 1`, **independent of `fit_success`**, so a gene whose fit failed still shows its real distribution. Bin edges are not stored: they are `linspace(min, max, 41)`, and numpy widens a zero-width range to `[min-0.5, max+0.5]` |
 | `hist_max` | exact count in the tallest bin; `0` when there is no histogram (never `NaN` — one `NaN` in the column makes pandas write every other row's value as a float) |
-| `r_squared` | **excluded tables only, last column.** `1 − SSR/TSS` over the 40 bins, appended verbatim from `r2/` by `append_r2_column.py` — nothing is refit. Blank on a `fit_success = False` row. Deliberately **not** in `manifest.columns`: the browser reads the `r2/` join instead, so that the gene-major route gets it too. Read it beside `n_obs`, never alone — at 40 fixed bins `1 − R² ≈ 1.1 × bins/n`, so R² partly restates donor count |
+| `r_squared` | **excluded tables only, last column.** `1 − SSR/TSS` over the 40 bins, appended verbatim from `r2/` (`worm/` for the worm table) by `append_r2_column.py` — nothing is refit. Blank on a `fit_success = False` row. Deliberately **not** in `manifest.columns`: the browser reads the `r2/` join instead, so that the gene-major route gets it too. Read it beside `n_obs`, never alone — at 40 fixed bins `1 − R² ≈ 1.1 × bins/n`, so R² partly restates donor count |
 
 Fitting details (in `bhuvanfitter.py`, the single source of truth): the histogram
 is always **40 bins**; the curve is fit by ordinary least squares (Trust Region
@@ -820,7 +821,7 @@ the OS memory guard.
 ## Worm data (`worm/`, `stage_worm_table.py`)
 
 A second organism, not a 55th tissue. One *C. elegans* fourparam table,
-25,849 transcripts, `n_obs = 207` for all but a handful, produced by the same
+25,849 transcripts, `n_obs` up to 207 (exactly 207 on 16,723), produced by the same
 4-parameter fit over the same 40 bins — so every statistic column means exactly
 what it means for a GTEx tissue.
 
@@ -865,13 +866,25 @@ is checkable against the untouched `wormbasegeneid`: `WBGene00000156` is
 spreadsheet** — it will happen again, and `apr-1` is not a gene to lose
 silently.
 
-> **No `r_squared` yet.** R² = 1 − SSR/TSS, and while SSR is in the table as
-> `sumsquarevalue`, TSS is not recoverable from any published column — it needs
-> the 40-bin histogram, hence the underlying expression matrix, which is not in
-> this repo (`data/` holds the 54 GTEx matrices only). Once the worm matrix is
-> here, `compute_r2.py` followed by `append_r2_column.py` fills the column and
-> the browser picks it up with no further change: `wormStatCols()` adds an `R²`
-> column exactly when the header has one, and the summary strip gains a median.
+**`r_squared` is the table's last column.** The matrix is not in this repo; it
+is `bhuvanfitter/data/worm.csv` on the lab machine (25,849 transcripts by 207
+strains, id column `strain`, same `log2(TPM+1)-1` scale).
+
+```bash
+cd fourparam
+python compute_r2.py --worm <worm.csv> --verify   # -> worm/worm_r2_excluded_at_or_below_-1.csv
+python append_r2_column.py --worm                 # -> r_squared column in the table
+```
+
+Nothing is refit. `--verify` reproduced every stored `sumsquarevalue` (max
+relative error 5.4e-14, zero `n_obs` mismatches). 25,838 transcripts have an R²,
+exactly the `fit_success` rows; the other 11 are blank. Median **0.776**, p5
+0.41, p95 0.95, 8 below zero. That sits where the per-n rule predicts for 207
+strains (`1 − R² ≈ 1.1 × 40/207`, so ~0.79), so read it within the worm table,
+never against a GTEx tissue's raw R². The browser needed no change:
+`wormStatCols()` adds an `R²` column because the header has one, and the summary
+strip gains a median. **Re-running `stage_worm_table.py` drops the column**,
+since its source predates it; run `append_r2_column.py --worm` again afterward.
 
 ## Migrating a table to the RTI/LTI schema (`migrate_rti_lti.py`)
 

@@ -35,10 +35,16 @@ Usage
     python compute_r2.py --input ../data/v11_log2_kidney_cortex.csv.gz --verify
     python compute_r2.py --all                    # every materialised matrix
     python compute_r2.py --all --raw              # the raw tables instead
+    python compute_r2.py --worm <worm.csv> --verify   # the C. elegans table
 
 Writes `r2/<stem>_r2_excluded_at_or_below_-1.csv` (gene, r_squared) at full
 float precision, for analysis. `build_r2.py` turns that into the fixed-width
 string the browser reads. Skips existing output unless `--force`.
+
+`--worm` takes the strains-by-transcript matrix, which is not in this repo, and
+writes `worm/worm_r2_excluded_at_or_below_-1.csv` beside the table it was
+computed from. It stays out of `r2/` for the reason the table stays out of
+`outputs/`: the worm is not a 55th tissue.
 
 The input matrices are Git LFS pointers by default. Materialise one with:
 
@@ -65,6 +71,9 @@ warnings.filterwarnings("ignore")
 HERE = Path(__file__).resolve().parent
 DATA_DIR = HERE.parent / "data"
 R2_DIR = HERE.parent / "r2"
+WORM_TABLE = HERE.parent / "worm" / "worm_fourparam_excluded_at_or_below_-1.csv"
+WORM_R2 = HERE.parent / "worm" / "worm_r2_excluded_at_or_below_-1.csv"
+WORM_ID_COL = "strain"
 
 # Rows are parsed in blocks so a 800-donor matrix never lands in memory whole,
 # and so the float conversion happens in pandas' C parser rather than per row.
@@ -81,14 +90,14 @@ def r2_csv_for(input_path: Path, threshold) -> Path:
     return R2_DIR / f"{stem}_r2_excluded_at_or_below_{threshold:g}.csv"
 
 
-def load_fit_params(input_path: Path, threshold) -> pd.DataFrame:
+def load_fit_params(input_path: Path, threshold, table: Path | None = None) -> pd.DataFrame:
     """
     The `y0, A, x0, w, n_obs, fit_success, sumsquarevalue` columns of the
     matching fourparam table. Read as str then coerced, matching
     extract_genes.py -- these tables are the source of truth and nothing here
     should round-trip a float through pandas' writer.
     """
-    path = output_csv_for(input_path, threshold)
+    path = table if table is not None else output_csv_for(input_path, threshold)
     if not path.exists():
         raise SystemExit(f"missing fourparam table {path} -- generate it first")
     cols = ["gene", "y0", "A", "x0", "w", "n_obs",
@@ -108,8 +117,9 @@ def _values_for(row: np.ndarray, threshold) -> np.ndarray:
     return arr
 
 
-def compute(input_path: Path, threshold, id_col: str, verify: bool) -> pd.DataFrame:
-    params = load_fit_params(input_path, threshold)
+def compute(input_path: Path, threshold, id_col: str, verify: bool,
+            table: Path | None = None) -> pd.DataFrame:
+    params = load_fit_params(input_path, threshold, table)
     genes, values = [], []
     checks: list[float] = []
     n_obs_mismatch = 0
@@ -177,8 +187,9 @@ def _report_verification(checks: list[float], n_obs_mismatch: int) -> None:
 
 
 def run_one(input_path: Path, threshold, id_col: str, force: bool,
-            verify: bool) -> bool:
-    out = r2_csv_for(input_path, threshold)
+            verify: bool, table: Path | None = None,
+            out: Path | None = None) -> bool:
+    out = out if out is not None else r2_csv_for(input_path, threshold)
     if out.exists() and not force:
         print(f"{input_path.name}: exists, skipping ({out.name})")
         return False
@@ -187,8 +198,8 @@ def run_one(input_path: Path, threshold, id_col: str, force: bool,
         return False
 
     print(f"{input_path.name}:")
-    df = compute(input_path, threshold, id_col, verify)
-    R2_DIR.mkdir(parents=True, exist_ok=True)
+    df = compute(input_path, threshold, id_col, verify, table)
+    out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out, index=False)
     ok = df["r_squared"].notna()
     print(f"  wrote {out.name}: {len(df):,} genes, {int(ok.sum()):,} with R^2, "
@@ -204,6 +215,8 @@ def main() -> None:
                    help="One matrix in data/. Omit with --all.")
     p.add_argument("--all", action="store_true",
                    help="Every materialised matrix in data/ (pointers skipped).")
+    p.add_argument("--worm", type=Path, default=None, metavar="MATRIX",
+                   help="The C. elegans matrix; fills worm/ instead of r2/.")
     p.add_argument("--id-col", type=str, default="Name")
     p.add_argument("--raw", action="store_true",
                    help="Do the raw table. Default is the excluded (<= -1) one.")
@@ -218,6 +231,15 @@ def main() -> None:
     args = p.parse_args()
 
     threshold = None if args.raw else -1.0
+
+    if args.worm:
+        if args.raw or args.all or args.input:
+            raise SystemExit("--worm stands alone: there is one worm table, excluded")
+        id_col = WORM_ID_COL if args.id_col == "Name" else args.id_col
+        wrote = run_one(args.worm, threshold, id_col, args.force, args.verify,
+                        table=WORM_TABLE, out=WORM_R2)
+        print(f"{int(wrote)} table(s) written to {WORM_R2.parent}")
+        return
 
     if args.all:
         inputs = sorted(DATA_DIR.glob("v11_log2_*.csv.gz"))

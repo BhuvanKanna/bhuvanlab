@@ -41,6 +41,7 @@ Usage
     python append_r2_column.py --all
     python append_r2_column.py --all --dry-run
     python append_r2_column.py --tissue kidney_cortex
+    python append_r2_column.py --worm      # the C. elegans table, worm/ to worm/
 """
 from __future__ import annotations
 
@@ -56,12 +57,16 @@ R2_DIR = ROOT / "r2"
 
 SUFFIX = "_fourparam_excluded_at_or_below_-1.csv"
 R2_SUFFIX = "_r2_excluded_at_or_below_-1.csv"
+WORM = ROOT / "worm"
+WORM_TABLE = WORM / f"worm{SUFFIX}"
 COLUMN = "r_squared"
 
 
 def r2_path_for(table: Path) -> Path:
     """`<stem>_fourparam_excluded...` -> `<stem>_r2_excluded...`."""
-    return R2_DIR / (table.name[: -len(SUFFIX)] + R2_SUFFIX)
+    # The worm's side-car sits beside its table, not in r2/.
+    folder = WORM if table == WORM_TABLE else R2_DIR
+    return folder / (table.name[: -len(SUFFIX)] + R2_SUFFIX)
 
 
 def load_r2(path: Path) -> list[tuple[str, str]]:
@@ -135,11 +140,15 @@ def main() -> int:
                     help="every excluded table in outputs/")
     ap.add_argument("--tissue", action="append", default=[],
                     help="tissue stem, e.g. kidney_cortex (repeatable)")
+    ap.add_argument("--worm", action="store_true",
+                    help="the C. elegans table in worm/")
     ap.add_argument("--dry-run", action="store_true",
                     help="verify the join and row counts, write nothing")
     args = ap.parse_args()
 
-    if args.tissue:
+    if args.worm:
+        tables = [WORM_TABLE]
+    elif args.tissue:
         tables = [OUTPUTS / f"v11_log2_{t}{SUFFIX}" for t in args.tissue]
         missing = [p for p in tables if not p.exists()]
         if missing:
@@ -148,7 +157,7 @@ def main() -> int:
     elif args.all:
         tables = sorted(OUTPUTS.glob(f"*{SUFFIX}"))
     else:
-        ap.error("pass --all or --tissue")
+        ap.error("pass --all, --tissue or --worm")
 
     failures = 0
     for table in tables:
