@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Truncation Browser — GTEx v11 expression distribution shape</title>
+<title>Truncatlas (beta) — GTEx v11 expression distribution shape</title>
 <meta name="description" content="Browse 4-parameter Gaussian fits and truncation indices for 74,628 genes across 54 GTEx v11 human tissues.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -85,7 +85,8 @@
 }
 /* The masthead paints its own dark ground rather than reading the palette, so
    it needs saying explicitly or the header alone stays blue. */
-:root[data-view="worm"] .masthead { background: #08150e; border-bottom-color: #1b3a27; }
+:root[data-view="worm"] .masthead,
+:root[data-view="worm"] .ribbon { background: #08150e; border-bottom-color: #1b3a27; }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -114,15 +115,34 @@ body {
   display: flex; flex-wrap: wrap; gap: 20px 32px; align-items: flex-end;
 }
 .mast-title { flex: 1 1 380px; min-width: 0; }
-.mast-title h1 {
-  font-family: var(--mono);
-  font-weight: 600;
-  font-size: clamp(1.4rem, 3.4vw, 2.1rem);
-  letter-spacing: -.035em;
-  margin: 0 0 6px;
-  line-height: 1.05;
+/* ---------- ribbon ----------
+   Top bar: brand, then the tabs. Dark in both themes like the masthead, so
+   its colors are fixed literals too. */
+.ribbon { background: #0c1116; color: #e8edf1; border-bottom: 1px solid #1d262e; }
+.ribbon-inner {
+  max-width: 1440px; margin: 0 auto; padding: 0 22px;
+  display: flex; align-items: stretch; gap: 8px 28px; flex-wrap: wrap;
 }
-.mast-title h1 .dim { opacity: .38; }
+.brand {
+  font-family: var(--mono); font-weight: 600; font-size: 1.15rem;
+  letter-spacing: -.03em; margin: 0; padding: 10px 0;
+  display: flex; align-items: center; white-space: nowrap;
+}
+.ribbon .tabs { margin: 0; border-bottom: 0; flex-wrap: wrap; align-items: stretch; }
+.ribbon .tabs button, .ribbon .tabs .tablink { color: rgba(232,237,241,.6); margin-bottom: 0; }
+.ribbon .tabs button:hover, .ribbon .tabs .tablink:hover { color: #e8edf1; }
+.ribbon .tabs button[aria-selected="true"] { color: #4fb3d0; border-bottom-color: #4fb3d0; }
+.ribbon .count-pill { background: rgba(79,179,208,.16); color: #4fb3d0; }
+.ribbon .tabs button[aria-selected="true"] .count-pill { background: #4fb3d0; color: #08141a; }
+:root[data-view="worm"] .ribbon .tabs button[aria-selected="true"] { color: #5fc98b; border-bottom-color: #5fc98b; }
+:root[data-view="worm"] .ribbon .tabs button[aria-selected="true"] .count-pill { background: #5fc98b; color: #06200f; }
+.brand .beta {
+  display: inline-block; vertical-align: super;
+  margin-left: .45em; padding: 1px 7px;
+  font-size: .62rem; font-weight: 600; letter-spacing: .13em;
+  text-transform: uppercase; line-height: 1.4;
+  border: 1px solid currentColor; border-radius: 9px; opacity: .7;
+}
 .tagline {
   margin: 0; font-size: .875rem; line-height: 1.45;
   color: rgba(232,237,241,.68); max-width: 56ch;
@@ -944,19 +964,36 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
 </head>
 <body>
 
+<!-- Ribbon: brand at the left, then the view tabs. The brand sits outside
+     #tabBar because the gene page hides #tabBar and the name must stay. -->
+<nav class="ribbon" aria-label="Truncatlas">
+  <div class="ribbon-inner">
+    <h1 class="brand">Truncatlas<span class="beta" title="This is Truncatlas beta">beta</span></h1>
+    <div class="tabs" role="tablist" aria-label="Views" id="tabBar">
+      <button type="button" id="tabSelect" role="tab" aria-selected="true"
+              aria-controls="panelSelect">v11 browser</button>
+      <button type="button" id="tabWorking" role="tab" aria-selected="false"
+              aria-controls="panelWorking">Working set
+        <span class="count-pill" id="wsCount">0</span></button>
+      <button type="button" id="tabWorm" role="tab" aria-selected="false"
+              aria-controls="panelWorm">Worm data</button>
+      <button type="button" id="tabBackground" role="tab" aria-selected="false"
+              aria-controls="panelBackground">Background</button>
+      <button type="button" id="tabPeople" role="tab" aria-selected="false"
+              aria-controls="panelPeople">People</button>
+      <!-- Leaves the site, so it is an anchor rather than a tab: it gets no
+           role="tab" and no aria-selected, because it never becomes the
+           selected view. -->
+      <a class="tablink" href="https://sites.utexas.edu/piercelab/"
+         target="_blank" rel="noopener noreferrer">Pierce Lab<span
+         class="ext" aria-hidden="true">↗</span><span class="sr-only">
+         (opens in a new tab)</span></a>
+    </div>
+  </div>
+</nav>
+
 <header class="masthead">
   <div class="mast-inner">
-    <div class="mast-title">
-      <h1>Truncation Browser<span class="dim"> / GTEx v11</span></h1>
-      <p class="tagline">
-        Every gene's expression across a tissue's donors is fit with a 4-parameter
-        Gaussian. The truncation indices measure how hard each tail is capped —
-        <strong>RTI</strong> the upper one, a candidate signal for genes whose
-        over-expression is not tolerated, and <strong>LTI</strong> the lower one,
-        for genes where too little is not tolerated (<strong>oldLTI</strong> with
-        genes whose lower edge is the detection floor set to 0).
-      </p>
-    </div>
     <dl class="mast-stats">
       <div><dt>Genes</dt><dd id="statGenes">—</dd></div>
       <div><dt>Tissues</dt><dd id="statTissues">—</dd></div>
@@ -966,26 +1003,6 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
 </header>
 
 <main>
-  <div class="tabs" role="tablist" aria-label="Views" id="tabBar">
-    <button type="button" id="tabSelect" role="tab" aria-selected="true"
-            aria-controls="panelSelect">Gene selection</button>
-    <button type="button" id="tabWorking" role="tab" aria-selected="false"
-            aria-controls="panelWorking">Working set
-      <span class="count-pill" id="wsCount">0</span></button>
-    <button type="button" id="tabWorm" role="tab" aria-selected="false"
-            aria-controls="panelWorm">Worm data</button>
-    <button type="button" id="tabBackground" role="tab" aria-selected="false"
-            aria-controls="panelBackground">Background</button>
-    <button type="button" id="tabPeople" role="tab" aria-selected="false"
-            aria-controls="panelPeople">People</button>
-    <!-- Leaves the site, so it is an anchor rather than a tab: it gets no
-         role="tab" and no aria-selected, because it never becomes the
-         selected view. -->
-    <a class="tablink" href="https://sites.utexas.edu/piercelab/"
-       target="_blank" rel="noopener noreferrer">Pierce Lab<span
-       class="ext" aria-hidden="true">↗</span><span class="sr-only">
-       (opens in a new tab)</span></a>
-  </div>
 
   <div class="banner updatebanner" id="updateBanner" hidden role="status"
        aria-live="polite"></div>
@@ -1384,7 +1401,7 @@ const GENES_URL    = "genes.tsv";
    `BUILD_ID` and version.json are both written by docs/stamp_version.py --
    run it after editing this file, or the two silently drift apart.
    ===================================================================== */
-const BUILD_ID = "d313addffae6";
+const BUILD_ID = "fc9227144436";
 const VERSION_URL = "version.json";
 const UPDATE_RECHECK_MS = 5 * 60 * 1000;
 
@@ -3289,7 +3306,7 @@ function renderWorkingSet() {
   if (workingSet.size === 0) {
     area.innerHTML = `<div class="note">
       <h2>Working set is empty</h2>
-      <p>On the <strong>Gene selection</strong> tab, tick the checkbox beside any
+      <p>On the <strong>v11 browser</strong> tab, tick the checkbox beside any
       row — or use <strong>Add all to working set</strong> — to collect rows here
       across as many tissues and queries as you like. Then export the lot as one
       spreadsheet.</p></div>`;
@@ -3738,7 +3755,7 @@ function openDetail(gi, tissue, opts) {
   delete document.documentElement.dataset.view;
   $("panelWorm").hidden = true;
   $("detailBackLabel").textContent =
-    detailReturn === "working" ? "Back to working set" : "Back to gene selection";
+    detailReturn === "working" ? "Back to working set" : "Back to v11 browser";
 
   if (o.push !== false) {
     detailPushed = true;

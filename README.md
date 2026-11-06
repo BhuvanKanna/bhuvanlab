@@ -3,7 +3,7 @@
 Distribution-shape and truncation-index analysis of human gene expression across
 the **54 GTEx v11 tissues**.
 
-## → [Open the Truncation Browser](https://bhuvankanna.github.io/bhuvanlab/)
+## → [Open Truncatlas (beta)](https://bhuvankanna.github.io/bhuvanlab/)
 
 **[bhuvankanna.github.io/bhuvanlab](https://bhuvankanna.github.io/bhuvanlab/)** —
 search genes *and* tissues by type-ahead, load the tables, then tick rows into a
@@ -17,7 +17,7 @@ whose σ dwarfs its own data. Both mark the truncation ceiling `x_max`.
 
 Two tabs:
 
-- **Gene selection** — pick any number of genes and any number of tissues (up to
+- **v11 browser** — pick any number of genes and any number of tissues (up to
   all 54), choose raw or excluded ≤ −1, and press **Load tables**. Results are
   one row per gene × tissue, each with a checkbox.
 - **Working set** — everything ticked so far, gathered across as many separate
@@ -180,7 +180,7 @@ and `ALDH*`. That resolves to **38 genes**, giving 38 × 54 tissues × 2 tables 
 
 ```
 README.md                     <- this file
-docs/                         <- the GitHub Pages site (the Truncation Browser)
+docs/                         <- the GitHub Pages site (Truncatlas, beta)
   index.html                  <- the whole GUI, self-contained
   manifest.json               <- tissue list + column list + gene-set index
   genes.tsv                   <- gene index for type-ahead
