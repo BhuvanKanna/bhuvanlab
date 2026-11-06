@@ -1058,6 +1058,11 @@ counted on the sheet rather than drawn, so one R² of −9 cannot flatten the ax
 <https://bhuvankanna.github.io/bhuvanlab/>. It has two tabs and, behind them, a
 per-gene page:
 
+**Column guide tab** (`panelGuide`): plain-language definitions of every
+column, in screen order (default view, then what *All columns* adds, then the
+CSV-only columns). It is static HTML, so **update it whenever a column is
+added, removed, renamed or reordered.**
+
 ### Which columns the tables show (`COMPACT_COLS`, `HIDDEN_COLS`)
 
 All three tables (v11 browser, working set, worm) follow one rule:

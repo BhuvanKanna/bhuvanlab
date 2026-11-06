@@ -582,7 +582,7 @@ footer p { margin: 0 0 7px; max-width: 78ch; }
 .tabs .tablink:hover { color: var(--accent); }
 .tabs .tablink .ext { font-size: .85em; opacity: .7; }
 
-.prose .panel { max-width: 62ch; line-height: 1.62; }
+.prose .panel { max-width: calc(62ch + 52px); line-height: 1.62; padding: 22px 26px; }
 .prose h2 { margin: 0 0 .6rem; font-size: 1.5rem; }
 .prose h3 {
   margin: 2rem 0 .5rem; font-size: 1.05rem; letter-spacing: .01em;
@@ -604,6 +604,16 @@ footer p { margin: 0 0 7px; max-width: 78ch; }
    what the science supports and should not be spent on housekeeping notes. */
 .prose .note { color: var(--muted); font-size: .92rem; font-style: italic; }
 .prose .metric-list { list-style: none; padding-left: 0; }
+/* Column guide: one term per column, its explanation indented under it. */
+.prose .colguide { margin: 0 0 1.4rem; }
+.prose .colguide dt {
+  font-family: var(--mono); font-weight: 600; font-size: .92rem;
+  margin-top: 1rem; color: var(--ink);
+}
+.prose .colguide dt .csv {
+  font-weight: 400; font-size: .8rem; color: var(--muted); margin-left: .5em;
+}
+.prose .colguide dd { margin: .2rem 0 0 1.1rem; }
 .prose .metric-list li {
   padding: .5rem .8rem; margin-bottom: .45rem; border-radius: 6px;
   background: color-mix(in srgb, var(--accent) 6%, transparent);
@@ -980,6 +990,8 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
         <span class="count-pill" id="wsCount">0</span></button>
       <button type="button" id="tabWorm" role="tab" aria-selected="false"
               aria-controls="panelWorm">Worm data</button>
+      <button type="button" id="tabGuide" role="tab" aria-selected="false"
+              aria-controls="panelGuide">Column guide</button>
       <button type="button" id="tabBackground" role="tab" aria-selected="false"
               aria-controls="panelBackground">Background</button>
       <button type="button" id="tabPeople" role="tab" aria-selected="false"
@@ -1185,6 +1197,193 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
   <!-- One gene, everywhere it was measured. Entered by clicking any gene name;
        leaves by the Back button or the browser's own back, which are wired to
        the same history entry. -->
+  <div class="tabpanel prose" id="panelGuide" role="tabpanel"
+       aria-labelledby="tabGuide" hidden>
+    <section class="panel">
+      <h2>Column guide</h2>
+      <p class="lede">What every column in the tables means, in the order it
+        appears on screen: the default view first, then the columns
+        <em>All columns</em> adds, then the few that appear only in a CSV
+        download.</p>
+      <p>Expression is on a <code>log2(TPM + 1) − 1</code> scale, so TPM = 0 is
+        exactly −1. Every table here is the <strong>excluded</strong> one: a
+        gene's donors at TPM = 0 are dropped before anything is fit. The fit is
+        a 4-parameter Gaussian, <code>y = y0 + A·exp(−((x − x0)/w)²)</code>,
+        drawn through a 40-bin histogram of the gene's remaining values.
+        The <strong>ceiling</strong> is the highest observed value and the
+        <strong>floor</strong> the lowest.</p>
+
+      <h3>Default view</h3>
+      <dl class="colguide">
+        <dt>Gene</dt>
+        <dd>Gene symbol with its Ensembl id underneath. Click it to open the
+          gene page: this gene across every tissue, its histogram, and what is
+          known about it.</dd>
+
+        <dt>Tissue</dt>
+        <dd>The GTEx v11 tissue the row was measured in. One row per gene ×
+          tissue.</dd>
+
+        <dt>Fitted curve</dt>
+        <dd>The fitted Gaussian drawn in real log2 units over the gene's
+          observed range, with the ceiling as a red line. Solid is observed;
+          dashed is the part of the curve past the ceiling. Each row has its
+          own scale, so two rows are not comparable by eye.</dd>
+
+        <dt>Curve coverage</dt>
+        <dd>The same curve on one fixed axis, −4σ to +4σ from the peak, so
+          rows <em>are</em> comparable. The solid band is how much of the
+          curve the data actually spans; a dotted stretch below it is modeled
+          but never observed. A thin sliver means σ dwarfs the data, which is
+          a degenerate fit rather than a real shape.</dd>
+
+        <dt>clg_idx <span class="csv">ceiling index</span></dt>
+        <dd>How close the ceiling sits to the peak, as a height ratio:
+          <code>f(ceiling) / f(peak)</code>, after subtracting the curve's
+          lowest point within the observed range from both. Bounded 0 to 1;
+          <strong>higher means the ceiling cuts in closer to the peak</strong>
+          (1 = ceiling at the peak). It is 0 whenever the ceiling is the edge
+          farther from the peak, which is most genes.</dd>
+
+        <dt>flr_idx <span class="csv">floor index</span></dt>
+        <dd>The same height ratio at the floor, <code>f(floor) / f(peak)</code>,
+          except that it is set to 0 when the gene's lowest detected value is
+          at the detection limit (≤ −0.75, i.e. TPM ≤ 0.19). There the floor is
+          where the assay stops seeing the gene, not biology. The version
+          without that rule is <em>old_flr_idx</em>, under All columns.</dd>
+
+        <dt>clg_z <span class="csv">ceiling z-score</span></dt>
+        <dd><code>(ceiling − x0) / σ</code>, with <code>σ = w/√2</code>: the
+          ceiling's z-score under the fitted curve, i.e. how many standard
+          deviations above the peak it sits. <strong>Lower means more
+          truncated.</strong> It uses the fitted peak and width, not the
+          sample mean and std. Degenerate fits can reach huge values (±10⁵).</dd>
+
+        <dt>mean</dt>
+        <dd>Mean of the expression values that went into the fit (donors at
+          TPM = 0 already removed).</dd>
+
+        <dt>std</dt>
+        <dd>Sample standard deviation of those same values.</dd>
+
+        <dt>n_excluded</dt>
+        <dd>How many of the tissue's donors were dropped for having zero
+          expression (TPM = 0): the tissue's donor count minus <em>n</em>.
+          A large number means the gene is undetected in much of the tissue,
+          so its fit rests on fewer donors.</dd>
+
+        <dt>R²</dt>
+        <dd>How well the curve fits the 40-bin histogram:
+          <code>1 − SSR/TSS</code>. Compare it <strong>within a tissue
+          only</strong>: it rises with donor count, so 0.85 is ordinary in a
+          large tissue and exceptional in a small one. Blank when there is no
+          fit.</dd>
+
+        <dt>new_clg_idx, new_flr_idx <span class="csv">CSV: clg_missing, flr_missing</span></dt>
+        <dd>Only for tissues where the tail model has been run (so far
+          skeletal muscle). The estimated <strong>fraction of donors
+          missing</strong> past the ceiling or floor, from a model that treats
+          zero-expression donors as censored rather than discarded.
+          new_flr_idx is blank whenever any donor is at zero, since the floor
+          is then unidentifiable. Both are blank where the fit is not
+          usable.</dd>
+
+        <dt>group</dt>
+        <dd>The gene's broad GENCODE v47 class: protein_coding, lncRNA,
+          small_ncRNA, pseudogene, IG_TR or other.</dd>
+      </dl>
+
+      <h3>Added by All columns</h3>
+      <dl class="colguide">
+        <dt>y0</dt>
+        <dd>Fitted baseline offset: the curve's height far from the peak, in
+          histogram counts.</dd>
+
+        <dt>A</dt>
+        <dd>Fitted amplitude: the peak's height above the baseline, in
+          counts.</dd>
+
+        <dt>x0</dt>
+        <dd>Fitted peak center, in log2 expression units.</dd>
+
+        <dt>w</dt>
+        <dd>Fitted width. The standard deviation is <code>σ = w/√2</code>.</dd>
+
+        <dt>SSR <span class="csv">CSV: sumsquarevalue</span></dt>
+        <dd>Residual sum of squares of the fit. It is not normalized and grows
+          with donor count, so it cannot rank two genes; use R² for that.</dd>
+
+        <dt>old_flr_z</dt>
+        <dd><code>(x0 − floor) / σ</code>: how many standard deviations below
+          the peak the floor sits (the floor's z-score with the sign flipped).
+          Lower means more truncated, like clg_z.</dd>
+
+        <dt>old_flr_idx</dt>
+        <dd>The floor height ratio without the detection-limit rule, i.e.
+          flr_idx before low floors are set to 0. Read it beside
+          <em>mean</em>: on a barely expressed gene a high value is usually
+          the detection limit, not biology. Exactly one of clg_idx and
+          old_flr_idx is non-zero for any gene.</dd>
+
+        <dt>min</dt>
+        <dd>Lowest value used in the fit: the floor. Also the histogram's left
+          bin edge.</dd>
+
+        <dt>max</dt>
+        <dd>Highest value used in the fit: the ceiling. Also the histogram's
+          right bin edge.</dd>
+
+        <dt>skew</dt>
+        <dd>Skewness of the values. Negative means a longer lower tail, which
+          is what a missing upper tail produces, but also what natural left
+          skew or mixed-quality samples produce.</dd>
+
+        <dt>kurt</dt>
+        <dd>Excess kurtosis (a normal distribution reads 0). Positive means
+          heavier tails and a sharper peak.</dd>
+
+        <dt>n <span class="csv">CSV: n_obs</span></dt>
+        <dd>Number of donors whose values were fit, after the zero-expression
+          donors were dropped. Below 10 there is no fit.</dd>
+
+        <dt>fit <span class="csv">CSV: fit_success</span></dt>
+        <dd><em>ok</em> when the gene had at least 10 values and the fit
+          converged. It does not mean the fit is good: a curve collapsed onto
+          one bin, or one far wider than the data, still reads ok. Check R²
+          and Curve coverage.</dd>
+
+        <dt>gene type</dt>
+        <dd>The detailed GENCODE v47 gene_type behind <em>group</em>, e.g.
+          lncRNA, miRNA or processed_pseudogene.</dd>
+      </dl>
+
+      <h3>Only in CSV downloads</h3>
+      <dl class="colguide">
+        <dt>left, right</dt>
+        <dd>The floor and ceiling the metrics are measured at. They equal
+          <em>min</em> and <em>max</em> on every fitted row, and are blank when
+          there is no fit.</dd>
+
+        <dt>maxheight, rightheight, leftheight</dt>
+        <dd>Heights of the fitted curve at the peak, ceiling and floor, above
+          the curve's lowest point in the observed range.
+          <code>clg_idx = rightheight / maxheight</code> and
+          <code>old_flr_idx = leftheight / maxheight</code>.</dd>
+
+        <dt>hist, hist_max</dt>
+        <dd>A compact 40-character encoding of the histogram, used to draw the
+          gene page, and the count in its tallest bin. Approximate; not for
+          analysis.</dd>
+      </dl>
+
+      <h3>Worm data tab</h3>
+      <p>The same columns, fit the same way, with three differences: the gene
+        cell shows the gene name, transcript id and WormBase id; there is no
+        Tissue, group or gene type; and <em>n_excluded</em> counts strains (out
+        of 207) rather than donors.</p>
+    </section>
+  </div>
+
   <div class="tabpanel prose" id="panelBackground" role="tabpanel"
        aria-labelledby="tabBackground" hidden>
     <section class="panel">
@@ -1417,7 +1616,7 @@ const GENES_URL    = "genes.tsv";
    `BUILD_ID` and version.json are both written by docs/stamp_version.py --
    run it after editing this file, or the two silently drift apart.
    ===================================================================== */
-const BUILD_ID = "7ae2a91c3bc9";
+const BUILD_ID = "b081bc986890";
 const VERSION_URL = "version.json";
 const UPDATE_RECHECK_MS = 5 * 60 * 1000;
 
@@ -5480,9 +5679,9 @@ function readHash() {
    ===================================================================== */
 function showTab(which) {
   const tabs = { select: "panelSelect", working: "panelWorking", worm: "panelWorm",
-                 background: "panelBackground", people: "panelPeople" };
+                 guide: "panelGuide", background: "panelBackground", people: "panelPeople" };
   const buttons = { select: "tabSelect", working: "tabWorking", worm: "tabWorm",
-                    background: "tabBackground", people: "tabPeople" };
+                    guide: "tabGuide", background: "tabBackground", people: "tabPeople" };
   if (!tabs[which]) which = "select";
 
   for (const [id, panel] of Object.entries(tabs)) {
@@ -5575,6 +5774,7 @@ async function boot() {
   $("tabSelect").addEventListener("click", () => showTab("select"));
   $("tabWorking").addEventListener("click", () => showTab("working"));
   $("tabWorm").addEventListener("click", () => showTab("worm"));
+  $("tabGuide").addEventListener("click", () => showTab("guide"));
   $("tabBackground").addEventListener("click", () => showTab("background"));
   $("tabPeople").addEventListener("click", () => showTab("people"));
 
