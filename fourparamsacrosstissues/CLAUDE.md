@@ -797,7 +797,7 @@ blanked unless `usable`. They are virtual columns (`TAIL_COLS`, joined by gene
 index exactly like R²) that appear only when a loaded tissue has a tailmodel
 file, and show "—" with a reason for any other row.
 
-Both CSV exports append `clg_missing,flr_missing,idk_flr_idx` (then `gene_type`) after `r_squared`, so
+Both CSV exports append `clg_missing,flr_missing,idk_flr_idx` (then `gene_type`, then `n_excluded`) after `r_squared`, so
 every earlier column keeps its position.
 
 ## Donor-level right truncation (`d_clg_idx/`, `d_clg_idx_*.py`)
@@ -1058,11 +1058,38 @@ counted on the sheet rather than drawn, so one R² of −9 cannot flatten the ax
 <https://bhuvankanna.github.io/bhuvanlab/>. It has two tabs and, behind them, a
 per-gene page:
 
-Two columns in the results table are **virtual** — they are not in the fourparam
-tables and are joined by gene index rather than by a column: `class`
-(`dist_class`, from `qc/`) and `R²` (from `r2/`). Both sit at the end of the
-compact set, sort like any other column, and show `—` for a tissue whose table
-has not been computed. Neither reaches `statCols()`, so the CSV export stays
+### Which columns the tables show (`COMPACT_COLS`, `HIDDEN_COLS`)
+
+All three tables (v11 browser, working set, worm) follow one rule:
+
+- **Default view:** `clg_idx`, `flr_idx` (the floor-zeroed one), `clg_z`,
+  `mean`, `std`, `n_excluded`, then R², the tail-model columns where loaded,
+  and gene group.
+- **All columns:** the same block first, then every other column in the
+  table's order. The **old measures** (`old_flr_idx`, `old_flr_z`, i.e. the
+  4-parameter `flr_idx` / `flr_z`) appear **only here**.
+- **Never shown** (`HIDDEN_COLS`): `left` / `right` (they repeat `min` / `max`
+  on every fitted row), `maxheight` / `rightheight` / `leftheight` (intermediate
+  geometry), `hist` / `hist_max`. They stay in every CSV export, which mirrors
+  the source table rather than the screen.
+- **`class` (`dist_class`) is not shown or filterable** for now; the QC
+  classes are still loaded and `qc/` is unchanged.
+- **Sorting:** the first click on a number column sorts **high to low**
+  (`firstSortDir()`); names and categories (gene, tissue, group, gene type,
+  fit) sort A–Z.
+
+**`n_excluded`** is how many of the tissue's donors the excluded table dropped,
+i.e. samples at TPM = 0: `manifest.donors[tissue] − n_obs`. `manifest.donors`
+is written by `build_gui_data.py` (`donor_counts()`), which reads each raw
+table's `n_obs`. That is constant per tissue (11–818) because the raw tables
+keep every value, and the script refuses a tissue where it is not. The worm
+uses `manifest.worm.n_strains` (207, the largest `n_obs`, since the worm
+matrix is not in this repo). All three CSV exports append `n_excluded` as the
+last column.
+
+The computed columns R², `flr_idx` and `n_excluded` are **virtual**: not in
+the fourparam tables, joined by gene index (R²) or derived from the row. None
+reaches `statCols()`, so every column left of them in the CSV export stays
 byte-identical to `extract_genes.py`.
 
 - **Gene selection** — type-ahead multi-select over genes *and* tissues (both
@@ -1082,7 +1109,11 @@ byte-identical to `extract_genes.py`.
   `tissue|kind|ensembl-id`) and no gene page (every panel there is "this gene
   across the other tissues"). Its R² is read from the table's own `r_squared`
   column, not the `r2/` join, since there is no gene-major mirror to keep in
-  step. **The page turns green while this tab is open** — `data-view="worm"` on
+  step. It has the same **column filters** as the v11 browser: the one
+  `renderFilters(ctx)` widget, driven by `WORM_FILTERS` instead of
+  `HUMAN_FILTERS`, over the worm's own columns, applied after the subset and
+  the text box. The summary strip, sort and CSV export all follow the
+  filtered rows. **The page turns green while this tab is open** — `data-view="worm"` on
   `<html>` moves `--accent` and `--curve`, which is why the sparklines change
   colour too. The block has to be repeated for all three theme states, and sits
   after the theme blocks so equal-specificity selectors go the worm's way.
@@ -1445,7 +1476,9 @@ being true.
 It also writes two blocks the gene page depends on: `manifest.hist`, which lists
 per filter the tissues whose table carries `hist`/`hist_max` (read from the
 header of each of the 108 tables, one line apiece), and `manifest.phenotypes`,
-which points at `docs/overexpression_phenotypes.tsv` if it is there.
+which points at `docs/overexpression_phenotypes.tsv` if it is there. It also
+writes `manifest.donors` (donors per tissue, from the raw tables' `n_obs`) and
+`manifest.worm.n_strains`, which the browser's `n_excluded` column needs.
 
 **It rewrites `manifest.json` wholesale but now carries the `qc` block over**
 from whatever is already on disk, because that block is owned by

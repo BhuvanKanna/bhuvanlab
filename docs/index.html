@@ -629,6 +629,9 @@ footer p { margin: 0 0 7px; max-width: 78ch; }
 }
 
 /* ---------- worm summary strip ---------- */
+/* The worm tab's column filters: the human filter widget, inset to line up
+   with the subset row and the stats strip. */
+.wormfilters { padding: 10px 16px 12px; margin: 0; }
 .wormstats {
   display: flex; flex-wrap: wrap; gap: 0 30px; margin: 0;
   padding: 14px 16px; border-bottom: 1px solid var(--rule-soft);
@@ -1154,6 +1157,18 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
         </div>
       </div>
       <div class="genewarn" id="wormSetWarn" hidden role="status" aria-live="polite"></div>
+      <div class="field filter-field wormfilters">
+        <span class="field-label" id="wormFiltersLabel">Column filters</span>
+        <div class="filterlist" id="wormFilterList" role="group"
+             aria-labelledby="wormFiltersLabel"></div>
+        <div class="quick">
+          <button class="linkbtn" id="wormAddFilter" type="button">Add a filter</button>
+          <span class="sep">&middot;</span>
+          <button class="linkbtn" id="wormClearFilters" type="button" disabled>Clear filters</button>
+          <span class="sep">&middot;</span>
+          <span class="filternote" id="wormFilterNote"></span>
+        </div>
+      </div>
       <dl class="wormstats" id="wormStats" hidden></dl>
       <div id="wormArea"></div>
       <div class="legend" id="wormLegend" hidden>
@@ -1402,7 +1417,7 @@ const GENES_URL    = "genes.tsv";
    `BUILD_ID` and version.json are both written by docs/stamp_version.py --
    run it after editing this file, or the two silently drift apart.
    ===================================================================== */
-const BUILD_ID = "b567d2854fb7";
+const BUILD_ID = "7ae2a91c3bc9";
 const VERSION_URL = "version.json";
 const UPDATE_RECHECK_MS = 5 * 60 * 1000;
 
@@ -1454,9 +1469,25 @@ const MAX_WHOLE_TISSUE_ROWS = 300000;
    own order *after* these, so turning it on never moves a column you were
    already reading — it only adds to the right. */
 const COMPACT_COLS = [
-  "clg_idx", "flr_idx", "clg_z", "flr_z", "mean", "std",
-  "rightheight", "leftheight", "maxheight"
+  "clg_idx", "__idk_flr_idx", "clg_z", "mean", "std", "__n_excluded"
 ];
+
+/* Never drawn as a table column, in any view. They stay in every CSV export,
+   which mirrors the source table rather than the screen. left/right repeat
+   min/max on every fitted row, and the *height columns are intermediate
+   geometry (clg_idx = rightheight/maxheight, flr_idx = leftheight/maxheight). */
+const HIDDEN_COLS = new Set(["gene", "genename", "hist", "hist_max", "r_squared",
+                             "left", "right", "maxheight", "rightheight", "leftheight"]);
+
+/* COMPACT_COLS deliberately leaves out the 4-parameter flr_idx and flr_z
+   (shown as old_flr_idx / old_flr_z): the floor-zeroed flr_idx supersedes them,
+   so they appear under "All columns" only. */
+
+/* Sorting: numbers sort high-to-low on the first click, since the top of a
+   metric is what one is usually after; names and categories sort A-Z. */
+const TEXT_SORT_COLS = new Set(["__gene", "__tissue", "__gene_group", "__gene_type",
+                                "fit_success"]);
+function firstSortDir(col) { return TEXT_SORT_COLS.has(col) ? 1 : -1; }
 
 /* dist_class does not live in the fourparam tables — it comes from qc/, joined
    by gene index rather than by a column. It is a virtual column id so the rest
@@ -1504,7 +1535,13 @@ const TAIL_COLS = [NEW_CLG_IDX_COL, NEW_FLR_IDX_COL];
    identical values to idk_flr_idx/ and tests/test_idk_flr_idx.py pins the two cut-offs. */
 const IDK_FLR_IDX_COL = "__idk_flr_idx";
 const IDK_FLOOR = -0.75;
-const JOINED_COLS = [R2_COL, IDK_FLR_IDX_COL, NEW_CLG_IDX_COL, NEW_FLR_IDX_COL];
+
+/* n_excluded: how many of the tissue's donors the excluded table dropped, i.e.
+   samples at TPM = 0 (values <= -1). It is `manifest.donors[tissue] - n_obs`;
+   the raw tables keep every value, so their constant n_obs is the donor count
+   (build_gui_data.py donor_counts()). The worm table uses manifest.worm.n_strains. */
+const N_EXCL_COL = "__n_excluded";
+const JOINED_COLS = [R2_COL, IDK_FLR_IDX_COL, NEW_CLG_IDX_COL, NEW_FLR_IDX_COL, N_EXCL_COL];
 
 /* GENCODE gene_type, from genetype/ (build_gene_type.py): one character per
    gene in genes.tsv order, like qc/, but one file for every tissue because the
@@ -1540,6 +1577,7 @@ const SHORT_LABEL = {
   [NEW_CLG_IDX_COL]: "new_clg_idx",
   [NEW_FLR_IDX_COL]: "new_flr_idx",
   [IDK_FLR_IDX_COL]: "flr_idx",
+  [N_EXCL_COL]: "n_excluded",
   [GENE_TYPE_COL]: "gene type",
   [GENE_GROUP_COL]: "group",
   // The worm table carries R^2 as a real column rather than a join, so the
@@ -1549,7 +1587,7 @@ const SHORT_LABEL = {
 };
 
 // Columns where more decimal places actually matter.
-const DECIMALS = { n_obs: 0 };
+const DECIMALS = { n_obs: 0, __n_excluded: 0 };
 
 let manifest = null;
 let GID = [], SYM = [], SYMU = [], NOVER = [], NOVERU = [], SHARD = [];
@@ -1974,10 +2012,17 @@ function idkFlrIdxOf(r) {
   return t === "" ? null : Number(t);
 }
 
-// The computed numeric columns (R², idk_flr_idx, new_clg_idx, new_flr_idx): value or null.
+function nExcludedOf(r) {
+  const d = manifest.donors ? Number(manifest.donors[r.tissue]) : NaN;
+  const n = numOf(r.fields, loadedColIdx, "n_obs");
+  return Number.isFinite(d) && Number.isFinite(n) ? d - n : null;
+}
+
+// The computed numeric columns (R², idk_flr_idx, new_clg_idx, new_flr_idx, n_excluded): value or null.
 function joinedValueOf(r, col) {
   if (col === R2_COL) return rSquaredOf(r);
   if (col === IDK_FLR_IDX_COL) return idkFlrIdxOf(r);
+  if (col === N_EXCL_COL) return nExcludedOf(r);
   return tailOf(r, col);
 }
 
@@ -2289,10 +2334,12 @@ function shapeCell(row, colIdx) {
 function visibleStatCols(header, all) {
   // r_squared is skipped because the page shows the r2/ join instead (R2_COL);
   // without this the tissue-major route would render the column twice.
-  const skip = new Set(["gene", "genename", "hist", "hist_max", "r_squared"]);
-  const stats = header.filter((c) => !skip.has(c));
-  const compact = COMPACT_COLS.filter((c) => stats.includes(c))
-    .concat(DIST_COL, R2_COL, IDK_FLR_IDX_COL, tailLoaded() ? TAIL_COLS : [],
+  const stats = header.filter((c) => !HIDDEN_COLS.has(c));
+  const virtualOk = (c) => c === IDK_FLR_IDX_COL ? stats.includes("flr_idx")
+                         : c === N_EXCL_COL ? !!manifest.donors && stats.includes("n_obs")
+                         : stats.includes(c);
+  const compact = COMPACT_COLS.filter(virtualOk)
+    .concat(R2_COL, tailLoaded() ? TAIL_COLS : [],
             geneTypeText ? GENE_GROUP_COL : []);
   if (!all) return compact;
   // Compact block keeps its position and order; the remainder follows in the
@@ -2319,9 +2366,8 @@ function kindLabelOf(kind) {
    A rule with an empty value is inactive rather than invalid, so a half-typed
    threshold does not blank the table while it is being typed.
    ===================================================================== */
-const FILTER_SKIP = new Set(["gene", "genename", "hist", "hist_max", "r_squared"]);
-const CATEGORICAL_COLS = new Set(["fit_success", DIST_COL,
-                                  GENE_TYPE_COL, GENE_GROUP_COL]);
+const FILTER_SKIP = HIDDEN_COLS;
+const CATEGORICAL_COLS = new Set(["fit_success", GENE_TYPE_COL, GENE_GROUP_COL]);
 const NUM_OPS = [[">=", "\u2265"], [">", ">"], ["<=", "\u2264"], ["<", "<"],
                  ["==", "="], ["!=", "\u2260"]];
 const CAT_OPS = [["==", "is"], ["!=", "is not"]];
@@ -2333,7 +2379,7 @@ function filterCols() {
     .filter((c) => !FILTER_SKIP.has(c));
   const tm = manifest.tailmodel;
   const gt = manifest.gene_type;
-  return base.concat(R2_COL, IDK_FLR_IDX_COL, DIST_COL,
+  return base.concat(R2_COL, IDK_FLR_IDX_COL, manifest.donors ? N_EXCL_COL : [],
                      tm && tm.available ? TAIL_COLS : [],
                      gt && gt.available ? [GENE_GROUP_COL, GENE_TYPE_COL] : []);
 }
@@ -2373,8 +2419,12 @@ function filterValueOf(r, col) {
 }
 
 function testFilter(r, f) {
-  const v = filterValueOf(r, f.col);
-  if (CATEGORICAL_COLS.has(f.col)) {
+  return testFilterValue(filterValueOf(r, f.col), f, CATEGORICAL_COLS.has(f.col));
+}
+
+/* Shared by the human and worm filters: `v` is the row's value for f.col. */
+function testFilterValue(v, f, categorical) {
+  if (categorical) {
     const want = String(f.value).trim().toLowerCase();
     const got = String(v).trim().toLowerCase();
     return f.op === "!=" ? got !== want : got === want;
@@ -2422,24 +2472,42 @@ function updateFilterNote(count) {
                  loadedRows.length.toLocaleString() + "</strong> rows match";
 }
 
-function renderFilters() {
-  const list = $("filterList");
+/* One filter-list widget, two owners: the human selection (HUMAN_FILTERS) and
+   the worm tab (WORM_FILTERS). Each context supplies its own rule array,
+   columns, operators and what to do after a change. */
+const HUMAN_FILTERS = {
+  list: "filterList", clear: "clearFilters",
+  get: () => filters,
+  cols: () => filterCols(),
+  isCat: (c) => CATEGORICAL_COLS.has(c),
+  ops: (c) => opsFor(c),
+  catOptions: (c) => catOptionsFor(c),
+  changed: () => applyFilters(),
+  note: () => updateFilterNote()
+};
+
+function renderFilters(ctx = HUMAN_FILTERS) {
+  const list = $(ctx.list);
   if (!list) return;
-  const cols = filterCols();
+  const cols = ctx.cols();
+  const filters = ctx.get();
+  const opsFor = ctx.ops, catOptionsFor = ctx.catOptions;
+  const applyFilters = ctx.changed;
+  const updateFilterNote = ctx.note;
 
   if (!filters.length) {
     list.innerHTML =
       '<p class="filterempty">No filters \u2014 every loaded row is shown.</p>';
   } else {
     list.innerHTML = filters.map((f, i) => {
-      const cat = CATEGORICAL_COLS.has(f.col);
+      const cat = ctx.isCat(f.col);
       const opts = cols.map((c) =>
         `<option value="${escapeHtml(c)}"${c === f.col ? " selected" : ""}>` +
         `${escapeHtml(filterColLabel(c))}</option>`).join("");
       const ops = opsFor(f.col).map(([v, l]) =>
         `<option value="${v}"${v === f.op ? " selected" : ""}>${escapeHtml(l)}</option>`).join("");
       const dl = cat
-        ? `<datalist id="fvals-${i}">${catOptionsFor(f.col)
+        ? `<datalist id="${ctx.list}-vals-${i}">${catOptionsFor(f.col)
             .map((v) => `<option value="${escapeHtml(v)}"></option>`).join("")}</datalist>`
         : "";
       return `<div class="filterrow" data-i="${i}">
@@ -2447,7 +2515,7 @@ function renderFilters() {
         <select class="fop" aria-label="Comparison">${ops}</select>
         <input class="fval" type="${cat ? "text" : "number"}" step="any"
                value="${escapeHtml(f.value)}" placeholder="${cat ? "value" : "threshold"}"
-               aria-label="Value"${cat ? ` list="fvals-${i}"` : ""}>${dl}
+               aria-label="Value"${cat ? ` list="${ctx.list}-vals-${i}"` : ""}>${dl}
         <button class="rowdel" type="button" data-del="${i}"
                 title="Remove this filter" aria-label="Remove this filter">\u2715</button>
       </div>`;
@@ -2464,7 +2532,7 @@ function renderFilters() {
         filters[i].op = opsFor(filters[i].col)[0][0];
       }
       filters[i].value = "";
-      renderFilters(); applyFilters();
+      renderFilters(ctx); applyFilters();
     });
     row.querySelector(".fop").addEventListener("change", (e) => {
       filters[i].op = e.target.value; applyFilters();
@@ -2476,11 +2544,11 @@ function renderFilters() {
   list.querySelectorAll("[data-del]").forEach((b) => {
     b.addEventListener("click", () => {
       filters.splice(Number(b.dataset.del), 1);
-      renderFilters(); applyFilters();
+      renderFilters(ctx); applyFilters();
     });
   });
 
-  $("clearFilters").disabled = !filters.length;
+  $(ctx.clear).disabled = !filters.length;
   updateFilterNote();
 }
 
@@ -2865,11 +2933,11 @@ function render() {
     const key = rowKey(r);
     const picked = workingSet.has(key);
     const cells = cols.map((c) => {
-      if (c === DIST_COL) {
-        const cls = distClassOf(r);
-        return cls
-          ? `<td class="tl"><span class="dc dc-${cls}">${escapeHtml(DIST_LABEL[cls] || cls)}</span></td>`
-          : '<td class="tl"><span class="nil" title="No QC table for this tissue yet">—</span></td>';
+      if (c === N_EXCL_COL) {
+        const v = nExcludedOf(r);
+        return v === null
+          ? '<td><span class="nil" title="No donor count for this tissue">—</span></td>'
+          : `<td>${v}</td>`;
       }
       if (c === GENE_TYPE_COL || c === GENE_GROUP_COL) {
         const v = geneTypeCol(r, c);
@@ -2939,7 +3007,7 @@ function render() {
   area.querySelectorAll("th[data-col]").forEach((th) => {
     th.addEventListener("click", () => {
       const c = th.dataset.col;
-      if (sortCol === c) sortDir = -sortDir; else { sortCol = c; sortDir = 1; }
+      if (sortCol === c) sortDir = -sortDir; else { sortCol = c; sortDir = firstSortDir(c); }
       render();
     });
   });
@@ -3294,6 +3362,21 @@ function renderWsBanner() {
   b.hidden = false;
 }
 
+/* A working-set entry's value for a column: stored fields, plus the computed
+   columns snapshotted at tick time (flr_idx, R²) or derived (n_excluded). */
+function wsValue(e, c) {
+  const num = (x) => (x === null || x === undefined || x === "" ? null
+                      : Number.isFinite(Number(x)) ? Number(x) : null);
+  if (c === IDK_FLR_IDX_COL) return num(e.ti);
+  if (c === R2_COL) return num(e.r2);
+  if (c === N_EXCL_COL) {
+    const d = manifest.donors ? Number(manifest.donors[e.t]) : NaN;
+    const n = Number(e.v.n_obs);
+    return Number.isFinite(d) && Number.isFinite(n) && e.v.n_obs !== "" ? d - n : null;
+  }
+  return num(e.v[c]);
+}
+
 function wsRows() {
   const q = $("wsFilter").value.trim().toUpperCase();
   let rows = Array.from(workingSet.entries()).map(([key, e]) => ({ key, e }));
@@ -3312,7 +3395,7 @@ function wsRows() {
                         a.e.sym.localeCompare(b.e.sym));
   } else {
     rows.sort((a, b) => {
-      const na = Number(a.e.v[wsSortCol]), nb = Number(b.e.v[wsSortCol]);
+      const na = wsValue(a.e, wsSortCol) ?? NaN, nb = wsValue(b.e, wsSortCol) ?? NaN;
       const fa = Number.isFinite(na), fb = Number.isFinite(nb);
       if (fa && fb) return (na - nb) * dir;
       if (fa !== fb) return fa ? -1 : 1;
@@ -3342,9 +3425,12 @@ function renderWorkingSet() {
   // rest is appended, so "All columns" only ever adds to the right. dist_class
   // is absent here by design — the working set stores what the CSV exports, and
   // that stays byte-identical to extract_genes.py.
-  const compact = COMPACT_COLS.filter((c) => all.includes(c));
+  const shownAll = all.filter((c) => !HIDDEN_COLS.has(c));
+  const compact = COMPACT_COLS
+    .filter((c) => c === IDK_FLR_IDX_COL || (c === N_EXCL_COL ? !!manifest.donors : all.includes(c)))
+    .concat(R2_COL);
   const cols = wsShowAllCols
-    ? compact.concat(all.filter((c) => !compact.includes(c)))
+    ? compact.concat(shownAll.filter((c) => !compact.includes(c)))
     : compact;
   const rows = wsRows();
 
@@ -3366,7 +3452,16 @@ function renderWorkingSet() {
         return ok ? '<td><span style="color:var(--ok)">ok</span></td>'
                   : '<td><span class="badge-fail">no fit</span></td>';
       }
-      const v = fmt(e.v[c], c);
+      if (c === R2_COL) {
+        return e.r2 === null || e.r2 === undefined
+          ? '<td><span class="nil">—</span></td>' : `<td>${Number(e.r2).toFixed(3)}</td>`;
+      }
+      if (c === N_EXCL_COL) {
+        const n = wsValue(e, c);
+        return n === null ? '<td><span class="nil">—</span></td>' : `<td>${n}</td>`;
+      }
+      const v = fmt(c === IDK_FLR_IDX_COL ? (e.ti ?? "") : e.v[c],
+                    c === IDK_FLR_IDX_COL ? "flr_idx" : c);
       return `<td>${v === null ? '<span class="nil">—</span>' : escapeHtml(v)}</td>`;
     }).join("");
     return `<tr data-key="${escapeHtml(key)}">
@@ -3392,7 +3487,7 @@ function renderWorkingSet() {
   area.querySelectorAll("th[data-col]").forEach((th) => {
     th.addEventListener("click", () => {
       const c = th.dataset.col;
-      if (wsSortCol === c) wsSortDir = -wsSortDir; else { wsSortCol = c; wsSortDir = 1; }
+      if (wsSortCol === c) wsSortDir = -wsSortDir; else { wsSortCol = c; wsSortDir = firstSortDir(c); }
       renderWorkingSet();
     });
   });
@@ -3618,7 +3713,7 @@ function downloadCsv() {
   const cols = statCols();
   const lines = [["tissue", "table", "gene", "genename"]
     .concat(cols.map(exportName), "r_squared", "clg_missing", "flr_missing",
-            exportName(IDK_FLR_IDX_COL), "gene_type").join(",")];
+            exportName(IDK_FLR_IDX_COL), "gene_type", "n_excluded").join(",")];
   for (const r of sortRows(out, sortCol, sortDir, loadedColIdx)) {
     lines.push([r.tissue, r.kind, GID[r.gi], SYM[r.gi]]
       .concat(cols.map((c) => {
@@ -3626,7 +3721,8 @@ function downloadCsv() {
         return i === undefined ? "" : r.fields[i];
       }), csvR2(rSquaredOf(r)), csvTail(tailOf(r, NEW_CLG_IDX_COL)),
           csvTail(tailOf(r, NEW_FLR_IDX_COL)),
-          idkFlrIdxText(r), geneTypeOf(r.gi) || "").map(csvCell).join(","));
+          idkFlrIdxText(r), geneTypeOf(r.gi) || "",
+          nExcludedOf(r) ?? "").map(csvCell).join(","));
   }
   const nT = new Set(out.map((r) => r.tissue)).size;
   saveCsv(lines, `fourparam_${nT}tissues_${currentKind}_${out.length}rows.csv`);
@@ -3637,13 +3733,14 @@ function exportWorkingSet() {
   const cols = statCols();
   const lines = [["tissue", "table", "gene", "genename"]
     .concat(cols.map(exportName), "r_squared", "clg_missing", "flr_missing",
-            exportName(IDK_FLR_IDX_COL), "gene_type").join(",")];
+            exportName(IDK_FLR_IDX_COL), "gene_type", "n_excluded").join(",")];
   // Export what is on screen, so a filter narrows the spreadsheet too.
   for (const { e } of wsRows()) {
     lines.push([e.t, e.k, e.gid, e.sym]
       .concat(cols.map((c) => e.v[c]), csvR2(e.r2), csvTail(e.tr),
               csvTail(e.tl), e.ti ?? "",
-              geneTypeOf(geneIndexByNover.get(e.g)) || "").map(csvCell).join(","));
+              geneTypeOf(geneIndexByNover.get(e.g)) || "",
+              wsValue(e, N_EXCL_COL) ?? "").map(csvCell).join(","));
   }
   saveCsv(lines, `working_set_${lines.length - 1}rows_${stamp()}.csv`);
 }
@@ -4837,6 +4934,16 @@ async function getWormTable() {
         colIdx[IDK_FLR_IDX_COL] = header.length;
         header.push(IDK_FLR_IDX_COL);
       }
+      // n_excluded appended the same way: strains dropped at <= -1.
+      const nStrains = Number(manifest.worm.n_strains);
+      if (Number.isFinite(nStrains) && colIdx.n_obs !== undefined) {
+        for (const f of rows) {
+          const n = String(f[colIdx.n_obs] ?? "").trim();
+          f.push(n === "" || !Number.isFinite(Number(n)) ? "" : String(nStrains - Number(n)));
+        }
+        colIdx[N_EXCL_COL] = header.length;
+        header.push(N_EXCL_COL);
+      }
       wormTable = { header, colIdx, rows };
       return wormTable;
     } finally {
@@ -4850,10 +4957,9 @@ async function getWormTable() {
 /* Same shape as visibleStatCols(), minus the virtual columns: the worm table
    has no qc/ classes, and its R² is a column of its own rather than a join. */
 function wormStatCols(header, all) {
-  const skip = new Set(WORM_ID_COLS.concat("hist", "hist_max"));
+  const skip = new Set([...WORM_ID_COLS, ...HIDDEN_COLS].filter((c) => c !== "r_squared"));
   const stats = header.filter((c) => !skip.has(c));
   const compact = COMPACT_COLS.filter((c) => stats.includes(c));
-  if (stats.includes(IDK_FLR_IDX_COL)) compact.splice(compact.indexOf("flr_idx") + 1, 0, IDK_FLR_IDX_COL);
   if (stats.includes("r_squared")) compact.push("r_squared");
   if (!all) return compact;
   const shown = new Set(compact);
@@ -4996,6 +5102,56 @@ function wormMatches(query) {
   });
 }
 
+/* ---------------------------------------------------------------------
+   Worm column filters: the human filter widget (renderFilters) over the worm
+   table's own columns. Applied after the subset and the text box.
+   --------------------------------------------------------------------- */
+let wormFilters = [];
+
+function wormFilterCols() {
+  const header = wormTable ? wormTable.header
+    : (manifest.worm.columns || []).concat(IDK_FLR_IDX_COL,
+                                           manifest.worm.n_strains ? N_EXCL_COL : []);
+  return wormStatCols(header, true);
+}
+
+const WORM_FILTERS = {
+  list: "wormFilterList", clear: "wormClearFilters",
+  get: () => wormFilters,
+  cols: () => wormFilterCols(),
+  isCat: (c) => c === "fit_success",
+  ops: (c) => (c === "fit_success" ? CAT_OPS : NUM_OPS),
+  catOptions: (c) => (c === "fit_success" ? ["True", "False"] : []),
+  changed: () => { if (wormTable) renderWorm(); else updateWormFilterNote(); },
+  note: () => updateWormFilterNote()
+};
+
+function wormFiltered(rows) {
+  const active = wormFilters.filter((f) => f.col && String(f.value).trim() !== "");
+  if (!active.length || !wormTable) return rows;
+  const ci = wormTable.colIdx;
+  return rows.filter((row) => active.every((f) => {
+    const i = ci[f.col];
+    const raw = i === undefined ? "" : String(row[i] ?? "").trim();
+    const cat = WORM_FILTERS.isCat(f.col);
+    return testFilterValue(cat ? raw : (raw === "" ? NaN : Number(raw)), f, cat);
+  }));
+}
+
+function wormRows() { return wormFiltered(wormMatches(wormQuery)); }
+
+function updateWormFilterNote(count) {
+  const el = $("wormFilterNote");
+  if (!el) return;
+  const n = wormFilters.filter((f) => f.col && String(f.value).trim() !== "").length;
+  if (!n) { el.textContent = ""; return; }
+  if (!wormTable) { el.textContent = n + (n === 1 ? " filter" : " filters") + " set"; return; }
+  const base = wormMatches(wormQuery).length;
+  const k = count === undefined ? wormRows().length : count;
+  el.innerHTML = "<strong>" + k.toLocaleString() + "</strong> of <strong>" +
+                 base.toLocaleString() + "</strong> genes match";
+}
+
 function wormSort(rows) {
   const t = wormTable, out = rows.slice(), dir = wormSortDir;
   const name = (f) => (f[t.colIdx.genename] || "") + " " + (f[t.colIdx.gene] || "");
@@ -5041,10 +5197,8 @@ function renderWormStats(rows) {
     ["Fitted", fitted.toLocaleString()],
     ["Median n", wormMedian(rows, "n_obs")],
     ["Median clg_idx", wormMedian(rows, "clg_idx")],
-    ["Median old_flr_idx", wormMedian(rows, "flr_idx")],
     ["Median flr_idx", wormMedian(rows, IDK_FLR_IDX_COL)],
     ["Median clg_z", wormMedian(rows, "clg_z")],
-    ["Median old_flr_z", wormMedian(rows, "flr_z")],
     ["Median R²", wormMedian(rows, "r_squared")]
   ];
   el.innerHTML = cells
@@ -5080,13 +5234,18 @@ function renderWorm() {
 
   const t = wormTable;
   const cols = wormStatCols(t.header, wormAllCols);
-  const rows = wormSort(wormMatches(wormQuery));
+  const rows = wormSort(wormRows());
   const shown = rows.slice(0, RENDER_LIMIT);
   renderWormStats(rows);
+  updateWormFilterNote(rows.length);
 
   const inSubset = wormSubset ? ` in <strong>${escapeHtml(wormSubset.label)}</strong>` : "";
   if (!rows.length) {
-    area.innerHTML = wormQuery.trim()
+    area.innerHTML = wormFilters.some((f) => String(f.value).trim() !== "")
+      ? `<div class="note"><h2>No genes match the filters</h2>
+          <p>No gene${inSubset} passes every column filter. Loosen or clear
+          them above.</p></div>`
+      : wormQuery.trim()
       ? `<div class="note"><h2>No genes match</h2>
           <p>Nothing in the worm table${inSubset} matches
           “${escapeHtml(wormQuery)}”. Try a sequence name
@@ -5158,7 +5317,7 @@ function renderWorm() {
     th.addEventListener("click", () => {
       const c = th.dataset.col;
       if (wormSortCol === c) wormSortDir = -wormSortDir;
-      else { wormSortCol = c; wormSortDir = 1; }
+      else { wormSortCol = c; wormSortDir = firstSortDir(c); }
       renderWorm();
     });
   });
@@ -5176,7 +5335,7 @@ function renderWorm() {
    screen and never about what leaves the page. */
 function downloadWormCsv() {
   if (!wormTable) return;
-  const rows = wormSort(wormMatches(wormQuery));
+  const rows = wormSort(wormRows());
   // Headers renamed as in the human exports: `flr_idx` -> old_flr_idx, idk_flr_idx -> flr_idx.
   const lines = [wormTable.header.map(exportName).join(",")];
   for (const f of rows) lines.push(f.map(csvCell).join(","));
@@ -5584,6 +5743,20 @@ async function boot() {
   $("clearFilters").addEventListener("click", () => {
     filters = []; renderFilters(); applyFilters();
   });
+  if (wormAvailable()) {
+    $("wormAddFilter").addEventListener("click", () => {
+      const cols = wormFilterCols();
+      const col = cols.includes("clg_idx") ? "clg_idx" : cols[0];
+      wormFilters.push({ col, op: WORM_FILTERS.ops(col)[0][0], value: "" });
+      renderFilters(WORM_FILTERS);
+      const box = $("wormFilterList").querySelector(".filterrow:last-child .fval");
+      if (box) box.focus();
+    });
+    $("wormClearFilters").addEventListener("click", () => {
+      wormFilters = []; renderFilters(WORM_FILTERS); WORM_FILTERS.changed();
+    });
+    renderFilters(WORM_FILTERS);
+  }
 
   /* Shortcuts for the GENCODE group filter. Each replaces any existing group
      filter rather than stacking, since "coding AND non-coding" matches nothing. */

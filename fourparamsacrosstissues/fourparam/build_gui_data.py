@@ -222,6 +222,30 @@ def hist_availability(raw_tables, exc_tables) -> dict:
     return {"excluded": exc}
 
 
+def donor_counts(raw_tables) -> dict:
+    """Donors per tissue, read off each RAW table's ``n_obs``.
+
+    The raw tables keep every finite value, and the matrices have no missing
+    values, so ``n_obs`` is the same for every gene and equals the tissue's
+    donor count. The browser derives ``n_excluded = donors - n_obs`` from it:
+    the zero-expression (TPM = 0) samples the excluded table dropped. A tissue
+    whose raw ``n_obs`` is not constant is refused, since the subtraction would
+    then also count missing values as exclusions.
+    """
+    import pandas as pd
+    out = {}
+    for path in raw_tables:
+        tissue = path.name[len(PREFIX):-len(RAW_SUFFIX)]
+        n = pd.read_csv(path, usecols=["n_obs"])["n_obs"]
+        if n.nunique() != 1:
+            raise SystemExit(f"{path.name}: n_obs is not constant "
+                             f"({n.min()}..{n.max()}), so it is not a donor count")
+        out[tissue] = int(n.iloc[0])
+    print(f"Donor counts   : {len(out)} tissues, {min(out.values())}-"
+          f"{max(out.values())} donors", file=sys.stderr)
+    return out
+
+
 def read_tokens(src: Path) -> list[str]:
     """One token per line, `#` comments (whole-line and trailing) stripped."""
     tokens = []
@@ -287,9 +311,20 @@ def worm_block(worm_dir: Path, genelists: Path, docs: Path) -> dict:
               file=sys.stderr)
         return {"available": False}
 
+    # n_strains: the worm matrix is not in this repo, so the strain count is
+    # read as the largest n_obs -- 207, which 16,723 transcripts reach exactly.
+    # The browser derives n_excluded = n_strains - n_obs from it.
     with path.open(encoding="utf-8", newline="") as fh:
         header = fh.readline().rstrip("\r\n").split(",")
-        n_genes = sum(1 for line in fh if line.strip())
+        i_nobs = header.index("n_obs")
+        n_genes = n_strains = 0
+        for line in fh:
+            if not line.strip():
+                continue
+            n_genes += 1
+            v = line.rstrip("\r\n").split(",")[i_nobs]
+            if v:
+                n_strains = max(n_strains, int(float(v)))
     print(f"Worm table     : {n_genes:,} genes, {len(header)} columns",
           file=sys.stderr)
     if "r_squared" not in header:
@@ -300,6 +335,7 @@ def worm_block(worm_dir: Path, genelists: Path, docs: Path) -> dict:
         "base_url": WORM_BASE,
         "file": WORM_FILE,
         "n_genes": n_genes,
+        "n_strains": n_strains,
         "columns": header,
         "genesets": worm_geneset_block(genelists, docs, path),
     }
@@ -480,6 +516,8 @@ def main(argv=None) -> int:
              "suffix": EXCLUDED_SUFFIX},
         ],
         "tissues": tissues,
+        # Donors per tissue, for the browser's n_excluded. See donor_counts().
+        "donors": donor_counts(raw_tables),
         "columns": columns,
         "n_genes": int(len(df)),
         # Gene-major mirror of the same numbers: one shard covers SHARD_SIZE
