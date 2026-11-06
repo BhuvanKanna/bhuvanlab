@@ -77,7 +77,7 @@ SUPER_BUCKETS = 64       # pass-1 fan-out; bounds pass-2 memory
 SHARD_EXCLUDED = ("hist", "hist_max")
 
 SHARD_HEADER = ("tissue,table,gene,genename,y0,A,x0,w,sumsquarevalue,"
-                "rti_sigma_dist,rti,lti_sigma_dist,lti,min,max,mean,std,"
+                "clg_z,clg_idx,flr_z,flr_idx,min,max,mean,std,"
                 "skew,kurt,left,right,maxheight,rightheight,leftheight,"
                 "n_obs,fit_success\n")
 

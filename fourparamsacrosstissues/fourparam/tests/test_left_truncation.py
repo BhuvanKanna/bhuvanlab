@@ -1,13 +1,13 @@
-"""The left truncation index (LTI), the mirror of the right one (RTI).
+"""The left truncation index (flr_idx), the mirror of the right one (clg_idx).
 
-RTI asks how high the fitted curve still is at the observed ceiling ``x_max``.
-LTI asks the same question at the observed floor ``x_min``. Both are read
+clg_idx asks how high the fitted curve still is at the observed ceiling ``x_max``.
+flr_idx asks the same question at the observed floor ``x_min``. Both are read
 against the same denominator (``maxheight``) and the same baseline (the curve's
 minimum over the histogram interval), so the two are directly comparable.
 
 The baseline is what couples them: it is the lower of the two edge heights, so
 whichever edge sits *farther* from the peak defines the baseline and zeroes its
-own side. Exactly one of LTI / RTI is non-zero for any bell-shaped fit. That is
+own side. Exactly one of flr_idx / clg_idx is non-zero for any bell-shaped fit. That is
 pinned below because it is surprising and easy to "fix" by accident.
 """
 import sys
@@ -33,18 +33,18 @@ def skewed():
 
     This is the shape real expression data takes, so it is the case the metrics
     are actually read on. The floor sits close to the peak and the ceiling far
-    from it, which makes RTI the zeroed side and LTI the informative one.
+    from it, which makes clg_idx the zeroed side and flr_idx the informative one.
     """
     rng = np.random.default_rng(0)
     return rng.lognormal(mean=0.0, sigma=0.6, size=4000)
 
 
-def test_lti_sigma_dist_counts_sigmas_from_peak_down_to_the_floor(skewed):
-    """(x0 - x_min) / sigma, the exact mirror of rti_sigma_dist's (x_max - x0)."""
+def test_flr_z_counts_sigmas_from_peak_down_to_the_floor(skewed):
+    """(x0 - x_min) / sigma, the exact mirror of clg_z's (x_max - x0)."""
     bf = make_fitter(skewed)
     sigma = bf.fourparam_w / np.sqrt(2.0)
     expected = (bf.fourparam_x0 - bf.min()) / sigma
-    assert bf.lti_sigma_dist == pytest.approx(expected)
+    assert bf.flr_z == pytest.approx(expected)
 
 
 def test_leftheight_is_the_curve_at_the_floor_above_the_baseline(skewed):
@@ -56,39 +56,39 @@ def test_leftheight_is_the_curve_at_the_floor_above_the_baseline(skewed):
         float(bf.fourparam_function(bf.min()) - baseline))
 
 
-def test_lti_is_leftheight_over_maxheight_and_is_bounded(skewed):
+def test_flr_idx_is_leftheight_over_maxheight_and_is_bounded(skewed):
     bf = make_fitter(skewed)
-    assert bf.lti == pytest.approx(bf.leftheight / bf.maxheight)
-    assert 0.0 <= bf.lti <= 1.0
+    assert bf.flr_idx == pytest.approx(bf.leftheight / bf.maxheight)
+    assert 0.0 <= bf.flr_idx <= 1.0
 
 
-def test_exactly_one_of_lti_and_rti_is_zero(skewed):
+def test_exactly_one_of_flr_idx_and_clg_idx_is_zero(skewed):
     """The shared baseline zeroes whichever edge is farther from the peak."""
     bf = make_fitter(skewed)
-    assert min(bf.lti, bf.rti) == pytest.approx(0.0, abs=1e-12)
-    assert max(bf.lti, bf.rti) > 0.0
+    assert min(bf.flr_idx, bf.clg_idx) == pytest.approx(0.0, abs=1e-12)
+    assert max(bf.flr_idx, bf.clg_idx) > 0.0
 
 
-def test_mirroring_the_data_swaps_lti_and_rti(skewed):
+def test_mirroring_the_data_swaps_flr_idx_and_clg_idx(skewed):
     """Negating every value reflects the distribution, so the floor becomes the
-    ceiling. LTI of the reflection must equal RTI of the original."""
+    ceiling. flr_idx of the reflection must equal clg_idx of the original."""
     bf = make_fitter(skewed)
     mirrored = make_fitter(-np.asarray(skewed), name="TEST_MIRROR")
-    assert mirrored.lti == pytest.approx(bf.rti, rel=1e-6, abs=1e-9)
-    assert mirrored.lti_sigma_dist == pytest.approx(
-        bf.rti_sigma_dist, rel=1e-6, abs=1e-9)
+    assert mirrored.flr_idx == pytest.approx(bf.clg_idx, rel=1e-6, abs=1e-9)
+    assert mirrored.flr_z == pytest.approx(
+        bf.clg_z, rel=1e-6, abs=1e-9)
 
 
-def test_rti_is_the_new_name_for_truncationindex(skewed):
+def test_clg_idx_is_the_new_name_for_truncationindex(skewed):
     """The rename keeps the old attribute working so nothing downstream breaks."""
     bf = make_fitter(skewed)
-    assert bf.rti == bf.truncationindex
-    assert bf.rti_sigma_dist == bf.ti_fourparam_sigma_dist
+    assert bf.clg_idx == bf.truncationindex
+    assert bf.clg_z == bf.ti_fourparam_sigma_dist
 
 
 def test_left_metrics_require_the_fit(skewed):
     bf = BhuvanFitter(skewed, gene_name="TEST")
-    for attr in ("lti", "lti_sigma_dist", "leftheight"):
+    for attr in ("flr_idx", "flr_z", "leftheight"):
         with pytest.raises(RuntimeError):
             getattr(bf, attr)
 
@@ -97,8 +97,8 @@ def test_fourparam_fit_reports_the_left_metrics(skewed):
     """The dict _fit_fourparam returns is what the table rows are built from."""
     bf = BhuvanFitter(skewed, gene_name="TEST")
     result = bf.fit("fourparam")
-    for key in ("lti", "lti_sigma_dist", "leftheight", "left",
-                "rti", "rti_sigma_dist"):
+    for key in ("flr_idx", "flr_z", "leftheight", "left",
+                "clg_idx", "clg_z"):
         assert key in result, f"missing {key}"
     assert result["left"] == pytest.approx(bf.min())
-    assert result["lti"] == pytest.approx(bf.lti)
+    assert result["flr_idx"] == pytest.approx(bf.flr_idx)

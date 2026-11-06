@@ -1,3 +1,11 @@
+> **Naming note (added 2026-11-06).** This record is kept exactly as it was
+> written, before the metrics were renamed. Read RTI as `clg_idx`, LTI as
+> `flr_idx`, `rti_sigma_dist` / `lti_sigma_dist` as `clg_z` / `flr_z`,
+> `rti_missing` / `lti_missing` as `clg_missing` / `flr_missing`, newRTI /
+> newLTI as `new_clg_idx` / `new_flr_idx`, oldLTI as `old_flr_idx`, idkLTI as
+> `idk_flr_idx` and dRTI as `d_clg_idx`. File paths below use the old names
+> (`drti/` is now `d_clg_idx/`, `drti_*.py` are `d_clg_idx_*.py`).
+
 # Upper-tail compression (UTC): results
 
 Run 2026-10-13, exactly as locked in `PLAN.md` (commit `4f83a6d`, made before

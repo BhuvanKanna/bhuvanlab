@@ -16,11 +16,11 @@ tables throw that count away, so there is no excluded variant of this table.
     python compute_tailmodel.py --input ... --force --jobs 8
 
 Columns: gene, genename, mu, sigma (latent, untruncated), x_min, x_max
-(detected extremes), rti_missing, lti_missing (estimated fraction of donors
-missing past each edge; lti is NaN when any donor is censored), rti_lr, lti_lr,
+(detected extremes), clg_missing, flr_missing (estimated fraction of donors
+missing past each edge; flr_idx is NaN when any donor is censored), clg_lr, flr_lr,
 n_total, n_censored, left_mode, success, usable. Read the metrics only where
 ``usable`` is True (see tailmodel.fit_tail_model). Under a true Gaussian of N
-donors ``rti_missing`` is ~1/(N+1), not 0.
+donors ``clg_missing`` is ~1/(N+1), not 0.
 """
 import argparse
 import os
@@ -35,8 +35,8 @@ from tailmodel import fit_tail_model
 
 HERE = Path(__file__).resolve().parent
 OUT_DIR = HERE.parent / "tailmodel"
-COLUMNS = ["gene", "genename", "mu", "sigma", "x_min", "x_max", "rti_missing",
-           "lti_missing", "rti_lr", "lti_lr", "n_total", "n_censored",
+COLUMNS = ["gene", "genename", "mu", "sigma", "x_min", "x_max", "clg_missing",
+           "flr_missing", "clg_lr", "flr_lr", "n_total", "n_censored",
            "left_mode", "success", "usable"]
 CHUNK_ROWS = 2000
 
@@ -85,9 +85,9 @@ def main() -> None:
     ok = df[df.usable]
     print(f"{out.name}: {len(df):,} genes, {int(df.success.sum()):,} fit, "
           f"{len(ok):,} usable, "
-          f"{int((ok.left_mode == 'truncated').sum()):,} with a defined LTI, "
+          f"{int((ok.left_mode == 'truncated').sum()):,} with a defined flr_idx, "
           f"{time.time() - t0:.0f}s")
-    print(f"median rti_missing {ok.rti_missing.median():.4g}  "
+    print(f"median clg_missing {ok.clg_missing.median():.4g}  "
           f"(null ~1/(N+1) = {np.median(1 / (ok.n_total + 1)):.4g})")
 
 

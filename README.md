@@ -29,7 +29,7 @@ loads any of the four rosters the control-gene analysis scores against —
 `Duplication-tolerant` (630) and `Olfactory receptors` (384) as negatives. A
 click is exactly a paste: the same resolver, the same "N not recognised"
 report, and the sets **add** to whatever is already chosen, so you can put
-positives and negatives on screen together and sort by `rti` or `lti`. The
+positives and negatives on screen together and sort by `clg_idx` or `flr_idx`. The
 lists live in [`genelists/`](fourparamsacrosstissues/genelists/) and are the
 same files `extract_genes.py --genes-file` reads.
 
@@ -92,14 +92,14 @@ that:
 
 | metric | meaning |
 |---|---|
-| `rti` | **Right** truncation index: `f(x_max)/f(peak)`, baseline removed → bounded **[0, 1]**. Higher = ceiling sits closer to the peak = more truncated. |
-| `lti` | **Left** truncation index: `f(x_min)/f(peak)`, the mirror of `rti` on the same baseline and denominator. The haploinsufficiency-facing side. |
-| `rti_sigma_dist` | `(x_max − x0)/σ` — how many σ the ceiling sits above the peak. **Lower = more truncated.** |
-| `lti_sigma_dist` | `(x0 − x_min)/σ` — how many σ the floor sits below the peak. **Lower = more truncated.** |
+| `clg_idx` | **Ceiling** truncation index (formerly RTI): `f(x_max)/f(peak)`, baseline removed → bounded **[0, 1]**. Higher = ceiling sits closer to the peak = more truncated. |
+| `flr_idx` | **Floor** truncation index (formerly LTI): `f(x_min)/f(peak)`, the mirror of `clg_idx` on the same baseline and denominator. The haploinsufficiency-facing side. |
+| `clg_z` | `(x_max − x0)/σ` — z-score of the ceiling under the fitted curve (formerly `rti_sigma_dist`). **Lower = more truncated.** |
+| `flr_z` | `(x0 − x_min)/σ` — the floor's z-score, negated so lower still means more truncated (formerly `lti_sigma_dist`). **Lower = more truncated.** |
 
-Exactly one of `rti` and `lti` is non-zero: they share a baseline (the curve's
+Exactly one of `clg_idx` and `flr_idx` is non-zero: they share a baseline (the curve's
 minimum over `[min, max]`), which is whichever edge is farther from the peak, so
-that edge reads 0. Read `lti` beside `mean` — the data floor is also the
+that edge reads 0. Read `flr_idx` beside `mean` — the data floor is also the
 detection floor, and the two correlate at ρ = +0.67.
 
 Both are reported per gene alongside the fit parameters and summary statistics.
@@ -111,7 +111,7 @@ The full column list is in
 Neither truncation metric means anything if the gene was never Gaussian or the
 fit was degenerate, and both are common: in kidney cortex **63%** of genes are
 zero-inflated, **23.5%** of converged fits place the peak `x0` outside the
-observed data, and **96.4%** of `rti` values are exactly 0 (which is why `lti`,
+observed data, and **96.4%** of `clg_idx` values are exactly 0 (which is why `flr_idx`,
 zero for only 6.3%, is the side carrying the spread).
 
 [`qc/`](fourparamsacrosstissues/qc/) carries one row per gene classifying the
@@ -127,14 +127,14 @@ because the ceiling is fixed at the observed maximum, a `ΔAIC > 2` rule fires o
 ## Distribution sheets
 
 [`fourparamsacrosstissues/diagrams/`](fourparamsacrosstissues/diagrams/) holds one
-PNG per table — **108 sheets, 756 histograms** — covering `rti`, `lti`,
-`sumsquarevalue`, `mean`, `std`, `rti_sigma_dist` and `lti_sigma_dist` across the genes in
+PNG per table — **108 sheets, 756 histograms** — covering `clg_idx`, `flr_idx`,
+`sumsquarevalue`, `mean`, `std`, `clg_z` and `flr_z` across the genes in
 that tissue, plus a panel stating what was excluded. File names mirror the table
 names.
 
 Only converged fits with a finite value are histogrammed, and the dropped counts
 are printed on the sheet. Two of the five axes are not linear, for reasons that
-show up immediately in the data: `rti` / `lti` are bounded [0, 1] and ~91% of
+show up immediately in the data: `clg_idx` / `flr_idx` are bounded [0, 1] and ~91% of
 liver genes sit at exactly 0, so they get a log count axis; the σ-distances
 spans six orders of magnitude either side of zero once degenerate fits are
 included, so it gets a symlog axis and nothing is clipped.
@@ -250,7 +250,7 @@ writing the index — the GUI depends on that being true.
   export and the CLI's agree exactly.
 - Tables keep **every** gene, including failures (`fit_success = False`, metrics
   `NaN`). Analysis-time filters such as `fit_success == True`,
-  `0 < rti < 1`, and `n_obs >= 30` are deliberately *not* baked in.
+  `0 < clg_idx < 1`, and `n_obs >= 30` are deliberately *not* baked in.
   The GUI shows unfiltered rows, so degenerate fits are visible rather than
   hidden — e.g. the pseudogene ALDH7A1P2 in liver reports σ-dist ≈ 292 with
   `w ≈ 0.0007`.

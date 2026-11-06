@@ -1,4 +1,4 @@
-tissue,table,gene,genename,y0,A,x0,w,sumsquarevalue,rti_sigma_dist,rti,lti_sigma_dist,lti,min,max,mean,std,skew,kurt,left,right,maxheight,rightheight,leftheight,n_obs,fit_success
+tissue,table,gene,genename,y0,A,x0,w,sumsquarevalue,clg_z,clg_idx,flr_z,flr_idx,min,max,mean,std,skew,kurt,left,right,maxheight,rightheight,leftheight,n_obs,fit_success
 adipose_subcutaneous,excluded_at_or_below_-1,ENSG00000223794.1,COX5BP8,,,,,,,,,,-0.9201652144144776,-0.8077654271938618,,,,,,,,,,9,False
 adipose_subcutaneous,raw,ENSG00000223794.1,COX5BP8,0.23076923076923053,742.7564943154479,-0.9977730134290861,0.0007679032824334825,12.92307696070945,349.928580271313,0.0,4.101342817326107,0.00022266058488934373,-1.0,-0.8077654271938618,-0.9981738170826571,0.016578626734116385,9.32856999129972,87.98860641708936,-1.0,-0.8077654271938618,742.2779673884394,0.0,0.1652760463691843,714,True
 adipose_visceral_omentum,excluded_at_or_below_-1,ENSG00000223794.1,COX5BP8,,,,,,,,,,-0.8374818606492586,-0.553035567462399,,,,,,,,,,6,False

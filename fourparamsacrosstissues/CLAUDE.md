@@ -9,25 +9,40 @@ For each of the **54 GTEx v11 human tissues**, we characterise the shape of ever
 gene's expression-level distribution across the population of donors. Per gene we
 fit a **4-parameter Gaussian** to its 40-bin expression histogram and compute a
 set of shape / truncation metrics (see "Generated statistics" below). The headline
-metrics are the two **truncation indices**, RTI and LTI:
+metrics are the two **truncation indices**, clg_idx and flr_idx:
 
-- **RTI** (right) — how strongly the *upper* tail is "capped". A candidate signal
+- **clg_idx** (ceiling, the upper edge) — how strongly the *upper* tail is "capped". A candidate signal
   for genes whose **over**-expression is deleterious: individuals expressing past
   a ceiling are censored from the healthy population.
-- **LTI** (left) — the mirror, how strongly the *lower* tail is capped. The
+- **flr_idx** (floor, the lower edge) — the mirror, how strongly the *lower* tail is capped. The
   corresponding signal for **haplo**insufficiency: individuals expressing below a
   floor are censored.
+
+> **Naming (renamed 2026-11-06).** These were called RTI and LTI until
+> 2026-11-06. Old → new: `rti` → `clg_idx`, `lti` → `flr_idx`, `rti_sigma_dist`
+> → `clg_z`, `lti_sigma_dist` → `flr_z`, `rti_missing` / `lti_missing` →
+> `clg_missing` / `flr_missing`, `rti_lr` / `lti_lr` → `clg_lr` / `flr_lr`,
+> newRTI / newLTI → `new_clg_idx` / `new_flr_idx`, oldLTI → `old_flr_idx`,
+> idkLTI → `idk_flr_idx`, dRTI → `d_clg_idx`. Only headers and names changed;
+> every value is byte-identical. The locked `utc/` and `d_clg_idx/` PLAN and
+> RESULTS files keep the old names, with a note at the top. The browser maps
+> old names in saved working sets and shared links (`LEGACY_COL`).
+>
+> `clg_z` is the z-score of the ceiling under the fitted curve,
+> `(x_max − x0)/σ` with `σ = w/√2`: the fitted peak and width, not the sample
+> `mean`/`std`. `flr_z` is `(x0 − x_min)/σ`, the floor's z-score **negated**,
+> so both read "lower = more truncated".
 
 **Exactly one of the two is non-zero for any given gene.** Both are measured
 above the same baseline — the fitted curve's minimum over `[min, max]` — and for
 a bell that minimum is whichever edge sits farther from the peak, so that edge
 reads 0 and the nearer one carries the whole ratio. They name *which side is
-closer*, and are not two independent measurements. In practice RTI is exactly 0
-for ~96% of genes (kidney cortex) and LTI carries the spread, median 0.457.
+closer*, and are not two independent measurements. In practice clg_idx is exactly 0
+for ~96% of genes (kidney cortex) and flr_idx carries the spread, median 0.457.
 
-**Read LTI beside `mean`.** The data floor is also where detection fails, and in
-the excluded tables 63% of genes sit within 0.1 of the −1 cut. Spearman(`lti_sigma_dist`,
-`mean`) = **+0.67** in muscle skeletal, so a high LTI on a barely-expressed gene
+**Read flr_idx beside `mean`.** The data floor is also where detection fails, and in
+the excluded tables 63% of genes sit within 0.1 of the −1 cut. Spearman(`flr_z`,
+`mean`) = **+0.67** in muscle skeletal, so a high flr_idx on a barely-expressed gene
 is likely the detection floor rather than biology. Match on expression before
 reading anything into it.
 
@@ -45,7 +60,7 @@ fourparam/                    <- all the code (kept separate from the data)
   compute_r2.py               <- add r_squared to ONE table, without refitting -> r2/
   build_r2.py                 <- publish r_squared to the browser as a fixed-width string
   append_r2_column.py         <- append r_squared as a real last column of the excluded tables
-  migrate_rti_lti.py          <- rewrite tables into the RTI/LTI schema, no refit; --recheck audits
+  migrate_clg_idx_flr_idx.py          <- rewrite tables into the clg_idx/flr_idx schema, no refit; --recheck audits
   stage_worm_table.py         <- publish the C. elegans table, repairing Excel-mangled gene names
   generate_fourparam.py       <- generate ONE fourparam table from ONE matrix (raw or excluded)
   generate_fourparam_adaptive_bins.py <- refit ONE tissue at the linear n-dependent bin count -> results/adaptive_bins/
@@ -62,22 +77,22 @@ fourparam/                    <- all the code (kept separate from the data)
   make_r2_diagrams.py         <- one R^2 histogram per tissue -> r2_histograms/
   verify_hist_columns.py      <- check hist/hist_max invariants in outputs/
   backfill_hist.py            <- add hist/hist_max to an excluded table that predates them, no refit
-  tailmodel.py                <- censored-left / truncated-right MLE: truncation as fraction missing (candidate RTI/LTI replacement)
+  tailmodel.py                <- censored-left / truncated-right MLE: truncation as fraction missing (candidate clg_idx/flr_idx replacement)
   simulate_truncation.py      <- simulation harness scoring old vs new truncation metrics -> results/truncation_sim/
   compute_tailmodel.py        <- fit the tail model to ONE tissue's RAW rows -> tailmodel/ (muscle_skeletal only so far)
-  compute_idklti.py           <- idklti (old LTI, 0 where the floor is the left edge), all 54 tissues + worm -> idklti/
-  build_tailmodel.py          <- publish newRTI / newLTI to the browser -> docs/tailmodel/ + manifest
+  compute_idk_flr_idx.py           <- idk_flr_idx (old flr_idx, 0 where the floor is the left edge), all 54 tissues + worm -> idk_flr_idx/
+  build_tailmodel.py          <- publish new_clg_idx / new_flr_idx to the browser -> docs/tailmodel/ + manifest
   build_gene_type.py          <- publish GENCODE v47 gene_type to the browser -> docs/genetype/ + manifest
   utc.py                      <- upper-tail compression (UTC/LTC/VAR), quantile-based, expression-adjusted -> utc/
   simulate_utc.py             <- UTC validation V1-V3 (truncation vs composition) -> utc/simulation.csv
   evaluate_utc.py             <- the locked UTC tests P1-P4, S1 (see utc/PLAN.md) -> utc/evaluation.json
-  drti_prep.py                <- per-tissue residuals (covariates + 10 PCs, robust z) for dRTI, npz per tissue
-  drti_viability.py           <- dRTI viability: single tissue vs donor mean on spike-ins -> drti/viability.csv
-  drti_core.py                <- donor-level objects (mean/blup/factor) + right-truncation statistics
-  drti_bench.py               <- locked spike-in benchmark + selection rule -> drti/bench_*, selection*.json
-  drti_final.py               <- phase 5 scoring of the chosen recipe (written, not run: nothing admissible)
-  drti_evaluate.py            <- phase 6 locked pTriplo test (written, not run)
-  collins_mmc7.py             <- top-10%-of-tissues RTI / LTI (idkLTI values) joined to Collins 2022 Table S7 + Spearman / partial -> results/collins_mmc7/
+  d_clg_idx_prep.py                <- per-tissue residuals (covariates + 10 PCs, robust z) for d_clg_idx, npz per tissue
+  d_clg_idx_viability.py           <- d_clg_idx viability: single tissue vs donor mean on spike-ins -> d_clg_idx/viability.csv
+  d_clg_idx_core.py                <- donor-level objects (mean/blup/factor) + right-truncation statistics
+  d_clg_idx_bench.py               <- locked spike-in benchmark + selection rule -> d_clg_idx/bench_*, selection*.json
+  d_clg_idx_final.py               <- phase 5 scoring of the chosen recipe (written, not run: nothing admissible)
+  d_clg_idx_evaluate.py            <- phase 6 locked pTriplo test (written, not run)
+  collins_mmc7.py             <- top-10%-of-tissues clg_idx / flr_idx (idk_flr_idx values) joined to Collins 2022 Table S7 + Spearman / partial -> results/collins_mmc7/
   tests/                      <- pytest suite: `python -m pytest tests/ -q`
 data/                         <- the 54 input matrices (nothing else)
   v11_log2_<tissue>.csv.gz    <- one per tissue, already log2(TPM+1)-1 transformed
@@ -87,10 +102,10 @@ outputs/                      <- the generated tables go here (starts empty)
 qc/                           <- distribution class + fit-validity, joined on `gene`
   v11_log2_<tissue>_qc[_excluded_at_or_below_-1].csv
 r2/                           <- r_squared alone, joined on `gene` (see "Fit quality")
-idklti/                       <- idklti alone, joined on `gene`, every excluded table (see "Tail model")
+idk_flr_idx/                       <- idk_flr_idx alone, joined on `gene`, every excluded table (see "Tail model")
 tailmodel/                    <- tail-model fit per gene, muscle_skeletal only (see "Tail model")
 utc/                          <- upper-tail compression: PLAN.md (locked before scoring), scores, evaluation
-drti/                         <- donor-level right truncation: PLAN.md (locked), benchmark, RESULTS.md
+d_clg_idx/                         <- donor-level right truncation: PLAN.md (locked), benchmark, RESULTS.md
   v11_log2_<tissue>_r2[_excluded_at_or_below_-1].csv
 worm/                         <- C. elegans, one table (see "Worm data")
   worm_fourparam_excluded_at_or_below_-1.csv
@@ -271,7 +286,7 @@ table is step 2. Everything else — the finite filter, the `MIN_OBS = 10` floor
 the failure rows, the columns — is default behaviour shared by both.
 
 > Note on downstream analysis filters: some analyses additionally keep only
-> `fit_success == True`, `0 < rti < 1`, and raise the floor to
+> `fit_success == True`, `0 < clg_idx < 1`, and raise the floor to
 > `n_obs >= 30`. Those are **analysis-time** filters you apply when *using* a
 > table — they are deliberately **not** baked into the generated tables, which
 > keep every gene (with `fit_success` flags) so nothing is thrown away up front.
@@ -289,15 +304,15 @@ One row per gene. Columns, in order:
 | `x0` | fitted peak centre |
 | `w` | fitted width (`w = sigma * sqrt(2)`) |
 | `sumsquarevalue` | residual sum of squares of the fit (lower = better). **Unnormalised** — it tracks `n_obs` (ρ = 0.99 across tissues) and cannot compare two genes. Use `r_squared` from `r2/` for that; see "Fit quality" |
-| `rti_sigma_dist` | `(x_max − x0)/(w/√2)` — how many σ the **ceiling** sits above the peak; **lower = more truncated** |
-| `rti` | **right height-ratio truncation index**, `f(x_max)/f(peak)` with the curve's interval-minimum subtracted from both; **bounded [0, 1]**; higher = more truncated (0 = ceiling at curve min, 1 = ceiling at peak) |
-| `lti_sigma_dist` | `(x0 − x_min)/(w/√2)` — how many σ the **floor** sits below the peak; **lower = more truncated**. The mirror of `rti_sigma_dist` |
-| `lti` | **left height-ratio truncation index**, `f(x_min)/f(peak)` on the same baseline and the same denominator as `rti`; **bounded [0, 1]** |
+| `clg_z` | `(x_max − x0)/(w/√2)` — z-score of the **ceiling** under the fitted curve: how many σ it sits above the peak; **lower = more truncated** |
+| `clg_idx` | **right height-ratio truncation index**, `f(x_max)/f(peak)` with the curve's interval-minimum subtracted from both; **bounded [0, 1]**; higher = more truncated (0 = ceiling at curve min, 1 = ceiling at peak) |
+| `flr_z` | `(x0 − x_min)/(w/√2)` — the **floor**'s z-score, negated: how many σ it sits below the peak; **lower = more truncated**. The mirror of `clg_z` |
+| `flr_idx` | **left height-ratio truncation index**, `f(x_min)/f(peak)` on the same baseline and the same denominator as `clg_idx`; **bounded [0, 1]** |
 | `min`, `max` | min / max of the values used for the fit |
 | `mean`, `std` | mean and **sample** std (ddof=1) of those values |
 | `skew`, `kurt` | skewness and **Fisher excess** kurtosis (normal → 0) of those values |
 | `left`, `right` | the truncation floor `x_min` / ceiling `x_max` used by the metrics (the data min / max). Blank on a `fit_success = False` row, where `min`/`max` still carry values |
-| `maxheight`, `rightheight`, `leftheight` | curve height at the peak / at `x_max` / at `x_min`, above the curve's interval-minimum baseline (`rti = rightheight/maxheight`, `lti = leftheight/maxheight`) |
+| `maxheight`, `rightheight`, `leftheight` | curve height at the peak / at `x_max` / at `x_min`, above the curve's interval-minimum baseline (`clg_idx = rightheight/maxheight`, `flr_idx = leftheight/maxheight`) |
 | `n_obs` | number of finite values fit (after any exclusion) |
 | `fit_success` | `True` if the fit converged with `n_obs >= 10`, else `False` (metrics `NaN`) |
 | `hist` | 40-character thumbnail histogram, one character per bin from `A-Za-z0-9+/` (= 0–63), each `round(count * 63 / hist_max)`. **Not analysis data** — quantised and lossy to 1/63 of the peak. Read by the browser's **gene page**, which decodes it into real bars and overlays the fitted curve on the same count axis. Not by the table's Shape cells, which draw the fitted curve alone. Empty when `n_obs = 0`. Written whenever `n_obs >= 1`, **independent of `fit_success`**, so a gene whose fit failed still shows its real distribution. Bin edges are not stored: they are `linspace(min, max, 41)`, and numpy widens a zero-width range to `[min-0.5, max+0.5]` |
@@ -313,7 +328,7 @@ whether the fit converged (NaN on a `fit_success=False` row).
 
 ## Bin-count sensitivity (`results/auto_binning/`, `generate_fourparam_auto_bins.py`)
 
-Does the fixed 40 bins drive RTI / LTI? Igor Pro's three auto-bin rules
+Does the fixed 40 bins drive clg_idx / flr_idx? Igor Pro's three auto-bin rules
 (Sturges `ceil(1 + log2 n)`; Scott width `3.49·sd·n^(-1/3)`; Freedman–Diaconis
 width `2·IQR·n^(-1/3)`) are applied **per gene** to its excluded values, so
 Scott and FD give a bin count per gene, not per tissue. Each rule, plus fixed 40
@@ -328,7 +343,7 @@ python generate_fourparam_auto_bins.py \
 
 Spinal cord (n = 204), genes with `n_obs >= 30` fit in both arms, vs 40 bins:
 
-| arm | median bins (p5–p95) | fit_success | ρ rti | ρ lti | ρ rti_sigma_dist | side flips |
+| arm | median bins (p5–p95) | fit_success | ρ clg_idx | ρ flr_idx | ρ clg_z | side flips |
 |---|---|---|---|---|---|---|
 | 18 | 18 | 53,317 | 0.997 | 0.950 | 0.961 | 0.6% |
 | Sturges | 9 (5–9) | 52,266 | 0.994 | 0.877 | 0.917 | 0.8% |
@@ -340,12 +355,12 @@ loses ~11k genes to fewer than 5 bins (`MIN_BINS`). Median R² rises as bins
 coarsen (0.72 at 40, 0.95–0.97 at 9–11), which is the bins-per-n effect under
 "Fit quality", not better fits — do not pick a rule by R².
 
-`..._rti_by_binning_...png` plots per-gene RTI under each rule against the
-40-bin RTI of the same gene, for the 11,377 genes with RTI > 0 under any rule.
+`..._clg_idx_by_binning_...png` plots per-gene clg_idx under each rule against the
+40-bin clg_idx of the same gene, for the 11,377 genes with clg_idx > 0 under any rule.
 On that subset ρ is 0.964 (Sturges) to 0.987 (18); the table's higher ρ also
-counts the ~30k genes at RTI = 0 under every rule. `..._rti_hist_by_binning_...png`
-is the `make_diagrams.py` RTI panel once per rule on a shared y axis: the shapes
-match, except the spike at RTI = 1 (24 genes at 40 bins, 33 at 18) nearly
+counts the ~30k genes at clg_idx = 0 under every rule. `..._clg_idx_hist_by_binning_...png`
+is the `make_diagrams.py` clg_idx panel once per rule on a shared y axis: the shapes
+match, except the spike at clg_idx = 1 (24 genes at 40 bins, 33 at 18) nearly
 vanishes under Scott (3) and FD (1).
 
 ## Extracting a gene set (`extract_genes.py`)
@@ -373,8 +388,8 @@ typo or an absent symbol is loud rather than quietly empty.
 ## Distribution sheets (`diagrams/`, `excluded_diagrams/`, `make_diagrams.py`)
 
 One PNG per table — 54 tissues × 2 filters = **108 sheets, 540 histograms** —
-covering `rti`, `lti`, `sumsquarevalue`, `mean`, `std`, `rti_sigma_dist` and
-`lti_sigma_dist` over the genes in that table, plus a panel stating what was
+covering `clg_idx`, `flr_idx`, `sumsquarevalue`, `mean`, `std`, `clg_z` and
+`flr_z` over the genes in that table, plus a panel stating what was
 excluded. Seven metric panels plus the info panel, laid out 2 x 4. File names mirror the table names, so a sheet sorts next to its
 source.
 
@@ -398,11 +413,11 @@ dropped counts are printed on the sheet rather than silently omitted.
 shape, so one rule cannot serve them all. Do not "simplify" them to a common
 linear axis; each choice is load-bearing:
 
-- `rti` / `lti` are bounded [0, 1] and violently zero-inflated (~91% of liver
-  genes sit at exactly 0 for `rti`; `lti` is the zeroed side for the rest).
+- `clg_idx` / `flr_idx` are bounded [0, 1] and violently zero-inflated (~91% of liver
+  genes sit at exactly 0 for `clg_idx`; `flr_idx` is the zeroed side for the rest).
   Fixed [0, 1] domain with a **log count axis**; on a linear one the panel is a
   single bar and the tail is invisible. Both sides share the rule.
-- `rti_sigma_dist` / `lti_sigma_dist` span ~6 orders of magnitude either side of zero
+- `clg_z` / `flr_z` span ~6 orders of magnitude either side of zero
   (degenerate fits with `w ≈ 1e-4` reach 1e5 while the meaningful range is single
   digits). **Symlog x**, linear within ±1, with symlog-spaced bins. Nothing is
   clipped — no linear window shows the bulk without hiding ~10% of the genes.
@@ -607,10 +622,10 @@ calibrated threshold. Either alone is common noise.
 
 ## Tail model: truncation as fraction missing (`tailmodel.py`, `simulate_truncation.py`)
 
-A candidate replacement for RTI / LTI. **Run on muscle_skeletal only**, as a
+A candidate replacement for clg_idx / flr_idx. **Run on muscle_skeletal only**, as a
 side-car in `tailmodel/` joined on `gene` (not in `outputs/`, for the same
 reasons as `qc/` and `r2/`). It exists because both indices turned out to
-measure expression level rather than truncation (see "Read LTI beside `mean`"
+measure expression level rather than truncation (see "Read flr_idx beside `mean`"
 above).
 
 The two edges of a gene's distribution are lost in different ways, and the
@@ -623,11 +638,11 @@ model treats each one the way it actually happened:
 - **Right = truncation** at `x_max`. Donors past it are absent, and every donor
   pays `−log Φ((x_max − μ)/σ)`.
 
-Outputs are `rti_missing = 1 − Φ((x_max − μ)/σ)`, the estimated fraction of the
-population missing above the ceiling, and `lti_missing`, its mirror below
-`x_min`. **`lti_missing` is NaN whenever any donor is censored.** Left truncation
+Outputs are `clg_missing = 1 − Φ((x_max − μ)/σ)`, the estimated fraction of the
+population missing above the ceiling, and `flr_missing`, its mirror below
+`x_min`. **`flr_missing` is NaN whenever any donor is censored.** Left truncation
 cannot be told apart from the detection limit there, so the answer is "unknown",
-not 0. `rti_lr` / `lti_lr` are the likelihood-ratio gains for truncating each side.
+not 0. `clg_lr` / `flr_lr` are the likelihood-ratio gains for truncating each side.
 
 ```bash
 cd fourparam
@@ -638,22 +653,22 @@ python simulate_truncation.py --reps 40 --n 300
 Simulated with latent σ = 1, μ from −1.5 to 3 (≈69% to 0% of donors censored),
 n ∈ {100, 300, 800}, and the cut 0.5/1/2σ from the mean, the numbers were:
 
-| check | old `rti` / `lti` | new `rti_missing` / `lti_missing` |
+| check | old `clg_idx` / `flr_idx` | new `clg_missing` / `flr_missing` |
 |---|---|---|
-| untruncated low- vs high-expression gene (ideal AUC 0.5) | `lti` **0.86–1.00**, `rti` **0.28–0.30** | `rti_missing` **0.44–0.53** |
-| power, 1σ right cut, μ ≤ −0.5 | `rti` 0.50–0.61 (blind) | 0.96–1.00 |
+| untruncated low- vs high-expression gene (ideal AUC 0.5) | `flr_idx` **0.86–1.00**, `clg_idx` **0.28–0.30** | `clg_missing` **0.44–0.53** |
+| power, 1σ right cut, μ ≤ −0.5 | `clg_idx` 0.50–0.61 (blind) | 0.96–1.00 |
 | missing fraction recovered (n=800, true 15.9%) | n/a | 16.0–18.4% |
-| left-skewed but **untruncated** read as truncated | `rti_sigma_dist` 0.57–1.00 | **0.68–1.00** |
+| left-skewed but **untruncated** read as truncated | `clg_z` 0.57–1.00 | **0.68–1.00** |
 
 **The last row is the open problem.** A naturally short tail (left skew) and a
 cut tail look the same to any Gaussian tail model, and the new metric is fooled
-at least as much as the old one. Do not read `rti_missing` as lethality
+at least as much as the old one. Do not read `clg_missing` as lethality
 without a skew-robust check (e.g. a generalized-Pareto tail-shape fit) or the
 covariate regression described under "What the first two tissues actually
 showed".
 
 Both cut points sit at the observed extremes, so under a true Gaussian of N
-donors the expected `rti_missing` is about `1/(N+1)`, not 0. Judge it against a
+donors the expected `clg_missing` is about `1/(N+1)`, not 0. Judge it against a
 simulated null at the same N, as with `d_aic`.
 
 ### Real data: muscle skeletal (`tailmodel/`, `compute_tailmodel.py`)
@@ -661,14 +676,14 @@ simulated null at the same N, as with `d_aic`.
 ```bash
 cd fourparam
 python compute_tailmodel.py --input ../data/v11_log2_muscle_skeletal.csv.gz   # ~9 min
-python compute_idklti.py --tissue muscle_skeletal
+python compute_idk_flr_idx.py --tissue muscle_skeletal
 python build_tailmodel.py
 ```
 
 **Read the metrics only where `usable` is True.** The first real run exposed a
 degeneracy the simulation never hit: a gene with ~800 of 818 donors at the
 floor and a handful detected "fits" as the lower sliver of an enormous
-distribution (μ ≈ 10⁵) with almost all of it missing, so `rti_missing` = 1.0.
+distribution (μ ≈ 10⁵) with almost all of it missing, so `clg_missing` = 1.0.
 The whole top of the ranking was such genes. `usable` adds the QC-gate analogs:
 ≥ 30 detected donors, `mu <= x_max` (the `x0_in_range` analog), and
 `sigma <= x_max − lower edge` (the `sigma_span_ratio` analog).
@@ -678,34 +693,34 @@ The whole top of the ranking was such genes. `usable` adds the QC-gate analogs:
 | total | 74,628 |
 | fit converged | 61,729 |
 | `usable` | **49,560** |
-| `usable` with a defined `lti_missing` (no donor censored) | 14,660 |
+| `usable` with a defined `flr_missing` (no donor censored) | 14,660 |
 
-**The expression confound is reduced, not gone.** Spearman(`rti_missing`, `mu`)
+**The expression confound is reduced, not gone.** Spearman(`clg_missing`, `mu`)
 = −0.06, but `mu` is the model's own latent mean. Against observed expression
-(the excluded table's `mean`) it is **+0.26** (old `rti`: +0.36). It tracks
+(the excluded table's `mean`) it is **+0.26** (old `clg_idx`: +0.36). It tracks
 left skew harder than the old index does: Spearman with `skew` is **−0.55**
-(old: −0.39). The top `rti_missing` genes are ACTA1, MYL3, MYH7, TPM3, TNNI1,
+(old: −0.39). The top `clg_missing` genes are ACTA1, MYL3, MYH7, TPM3, TNNI1,
 MYH1 (fiber type), KDM5D, DDX3Y (Y-linked: sex) and FKBP5, PDK4
 (stress/fasting response). That is composition, sex and agonal state, exactly
 the skew problem above, **not** lethality.
 
-**Validation in muscle (2026-10-10): newRTI does not identify dosage-sensitive
+**Validation in muscle (2026-10-10): new_clg_idx does not identify dosage-sensitive
 genes, and on matched controls it points the wrong way.** On 49,434 genes where
 both indices exist, 1:1 matched on `mean` (caliper 0.1, matched expression AUC
 0.50), AUC = P(positive reads more truncated), 95% bootstrap CI:
 
-| positives vs negatives | n pairs | old `rti` | `rti_missing` |
+| positives vs negatives | n pairs | old `clg_idx` | `clg_missing` |
 |---|---|---|---|
 | OMIM over-expression (51) vs pTriplo ≤ 0.10 | 49 | 0.558 [0.48–0.63] | 0.464 [0.38–0.54] |
 | pTriplo ≥ 0.94 vs pTriplo ≤ 0.10 | 551 | 0.505 [0.49–0.52] | **0.455 [0.43–0.48]** |
 | pTriplo ≥ 0.94 vs duplication-tolerant | 323 | 0.511 [0.49–0.53] | **0.413 [0.38–0.44]** |
 | DECIPHER vs duplication-tolerant | 112 | 0.500 [0.46–0.54] | 0.437 [0.39–0.49] |
 
-Unmatched, both look predictive (`rti_missing` up to 0.74), but only because the
+Unmatched, both look predictive (`clg_missing` up to 0.74), but only because the
 positives are more highly expressed (expression alone: AUC 0.73–0.85). After
-matching, old `rti` is at chance and `rti_missing` is **below** it, because
+matching, old `clg_idx` is at chance and `clg_missing` is **below** it, because
 tolerant genes are slightly *more* left-skewed than matched sensitive ones
-(left-skew AUC 0.46–0.48), and `rti_missing` is mostly a left-skew detector.
+(left-skew AUC 0.46–0.48), and `clg_missing` is mostly a left-skew detector.
 Partial Spearman with continuous pTriplo, controlling for expression: old +0.01,
 new −0.03. The canonical duplication-syndrome genes (PMP22, LMNB1, SNCA, PLP1,
 MECP2, APP, DYRK1A, RAI1) all read ≤ 0.009.
@@ -715,86 +730,86 @@ OLS on detected donors removed sex, age, Hardy scale, RIN, ischemic time and
 exonic rate (GTEx v11 `SampleAttributesDS` / `SubjectPhenotypesDS`), then
 optionally the top 10 expression PCs; both indices were refit. Censored donors
 stayed at −1, which approximates their shifted censoring point. The adjustment
-works: fiber-type genes leave the top of `rti_missing`, and its correlation with
+works: fiber-type genes leave the top of `clg_missing`, and its correlation with
 expression falls from +0.26 to +0.14 (known covariates) and +0.07 (+PCs). But
-on matched controls `rti_missing` moves further **below** chance (pTriplo ≥ 0.94
-vs duplication-tolerant: 0.413 → 0.378 → 0.377), and old `rti` drifts below too
+on matched controls `clg_missing` moves further **below** chance (pTriplo ≥ 0.94
+vs duplication-tolerant: 0.413 → 0.378 → 0.377), and old `clg_idx` drifts below too
 with PCs (0.475). Partial correlation with pTriplo controlling for expression:
-`rti_missing` −0.03 → −0.05 → −0.08. The new top hits are pseudogenes
+`clg_missing` −0.03 → −0.05 → −0.08. The new top hits are pseudogenes
 (RPS28P7, GPX1P1, UQCRFS1P1) and Y-linked genes detected only in males
 (TXLNGY), i.e. mapping and censoring artifacts. In muscle, neither index carries
 a dosage-sensitivity signal, with or without covariate adjustment. Analysis
 scripts were run from a session scratchpad and are not in the repo.
 
-### `idklti` (`idklti/`, `compute_idklti.py`) -- all 54 tissues
+### `idk_flr_idx` (`idk_flr_idx/`, `compute_idk_flr_idx.py`) -- all 54 tissues
 
 ```bash
 cd fourparam
-python compute_idklti.py --all            # 54 excluded tables, ~25 s, nothing refit
+python compute_idk_flr_idx.py --all            # 54 excluded tables, ~25 s, nothing refit
 ```
 
-The old 4-parameter LTI, **forced to 0 where the gene's left edge is the
+The old 4-parameter flr_idx, **forced to 0 where the gene's left edge is the
 detection floor**: smallest detected value (`min` in the excluded table)
 ≤ −0.75, which is TPM ≤ 0.19, the same `FLOOR` as `normality.py`. Otherwise it
-equals `lti`, **copied as text** so it is byte-identical to the table; a failed
+equals `flr_idx`, **copied as text** so it is byte-identical to the table; a failed
 fit is blank. Not part of the tail model and independent of `usable`.
 
-`idklti/v11_log2_<tissue>_idklti_excluded_at_or_below_-1.csv` is `gene,idklti`
+`idk_flr_idx/v11_log2_<tissue>_idk_flr_idx_excluded_at_or_below_-1.csv` is `gene,idk_flr_idx`
 for every gene of every excluded table, ~85 MB in all. Across the 54 tissues:
 3,032,717 defined, **2,106,146 (69.4%) forced to 0** by the rule, 386,026
 non-zero.
 
 Muscle: 61,172 defined. The floor rule covers **49,308 (80.6%)**; another 2,813
-already had `lti` exactly 0 (the shared RTI/LTI baseline), so 52,121 read 0 in
+already had `flr_idx` exactly 0 (the shared clg_idx/flr_idx baseline), so 52,121 read 0 in
 total and 9,051 are non-zero. The cut sits on a plateau (72.7% at −0.9, 80.6% at
 −0.75, 84.1% at −0.5), but
 zeroing is itself expression-dependent: median mean expression is −0.86 for
-zeroed genes vs 2.24 for kept. So score `idklti` on expression-matched controls
+zeroed genes vs 2.24 for kept. So score `idk_flr_idx` on expression-matched controls
 only. A marginal comparison rewards the rule. Genes just above the cut
-(min ≈ −0.7, mostly small RNAs and pseudogenes) still carry `lti` = 1.
+(min ≈ −0.7, mostly small RNAs and pseudogenes) still carry `flr_idx` = 1.
 
-**Worm** (`python compute_idklti.py --worm` →
-`idklti/worm_idklti_excluded_at_or_below_-1.csv`, per transcript, same rule):
+**Worm** (`python compute_idk_flr_idx.py --worm` →
+`idk_flr_idx/worm_idk_flr_idx_excluded_at_or_below_-1.csv`, per transcript, same rule):
 25,819 defined, 8,807 forced to 0 by the floor rule, 19,960 read 0 in all
-(11,153 already had `lti` = 0), 5,859 non-zero. The cut is **not** on a
+(11,153 already had `flr_idx` = 0), 5,859 non-zero. The cut is **not** on a
 plateau there (31.8% of transcripts at −0.9, 41.4% at −0.75, 48.9% at −0.5).
-Unlike human, old `lti` falls with expression in worm (Spearman with `mean`
-−0.71); idklti is +0.15. The browser's Worm tab computes it from the row on
+Unlike human, old `flr_idx` falls with expression in worm (Spearman with `mean`
+−0.71); idk_flr_idx is +0.15. The browser's Worm tab computes it from the row on
 load (same `IDK_FLOOR`, text-identical to the side-car on all 25,849 rows) and
-shows it as **LTI** beside oldLTI; the worm CSV export renames headers like the
-human ones (`lti` → `old_lti`, appended idklti → `lti`, last column).
+shows it as **flr_idx** beside old_flr_idx; the worm CSV export renames headers like the
+human ones (`flr_idx` → `old_flr_idx`, appended idk_flr_idx → `flr_idx`, last column).
 
 ### In the browser
 
-**idkLTI** is shown for **every tissue** and needs no file: the page computes
-it from the loaded row's own `min` and `lti` (`idkltiText()`, cut-off
+**idk_flr_idx** is shown for **every tissue** and needs no file: the page computes
+it from the loaded row's own `min` and `flr_idx` (`idkFlrIdxText()`, cut-off
 `IDK_FLOOR`), which both load routes carry. It yields the same text as
-`idklti/` -- verified against all 1,389 rows of a tissue-major thyroid load and
+`idk_flr_idx/` -- verified against all 1,389 rows of a tissue-major thyroid load and
 a gene-major load across three tissues, zero mismatches -- and
-`tests/test_idklti.py` fails if `IDK_FLOOR` and `compute_idklti.FLOOR_CUT` ever
+`tests/test_idk_flr_idx.py` fails if `IDK_FLOOR` and `compute_idk_flr_idx.FLOOR_CUT` ever
 drift apart.
 
-**newRTI / newLTI** come from `build_tailmodel.py`, which writes
-`docs/tailmodel/<stem>.txt`: two `%7.5f` fields per gene (`rti_missing`,
-`lti_missing`), 14 characters, in `genes.tsv` order, plus a `manifest.tailmodel`
+**new_clg_idx / new_flr_idx** come from `build_tailmodel.py`, which writes
+`docs/tailmodel/<stem>.txt`: two `%7.5f` fields per gene (`clg_missing`,
+`flr_missing`), 14 characters, in `genes.tsv` order, plus a `manifest.tailmodel`
 block (`build_gui_data.py` carries it over via `PATCHED_BLOCKS`). Both are
 blanked unless `usable`. They are virtual columns (`TAIL_COLS`, joined by gene
 index exactly like R²) that appear only when a loaded tissue has a tailmodel
 file, and show "—" with a reason for any other row.
 
-Both CSV exports append `rti_missing,lti_missing,idklti` (then `gene_type`) after `r_squared`, so
+Both CSV exports append `clg_missing,flr_missing,idk_flr_idx` (then `gene_type`) after `r_squared`, so
 every earlier column keeps its position.
 
-## Donor-level right truncation (`drti/`, `drti_*.py`)
+## Donor-level right truncation (`d_clg_idx/`, `d_clg_idx_*.py`)
 
 An attempt at the best possible right-truncation score, using every tissue
-at once. Full design in `drti/PLAN.md` (locked before the benchmark), outcome
-in `drti/RESULTS.md`.
+at once. Full design in `d_clg_idx/PLAN.md` (locked before the benchmark), outcome
+in `d_clg_idx/RESULTS.md`.
 
 Truncation acts on a donor's shared latent level, and one tissue sees that
 level through heavy tissue-specific noise (median ICC 0.13). A 10% latent cut
 is detected in 2% of genes from one tissue and 50% from the donor mean. So
-dRTI scores the donor-level mean / BLUP / factor of residual expression
+d_clg_idx scores the donor-level mean / BLUP / factor of residual expression
 (covariates + 10 PCs removed) with tail statistics, calibrated by kNN on
 (expression, ICC, donor count), and is chosen on spike-ins in 3,897 real
 genes with no dosage labels.
@@ -810,9 +825,9 @@ biology test were therefore not run.
 
 ```bash
 cd fourparam
-python drti_prep.py --meta <GTEx v11 annotations dir> --out <dir> --no-raw   # ~900 MB
-python drti_bench.py --prep <dir>                  # 4 workers, checkpointed, ~1.5 h
-python drti_bench.py --prep <dir> --realistic      # realistic-strength confounds
+python d_clg_idx_prep.py --meta <GTEx v11 annotations dir> --out <dir> --no-raw   # ~900 MB
+python d_clg_idx_bench.py --prep <dir>                  # 4 workers, checkpointed, ~1.5 h
+python d_clg_idx_bench.py --prep <dir> --realistic      # realistic-strength confounds
 ```
 
 Memory: use ≤ 4 workers on a 16 GB machine. A 10-worker run was killed by
@@ -886,22 +901,22 @@ never against a GTEx tissue's raw R². The browser needed no change:
 strip gains a median. **Re-running `stage_worm_table.py` drops the column**,
 since its source predates it; run `append_r2_column.py --worm` again afterward.
 
-## Migrating a table to the RTI/LTI schema (`migrate_rti_lti.py`)
+## Migrating a table to the clg_idx/flr_idx schema (`migrate_clg_idx_flr_idx.py`)
 
-The tables were generated before LTI existed. `migrate_rti_lti.py` rewrites them
+The tables were generated before flr_idx existed. `migrate_clg_idx_flr_idx.py` rewrites them
 in place **without refitting**:
 
 ```bash
 cd fourparam
-python migrate_rti_lti.py --all --verify      # rewrite every table in outputs/
-python migrate_rti_lti.py --all --recheck     # audit tables already migrated
-python migrate_rti_lti.py --input ../worm/worm_fourparam_excluded_at_or_below_-1.csv
+python migrate_clg_idx_flr_idx.py --all --verify      # rewrite every table in outputs/
+python migrate_clg_idx_flr_idx.py --all --recheck     # audit tables already migrated
+python migrate_clg_idx_flr_idx.py --input ../worm/worm_fourparam_excluded_at_or_below_-1.csv
 ```
 
-It renames `ti_fourparam_sigma_dist` -> `rti_sigma_dist` and `truncationindex`
--> `rti`, derives `lti_sigma_dist`, `lti`, `left` and `leftheight` from the
+It renames `ti_fourparam_sigma_dist` -> `clg_z` and `truncationindex`
+-> `clg_idx`, derives `flr_z`, `flr_idx`, `left` and `leftheight` from the
 stored `y0, A, x0, w, min, max`, and reorders into the schema. It is re-runnable
-and skips a table that already has `rti`.
+and skips a table that already has `clg_idx`.
 
 **Nothing is refit and no carried-over value is re-serialised.** Every field
 that already existed is copied as text, which is what keeps the byte-identity
@@ -1099,7 +1114,7 @@ each type to a coarse group. `build_gui_data.py` carries the block over via
 The browser shows `group` in the compact columns and the raw `gene type`
 under *All columns*. Both are categorical filters, and *Protein-coding only*
 / *Non-coding only* set `group is / is not protein_coding`. Both CSV exports
-append `gene_type` as the last column, after `idklti`.
+append `gene_type` as the last column, after `idk_flr_idx`.
 `tests/test_gene_type_sidecar.py` pins the geometry.
 
 ### Pasting a gene list
@@ -1186,7 +1201,7 @@ to whichever tab you came from with its table intact.
 |---|---|---|
 | Distribution in the focus tissue | `hist` / `hist_max` decoded against `min`/`max`, plus `R²` from `r2/` | 40 real bars plus toggleable overlays: the 4-param fit, a moment-matched normal from `mean`/`std`, `y0`, `x0`, `x_max`, `min`, ±1σ/±2σ. The stat strip carries `R²` next to `fit`, so "the fit converged" and "the fit is any good" are never confused |
 | `mean` across all 54 tissues | gene-major shard | zero-anchored bars + a ranking sentence |
-| `rti` / `lti` / `rti_sigma_dist` / `lti_sigma_dist` across all 54 tissues | gene-major shard | same, with a four-way metric toggle |
+| `clg_idx` / `flr_idx` / `clg_z` / `flr_z` across all 54 tissues | gene-major shard | same, with a four-way metric toggle |
 | What this gene is | **mygene.info**, live | name, summary, aliases, locus |
 | Associated phenotypes | `docs/overexpression_phenotypes.tsv` + **Ensembl**, live | curated over-expression drivers first, then every Ensembl association |
 
@@ -1213,7 +1228,7 @@ Four things about it are load-bearing:
    from this repository. Both are optional — a blocked, offline or slow request
    (9 s timeout) leaves that panel saying so and changes nothing else. They are
    labelled as external wherever they appear.
-4. **Ties are named, not hidden.** `rti` is exactly 0 for most genes
+4. **Ties are named, not hidden.** `clg_idx` is exactly 0 for most genes
    in most tissues, so "25th of 54" is usually a 30-way draw; the ranking
    sentence says how many tissues share the value rather than implying a
    position. The σ-distance bars clip to ±6σ (degenerate fits reach 10⁵) and
@@ -1284,20 +1299,20 @@ rust vertical is the ceiling `x_max`. Coverage adds a dotted curve below `min`
   comparable. That is the honest cost of real units, and precisely what the
   column next to it exists to fix.
 
-**Curve coverage** — `shapeCell()`, reads `rti_sigma_dist`, `w`, `x0`,
+**Curve coverage** — `shapeCell()`, reads `clg_z`, `w`, `x0`,
 `min`.
 
 - **The bell is universal; only the window is per-gene.** `((x − x0)/w)²` is
   exactly `z²/2` for `z = (x − x0)/σ`, `σ = w/√2`. So in z units every gene's
   fitted curve is the same `exp(−z²/2)` once `y0` and `A` divide out — there is
   no per-gene shape to draw. The content is `z_min = (min − x0)/σ` to
-  `z_max = (max − x0)/σ`, and `z_max` **is** `rti_sigma_dist`. The left edge
-  `z_min` is `lti_sigma_dist` negated.
+  `z_max = (max − x0)/σ`, and `z_max` **is** `clg_z`. The left edge
+  `z_min` is `flr_z` negated.
 - **Marking `z_min` is what makes a degenerate fit visible, and is the whole
   reason this is not just a canonical bell with a cut.** APP in kidney cortex
   fits `w = 22.7` (σ = 16.0) to a 3.95-unit data span, so its entire observed
-  range is a **0.25σ sliver** at the apex. `rti_sigma_dist` reads
-  0.124 — apparently maximal truncation — and `rti` reads 0, and
+  range is a **0.25σ sliver** at the apex. `clg_z` reads
+  0.124 — apparently maximal truncation — and `clg_idx` reads 0, and
   neither means anything. Here that row is a thin spike, not a plausible bell.
 - **The axis is fixed and never data-derived**, so cells are comparable by
   construction and nothing is rescaled to its own range. Both edges clamp to the
@@ -1315,7 +1330,7 @@ missing or non-finite.
 >
 > - A **synthetic sparkline** over the peak's own ±3.4σ, which never showed the
 >   data. For APP that window is [−52, 66], rendering the ceiling at 99% of full
->   height while `rti` is 0 — table and picture normalising over
+>   height while `clg_idx` is 0 — table and picture normalising over
 >   windows ~30× apart. See `specs/2026-08-05-histogram-thumbnail-design.md`.
 > - The **real 40-bin histogram** from `hist` / `hist_max` with the curve
 >   overlaid on the count axis. Correct in principle, but `outputs/` does not
@@ -1460,7 +1475,7 @@ The mirror deliberately does not carry the histogram (that is what `hist_major/`
 is for). When `hist` was
 added to `COLUMNS` it was also added to `SHARD_HEADER`, which made **every** table
 fail the header check and the mirror silently unbuildable — it stayed that way
-until the RTI/LTI migration, and the published shards were a schema behind
+until the clg_idx/flr_idx migration, and the published shards were a schema behind
 (their header ends at `fit_success`, with no `r_squared` either).
 
 `build_gene_major.py` therefore accepts a header that *starts* with

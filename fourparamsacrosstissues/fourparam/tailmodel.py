@@ -2,7 +2,7 @@
 """
 tailmodel.py
 
-A replacement candidate for RTI / LTI that models each tail the way it was
+A replacement candidate for clg_idx / flr_idx that models each tail the way it was
 actually lost, and reports truncation as **the estimated fraction of the
 population that is missing**.
 
@@ -12,7 +12,7 @@ The two edges of an expression distribution are not the same kind of edge:
   TPM = 0 to exactly -1, and a donor sitting there still exists -- we know how
   many there are, only not their value. That is **censoring**. The excluded
   tables throw those donors away and then read the gap as truncation, which is
-  how LTI ended up tracking expression level.
+  how flr_idx ended up tracking expression level.
 - The **right** edge, if a dosage ceiling exists, removes donors outright. We do
   not know how many are gone. That is **truncation**.
 
@@ -23,12 +23,12 @@ T = x_max, and floor L = -1, is
   + sum_i  log phi((y_i-mu)/sigma) - log sigma  # detected donors
   - N      * log Phi((T-mu)/sigma)              # everyone survived the ceiling
 
-and the right truncation index is ``rti_missing = 1 - Phi((T-mu)/sigma)``.
+and the right truncation index is ``clg_missing = 1 - Phi((T-mu)/sigma)``.
 
 When **no** donor is censored the left edge is not the assay, so it is treated
-as a second truncation point at x_min and ``lti_missing = Phi((x_min-mu)/sigma)``.
+as a second truncation point at x_min and ``flr_missing = Phi((x_min-mu)/sigma)``.
 When donors **are** censored, left truncation cannot be told apart from the
-detection limit, and ``lti_missing`` is NaN -- unknown, not zero.
+detection limit, and ``flr_missing`` is NaN -- unknown, not zero.
 
 Both cut points are pinned at the observed extremes, which is the MLE of a
 truncation point but biased toward "truncated": under a true Gaussian of N
@@ -46,7 +46,7 @@ MIN_DETECTED = 10
 # Validity gates for ``usable``, the absolute-threshold analogs of the QC gates
 # in normality.py. On real data a gene with ~800 of 818 donors at the floor
 # "fits" as the lower sliver of a huge distribution (mu ~ 1e5) with almost all
-# of it missing, so rti_missing reads 1.0. These gates catch exactly that.
+# of it missing, so clg_missing reads 1.0. These gates catch exactly that.
 MIN_USABLE_DETECTED = 30     # as MIN_QC_OBS
 
 # Same finite stand-in for an impossible likelihood as bhuvanfitter: inf
@@ -127,8 +127,8 @@ def _start(y, n_cens, floor):
 def _empty(n_total, n_cens, left_mode):
     nan = float("nan")
     return {"mu": nan, "sigma": nan, "x_min": nan, "x_max": nan,
-            "rti_missing": nan, "lti_missing": nan,
-            "rti_lr": nan, "lti_lr": nan,
+            "clg_missing": nan, "flr_missing": nan,
+            "clg_lr": nan, "flr_lr": nan,
             "n_total": int(n_total), "n_censored": int(n_cens),
             "left_mode": left_mode, "success": False, "usable": False}
 
@@ -140,8 +140,8 @@ def fit_tail_model(values, floor: float = FLOOR) -> dict:
     excluded one, since the censored count is the information.
 
     Returns ``mu``, ``sigma`` (of the latent, untruncated distribution),
-    ``rti_missing`` / ``lti_missing`` (fraction of the population estimated to
-    be missing past each edge), ``rti_lr`` / ``lti_lr`` (2 x log-likelihood
+    ``clg_missing`` / ``flr_missing`` (fraction of the population estimated to
+    be missing past each edge), ``clg_lr`` / ``flr_lr`` (2 x log-likelihood
     gain of truncating that side over leaving it untruncated; same caveat about
     a simulated null), ``n_total``, ``n_censored``, ``left_mode``
     (``"censored"`` or ``"truncated"``), ``success`` and ``usable``.
@@ -173,20 +173,20 @@ def fit_tail_model(values, floor: float = FLOOR) -> dict:
 
     # Each side's likelihood-ratio: refit with that side left untruncated.
     no_right = _minimize(y, n_cens, floor, lo, None, full.x)
-    rti_lr = 2.0 * (no_right.fun - full.fun)
+    clg_lr = 2.0 * (no_right.fun - full.fun)
     if lo is None:
-        lti_missing, lti_lr = float("nan"), float("nan")
+        flr_missing, flr_lr = float("nan"), float("nan")
     else:
         no_left = _minimize(y, 0, floor, None, x_max, full.x)
-        lti_lr = 2.0 * (no_left.fun - full.fun)
-        lti_missing = float(np.exp(log_ndtr((x_min - mu) / sigma)))
+        flr_lr = 2.0 * (no_left.fun - full.fun)
+        flr_missing = float(np.exp(log_ndtr((x_min - mu) / sigma)))
 
     lower = floor if n_cens else x_min
     usable = bool(y.size >= MIN_USABLE_DETECTED and mu <= x_max
                   and sigma <= x_max - lower)
     return {"mu": mu, "sigma": sigma, "x_min": x_min, "x_max": x_max,
-            "rti_missing": float(np.exp(log_ndtr((mu - x_max) / sigma))),
-            "lti_missing": lti_missing,
-            "rti_lr": float(rti_lr), "lti_lr": float(lti_lr),
+            "clg_missing": float(np.exp(log_ndtr((mu - x_max) / sigma))),
+            "flr_missing": flr_missing,
+            "clg_lr": float(clg_lr), "flr_lr": float(flr_lr),
             "n_total": int(arr.size), "n_censored": n_cens,
             "left_mode": left_mode, "success": True, "usable": usable}

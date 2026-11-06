@@ -254,10 +254,10 @@ class BhuvanFitter:
     data      : array-like   Expression values across strains for one gene.
     gene_name : str          Name of the gene (used in plot titles and repr).
     x_max     : float, optional
-        Upper truncation point used by the right-truncation metrics (RTI).
+        Upper truncation point used by the right-truncation metrics (clg_idx).
         Defaults to the observed maximum of the data.
     x_min     : float, optional
-        Lower truncation point used by the left-truncation metrics (LTI).
+        Lower truncation point used by the left-truncation metrics (flr_idx).
         Defaults to the observed minimum of the data. The exact mirror of
         ``x_max``.
     """
@@ -354,11 +354,11 @@ class BhuvanFitter:
             ratio:
 
                 gene, y0, A, x0, w, sumsquarevalue,
-                rti_sigma_dist, rti, lti_sigma_dist, lti,
+                clg_z, clg_idx, flr_z, flr_idx,
                 min, max, mean, std, skew, kurt, left, right,
                 maxheight, rightheight, leftheight, n_obs, fit_success
 
-            (rti == rightheight / maxheight, lti == leftheight / maxheight).
+            (clg_idx == rightheight / maxheight, flr_idx == leftheight / maxheight).
 
             For ``"kde"`` — the detected modes of a Gaussian KDE:
 
@@ -440,10 +440,10 @@ class BhuvanFitter:
             "x0": x0_fit,
             "w": w_fit,
             "sumsquarevalue": sumsquare,
-            "rti_sigma_dist": self.rti_sigma_dist,
-            "rti": self.rti,
-            "lti_sigma_dist": self.lti_sigma_dist,
-            "lti": self.lti,
+            "clg_z": self.clg_z,
+            "clg_idx": self.clg_idx,
+            "flr_z": self.flr_z,
+            "flr_idx": self.flr_idx,
             "min": self.min(),
             "max": self.max(),
             "mean": self.mean(),
@@ -599,7 +599,7 @@ class BhuvanFitter:
         return self.fourparam_w / np.sqrt(2.0)
 
     @property
-    def rti_sigma_dist(self):
+    def clg_z(self):
         """
         Right sigma-distance:  (x_max - x0) / (w / sqrt(2)).
 
@@ -610,11 +610,11 @@ class BhuvanFitter:
         return float((self._x_max - self.fourparam_x0) / self._sigma_fp)
 
     @property
-    def lti_sigma_dist(self):
+    def flr_z(self):
         """
         Left sigma-distance:  (x0 - x_min) / (w / sqrt(2)).
 
-        The mirror of ``rti_sigma_dist``: how many fitted sigmas the floor
+        The mirror of ``clg_z``: how many fitted sigmas the floor
         x_min lies *below* the fitted peak x0. Lower = floor closer to the peak
         = stronger left-truncation.
 
@@ -624,11 +624,11 @@ class BhuvanFitter:
         self._require_fourparam()
         return float((self.fourparam_x0 - self._x_min) / self._sigma_fp)
 
-    # Deprecated alias kept so callers written against the pre-RTI/LTI name
-    # keep working. `rti_sigma_dist` is the current name.
+    # Deprecated alias kept so callers written against the pre-clg_idx/flr_idx name
+    # keep working. `clg_z` is the current name.
     @property
     def ti_fourparam_sigma_dist(self):
-        return self.rti_sigma_dist
+        return self.clg_z
 
     # Grid resolution used when scanning the fitted curve over the histogram
     # interval for its min / max.
@@ -642,7 +642,7 @@ class BhuvanFitter:
 
         Using the curve's own interval-minimum (rather than f evaluated at the
         data minimum) guarantees ``0 <= rightheight <= maxheight``, so the
-        RTI / LTI ratios are bounded to [0, 1].
+        clg_idx / flr_idx ratios are bounded to [0, 1].
         """
         x_range = np.linspace(self.hist_edges[0], self.hist_edges[-1], self._CURVE_GRID)
         return float(self.fourparam_function(x_range).min())
@@ -652,7 +652,7 @@ class BhuvanFitter:
         """
         Full height of the fitted curve over the histogram interval, above the
         curve's interval-minimum baseline:  max(f) - min(f).
-        Shared denominator of the RTI and LTI ratios.
+        Shared denominator of the clg_idx and flr_idx ratios.
         """
         if not self.active_fits.get("fourparam"):
             raise RuntimeError("fourparam fit has not been run. Call fit('fourparam') first.")
@@ -664,7 +664,7 @@ class BhuvanFitter:
         """
         Height of the fitted curve at the right ceiling x_max, above the
         curve's interval-minimum baseline:  f(x_max) - min(f).
-        Numerator of the RTI ratio.
+        Numerator of the clg_idx ratio.
         """
         self._require_fourparam()
         return float(self.fourparam_function(self._x_max) - self._curve_baseline())
@@ -674,14 +674,14 @@ class BhuvanFitter:
         """
         Height of the fitted curve at the left floor x_min, above the curve's
         interval-minimum baseline:  f(x_min) - min(f).
-        Numerator of the LTI ratio. The exact mirror of ``rightheight``.
+        Numerator of the flr_idx ratio. The exact mirror of ``rightheight``.
         """
         self._require_fourparam()
         return float(self.fourparam_function(self._x_min) - self._curve_baseline())
 
     def _height_ratio(self, height):
         """
-        Shared body of RTI and LTI: an edge height over the full curve height,
+        Shared body of clg_idx and flr_idx: an edge height over the full curve height,
         both measured above the curve's interval-minimum baseline.
 
         Because that baseline is the curve's true minimum over the interval the
@@ -700,7 +700,7 @@ class BhuvanFitter:
         return float(min(1.0, max(0.0, height / mh)))
 
     @property
-    def rti(self):
+    def clg_idx(self):
         """
         Right truncation index: ``rightheight / maxheight``.
 
@@ -710,14 +710,14 @@ class BhuvanFitter:
         return self._height_ratio(self.rightheight)
 
     @property
-    def lti(self):
+    def flr_idx(self):
         """
-        Left truncation index: ``leftheight / maxheight``. The mirror of RTI.
+        Left truncation index: ``leftheight / maxheight``. The mirror of clg_idx.
 
         How high the fitted curve still is at the observed floor. Higher = the
         floor cuts in closer to the peak = stronger left-truncation.
 
-        **Exactly one of LTI and RTI is non-zero.** Both are measured above the
+        **Exactly one of flr_idx and clg_idx is non-zero.** Both are measured above the
         same baseline -- the curve's minimum over ``[min, max]`` -- and for a
         bell that minimum is whichever edge sits farther from the peak. That
         edge therefore reads 0 and the nearer edge carries the whole ratio. The
@@ -726,11 +726,11 @@ class BhuvanFitter:
         """
         return self._height_ratio(self.leftheight)
 
-    # Deprecated alias kept so callers written against the pre-RTI/LTI name keep
-    # working. `rti` is the current name.
+    # Deprecated alias kept so callers written against the pre-clg_idx/flr_idx name keep
+    # working. `clg_idx` is the current name.
     @property
     def truncationindex(self):
-        return self.rti
+        return self.clg_idx
 
     # -- Evaluate fitted curve -------------------------------------------------
 
@@ -793,8 +793,8 @@ class BhuvanFitter:
                         f"A={self.fourparam_A:.3g}, x0={self.fourparam_x0:.3g}, "
                         f"w={self.fourparam_w:.3g}, y0={self.fourparam_y0:.3g}\n"
                         f"sumsquare={self.fourparam_sumsquare:.4g}\n"
-                        f"RTI={self.rti:.4f} (sigma_dist={self.rti_sigma_dist:.4f})\n"
-                        f"LTI={self.lti:.4f} (sigma_dist={self.lti_sigma_dist:.4f})"
+                        f"clg_idx={self.clg_idx:.4f} (sigma_dist={self.clg_z:.4f})\n"
+                        f"flr_idx={self.flr_idx:.4f} (sigma_dist={self.flr_z:.4f})"
                     )
                     ax.plot(x_smooth, self.fourparam_function(x_smooth),
                             color="crimson", linewidth=2, label=label, zorder=3)
@@ -838,8 +838,8 @@ class BhuvanFitter:
                 f"  y0={self.fourparam_y0:.3g}, A={self.fourparam_A:.3g}, "
                 f"x0={self.fourparam_x0:.3g}, w={self.fourparam_w:.3g}, "
                 f"sumsquare={self.fourparam_sumsquare:.4g}\n"
-                f"  RTI={self.rti:.4f} (rti_sigma_dist={self.rti_sigma_dist:.4f}), "
-                f"LTI={self.lti:.4f} (lti_sigma_dist={self.lti_sigma_dist:.4f})"
+                f"  clg_idx={self.clg_idx:.4f} (clg_z={self.clg_z:.4f}), "
+                f"flr_idx={self.flr_idx:.4f} (flr_z={self.flr_z:.4f})"
             )
         if self.active_fits.get("kde"):
             parts.append(

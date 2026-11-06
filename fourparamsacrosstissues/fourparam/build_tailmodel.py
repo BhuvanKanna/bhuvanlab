@@ -2,18 +2,18 @@
 """
 build_tailmodel.py
 
-Publish the tail model's ``rti_missing`` / ``lti_missing`` to the browser, as
-the page's **newRTI** and **newLTI** columns. (idkLTI is computed by the page
-from the loaded row's own ``min`` and ``lti``; see compute_idklti.py.)
+Publish the tail model's ``clg_missing`` / ``flr_missing`` to the browser, as
+the page's **new_clg_idx** and **new_flr_idx** columns. (idk_flr_idx is computed by the page
+from the loaded row's own ``min`` and ``flr_idx``; see compute_idk_flr_idx.py.)
 
 Same trade as ``build_r2.py``: one fixed-width record per gene in **genes.tsv
 order**, so the browser reads gene ``gi`` as a fixed-offset slice with no join
-and nothing to parse. Each record is two ``%7.5f`` fields -- rti_missing then
-lti_missing -- so 14 characters per gene, ~1 MB per tissue. Five decimals because the values that
-matter are small: under a true Gaussian of N donors ``rti_missing`` is ~1/(N+1),
+and nothing to parse. Each record is two ``%7.5f`` fields -- clg_missing then
+flr_missing -- so 14 characters per gene, ~1 MB per tissue. Five decimals because the values that
+matter are small: under a true Gaussian of N donors ``clg_missing`` is ~1/(N+1),
 0.00122 in muscle. Both are fractions in [0, 1], so nothing needs clamping. A
 missing value is seven spaces: a failed or not-``usable`` tail fit blanks
-rti/lti (a degenerate fit is not a number worth showing), as does an LTI that is
+clg_idx/flr_idx (a degenerate fit is not a number worth showing), as does an flr_idx that is
 undefined because donors are censored at the floor.
 
     cd fourparam
@@ -39,8 +39,8 @@ DOCS_OUT = DOCS / "tailmodel"
 GENES_TSV = DOCS / "genes.tsv"
 MANIFEST = DOCS / "manifest.json"
 
-FIELDS = ["rti_missing", "lti_missing"]
-GATED = {"rti_missing", "lti_missing"}       # blanked unless the fit is usable
+FIELDS = ["clg_missing", "flr_missing"]
+GATED = {"clg_missing", "flr_missing"}       # blanked unless the fit is usable
 WIDTH = 7                 # "%7.5f" -> "0.00122"
 DECIMALS = 5
 MISSING = " " * WIDTH

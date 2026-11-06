@@ -1,4 +1,4 @@
-rti,lti,rti_sigma_dist,lti_sigma_dist,rti_missing,lti_missing,rti_lr,lti_lr,n_censored,n,mu,scenario,side,cut,rep
+clg_idx,flr_idx,clg_z,flr_z,clg_missing,flr_missing,clg_lr,flr_lr,n_censored,n,mu,scenario,side,cut,rep
 0.0,1.0,2.8963370759049516,-1.189272098091349,0.022889330328008457,,2.9103458928335897,,65,100,-1.5,untruncated,none,inf,0
 0.0,0.5255973111953873,10.180929209814238,1.134213609353861,0.0015719349921372173,,0.2855780504441441,,66,100,-1.5,untruncated,none,inf,1
 0.0,0.0,148.43087104451982,12.612724146799222,0.017052585673830258,,2.127864164769875,,76,100,-1.5,untruncated,none,inf,2

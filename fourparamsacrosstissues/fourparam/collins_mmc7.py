@@ -8,9 +8,9 @@ and correlate them.
 
 Per gene, across the 54 excluded (<= -1) tables:
 
-    rti_top10     mean of the top 10% of the gene's per-tissue RTI values
-    lti_top10     same for LTI, using the idkLTI values (old LTI, 0 where the
-                  left edge is the floor); labeled plain "LTI" at the user's request
+    clg_idx_top10     mean of the top 10% of the gene's per-tissue clg_idx values
+    flr_idx_top10     same for flr_idx, using the idk_flr_idx values (old flr_idx, 0 where the
+                  left edge is the floor); labeled plain "flr_idx" at the user's request
     expr_mean     mean of the gene's per-tissue ``mean`` (expression covariate)
 
 "Top 10%" = the k = ceil(0.1 * n) largest values, where n is the number of tissues
@@ -23,7 +23,7 @@ most tissues is kept. Only genes present in both sets are written.
 
 Correlations are Spearman, plus a partial Spearman controlling for ``expr_mean``
 (rank-residualized), because both scores track expression (see CLAUDE.md, "Read
-LTI beside mean").
+flr_idx beside mean").
 
     cd fourparam
     python collins_mmc7.py --mmc7 ../../../mmc7.xlsx
@@ -38,10 +38,10 @@ from scipy import stats
 
 HERE = Path(__file__).resolve().parent
 OUTPUTS = HERE.parent / "outputs"
-IDKLTI = HERE.parent / "idklti"
+IDK_FLR_IDX = HERE.parent / "idk_flr_idx"
 OUT_DIR = HERE.parent / "results" / "collins_mmc7"
 SUFFIX = "_fourparam_excluded_at_or_below_-1.csv"
-SCORES = ["rti_top10", "lti_top10"]
+SCORES = ["clg_idx_top10", "flr_idx_top10"]
 
 
 def top10_mean(values: pd.Series) -> float:
@@ -55,9 +55,9 @@ def load_long() -> pd.DataFrame:
     frames = []
     for table in sorted(OUTPUTS.glob("v11_log2_*" + SUFFIX)):
         tissue = table.name[len("v11_log2_"):-len(SUFFIX)]
-        df = pd.read_csv(table, usecols=["gene", "genename", "rti", "mean",
+        df = pd.read_csv(table, usecols=["gene", "genename", "clg_idx", "mean",
                                          "fit_success"])
-        idk = pd.read_csv(IDKLTI / f"v11_log2_{tissue}_idklti_excluded_at_or_below_-1.csv")
+        idk = pd.read_csv(IDK_FLR_IDX / f"v11_log2_{tissue}_idk_flr_idx_excluded_at_or_below_-1.csv")
         df = df.merge(idk, on="gene", how="left")
         df = df[df["fit_success"].astype(str) == "True"]
         df["tissue"] = tissue
@@ -71,9 +71,9 @@ def per_gene(long: pd.DataFrame) -> pd.DataFrame:
     g = long.groupby("gene")
     out = pd.DataFrame({
         "genename": g["genename"].first(),
-        "rti_top10": g["rti"].agg(top10_mean),
-        "lti_top10": g["idklti"].agg(top10_mean),
-        "n_tissues": g["rti"].count(),
+        "clg_idx_top10": g["clg_idx"].agg(top10_mean),
+        "flr_idx_top10": g["idk_flr_idx"].agg(top10_mean),
+        "n_tissues": g["clg_idx"].count(),
         "expr_mean": g["mean"].mean(),
     }).reset_index()
     out = out[~out["gene"].str.endswith("_PAR_Y")]
@@ -120,7 +120,7 @@ def main():
     print(f"mmc7 {len(mmc7)} genes, ours {len(genes)}, common {len(merged)}")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    merged.to_csv(OUT_DIR / "mmc7_with_rti_lti_top10.csv", index=False)
+    merged.to_csv(OUT_DIR / "mmc7_with_clg_idx_flr_idx_top10.csv", index=False)
     corr = correlate(merged, measures)
     corr.to_csv(OUT_DIR / "mmc7_correlations.csv", index=False)
     with pd.option_context("display.width", 200, "display.precision", 3):

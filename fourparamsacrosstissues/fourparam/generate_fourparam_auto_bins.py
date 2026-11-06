@@ -111,7 +111,7 @@ def _fit_one(item) -> dict:
 
 def _side(table: pd.DataFrame) -> pd.Series:
     """Which tail carries the truncation: 'R', 'L', or '' (neither / no fit)."""
-    return np.where(table["rti"] > 0, "R", np.where(table["lti"] > 0, "L", ""))
+    return np.where(table["clg_idx"] > 0, "R", np.where(table["flr_idx"] > 0, "L", ""))
 
 
 def compare(arms: dict[str, pd.DataFrame], ref: str = "40") -> pd.DataFrame:
@@ -131,11 +131,11 @@ def compare(arms: dict[str, pd.DataFrame], ref: str = "40") -> pd.DataFrame:
             "bins_max": fitted_bins.max(),
             "r_squared_median": t.loc[ok, "r_squared"].median(),
             "n_compared": int(both.sum()),
-            "frac_rti_gt0": float((t.loc[both, "rti"] > 0).mean()),
-            "lti_median": t.loc[both, "lti"].median(),
-            "rti_median_where_gt0": t.loc[both & (t["rti"] > 0), "rti"].median(),
+            "frac_clg_idx_gt0": float((t.loc[both, "clg_idx"] > 0).mean()),
+            "flr_idx_median": t.loc[both, "flr_idx"].median(),
+            "clg_idx_median_where_gt0": t.loc[both & (t["clg_idx"] > 0), "clg_idx"].median(),
         }
-        for col in ("rti", "lti", "rti_sigma_dist", "lti_sigma_dist", "x0", "w"):
+        for col in ("clg_idx", "flr_idx", "clg_z", "flr_z", "x0", "w"):
             row[f"spearman_{col}_vs_{ref}"] = spearmanr(t.loc[both, col], base.loc[both, col],
                                                         nan_policy="omit").statistic
         row[f"frac_side_flip_vs_{ref}"] = float(

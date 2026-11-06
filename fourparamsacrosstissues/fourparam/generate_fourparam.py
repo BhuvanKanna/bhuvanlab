@@ -84,7 +84,7 @@ MIN_OBS = 10
 # Column order == the keys BhuvanFitter.fit("fourparam") returns, exactly.
 COLUMNS = [
     "gene", "y0", "A", "x0", "w", "sumsquarevalue",
-    "rti_sigma_dist", "rti", "lti_sigma_dist", "lti",
+    "clg_z", "clg_idx", "flr_z", "flr_idx",
     "min", "max", "mean", "std", "skew", "kurt",
     "left", "right", "maxheight", "rightheight", "leftheight",
     "n_obs", "fit_success",

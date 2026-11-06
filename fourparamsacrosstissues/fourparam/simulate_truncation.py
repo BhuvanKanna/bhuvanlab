@@ -9,9 +9,9 @@ expression levels, censors them at the -1 detection floor exactly as
 ``log2(TPM+1)-1`` does, and scores two families of metric on each:
 
 - **old** -- the 4-parameter fit on the excluded (> -1) values, as in
-  ``outputs/``: ``rti``, ``lti``, ``rti_sigma_dist``, ``lti_sigma_dist``.
-- **new** -- ``tailmodel.fit_tail_model`` on all values: ``rti_missing``,
-  ``lti_missing``, ``rti_lr``, ``lti_lr``.
+  ``outputs/``: ``clg_idx``, ``flr_idx``, ``clg_z``, ``flr_z``.
+- **new** -- ``tailmodel.fit_tail_model`` on all values: ``clg_missing``,
+  ``flr_missing``, ``clg_lr``, ``flr_lr``.
 
 A metric worth keeping passes three checks, printed at the end:
 
@@ -54,10 +54,10 @@ SEED = 20261009
 OUT_DIR = Path(__file__).resolve().parents[1] / "results" / "truncation_sim"
 
 # Every metric oriented so that higher = "more truncated".
-OLD = {"rti": 1, "lti": 1, "rti_sigma_dist": -1, "lti_sigma_dist": -1}
-NEW = {"rti_missing": 1, "lti_missing": 1, "rti_lr": 1, "lti_lr": 1}
-RIGHT = ["rti", "rti_sigma_dist", "rti_missing", "rti_lr"]
-LEFT = ["lti", "lti_sigma_dist", "lti_missing", "lti_lr"]
+OLD = {"clg_idx": 1, "flr_idx": 1, "clg_z": -1, "flr_z": -1}
+NEW = {"clg_missing": 1, "flr_missing": 1, "clg_lr": 1, "flr_lr": 1}
+RIGHT = ["clg_idx", "clg_z", "clg_missing", "clg_lr"]
+LEFT = ["flr_idx", "flr_z", "flr_missing", "flr_lr"]
 
 
 def scenarios():
@@ -174,7 +174,7 @@ def summarize(df):
     for scen, side, cut in scenarios():
         if side == "none":
             continue
-        m = "rti_missing" if side == "right" else "lti_missing"
+        m = "clg_missing" if side == "right" else "flr_missing"
         sub = df[df.scenario == scen]
         for (n, mu), cell in sub.groupby(["n", "mu"]):
             rows.append({"n": n, "mu": mu, "scenario": scen,

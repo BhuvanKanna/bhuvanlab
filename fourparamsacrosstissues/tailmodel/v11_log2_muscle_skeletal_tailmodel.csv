@@ -1,4 +1,4 @@
-gene,genename,mu,sigma,x_min,x_max,rti_missing,lti_missing,rti_lr,lti_lr,n_total,n_censored,left_mode,success,usable
+gene,genename,mu,sigma,x_min,x_max,clg_missing,flr_missing,clg_lr,flr_lr,n_total,n_censored,left_mode,success,usable
 ENSG00000290825.2,DDX11L16,-1.003260160288825,0.056252808852044,-0.9895982470038734,-0.7093373293039791,8.706162148232568e-08,,0.0001424274759074,,818,422,censored,True,True
 ENSG00000223972.6,DDX11L1,,,,,,,,,818,817,censored,False,False
 ENSG00000310526.1,WASH7P,-0.1673882985840507,0.4004784381781958,-0.799204399955256,1.82376769953545,3.314258485432684e-07,0.0573226482708348,0.0005751291243996,63.9760877416868,818,0,truncated,True,True

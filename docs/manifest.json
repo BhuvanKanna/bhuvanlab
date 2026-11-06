@@ -73,10 +73,10 @@
     "x0",
     "w",
     "sumsquarevalue",
-    "rti_sigma_dist",
-    "rti",
-    "lti_sigma_dist",
-    "lti",
+    "clg_z",
+    "clg_idx",
+    "flr_z",
+    "flr_idx",
     "min",
     "max",
     "mean",
@@ -231,10 +231,10 @@
       "x0",
       "w",
       "sumsquarevalue",
-      "rti_sigma_dist",
-      "rti",
-      "lti_sigma_dist",
-      "lti",
+      "clg_z",
+      "clg_idx",
+      "flr_z",
+      "flr_idx",
       "min",
       "max",
       "mean",
@@ -534,8 +534,8 @@
     "width": 7,
     "decimals": 5,
     "fields": [
-      "rti_missing",
-      "lti_missing"
+      "clg_missing",
+      "flr_missing"
     ],
     "files": {
       "muscle_skeletal": "v11_log2_muscle_skeletal_tailmodel.txt"

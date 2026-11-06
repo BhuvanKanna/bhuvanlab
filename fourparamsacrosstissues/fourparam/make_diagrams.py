@@ -5,7 +5,7 @@ One PNG per table in ``outputs/``: raw sheets to ``diagrams/`` and excluded
 (<= -1) sheets to ``excluded_diagrams/``, so 54 tissues x 2 filters =
 108 images, each holding five histograms over the ~74,628 genes in that table:
 
-    rti   lti   sumsquarevalue   mean   std   rti_sigma_dist   lti_sigma_dist
+    clg_idx   flr_idx   sumsquarevalue   mean   std   clg_z   flr_z
 
 The image file name mirrors the table name exactly (``.csv`` -> ``.png``), so a
 sheet and the table it came from sort next to each other.
@@ -17,14 +17,14 @@ Axis choices, which are per-metric on purpose
 ---------------------------------------------
 These five columns do not share a shape, so one axis rule cannot serve them all.
 
-``rti`` / ``lti``
+``clg_idx`` / ``flr_idx``
     Bounded [0, 1] by construction, and violently zero-inflated - in liver
     roughly 60% of genes sit at exactly 0 and p99 is under 0.09. Plotted on its
     full fixed [0, 1] domain with a **log count axis**, because on a linear one
     the entire panel is a single bar at zero and the informative tail is
     invisible.
 
-``rti_sigma_dist`` / ``lti_sigma_dist``
+``clg_z`` / ``flr_z``
     Spans about six orders of magnitude either side of zero: degenerate fits
     with w ~ 1e-4 push it past 1e5 while the biologically meaningful range is
     single digits. No linear window shows the bulk without hiding ~10% of the
@@ -74,9 +74,9 @@ EXCLUDED_SUFFIX = "_fourparam_excluded_at_or_below_-1.csv"
 
 # (column, panel title, one-line gloss)
 METRICS = [
-    ("rti", "Right truncation index (RTI)",
+    ("clg_idx", "Right truncation index (clg_idx)",
      "f(x_max) / f(peak), baseline removed - higher = more truncated"),
-    ("lti", "Left truncation index (LTI)",
+    ("flr_idx", "Left truncation index (flr_idx)",
      "f(x_min) / f(peak), baseline removed - higher = more truncated"),
     ("sumsquarevalue", "Sum of squares",
      "residual sum of squares of the 4-parameter fit - lower = better fit"),
@@ -84,9 +84,9 @@ METRICS = [
      "mean expression across donors, log2(TPM + 1) - 1"),
     ("std", "Standard deviation",
      "spread of expression across donors"),
-    ("rti_sigma_dist", "RTI sigma distance",
+    ("clg_z", "clg_idx sigma distance",
      "(x_max - x0) / sigma - how many sigma the ceiling sits above the peak"),
-    ("lti_sigma_dist", "LTI sigma distance",
+    ("flr_z", "flr_idx sigma distance",
      "(x0 - x_min) / sigma - how many sigma the floor sits below the peak"),
 ]
 
@@ -225,7 +225,7 @@ def draw_panel(ax, values: np.ndarray, column: str, title: str, gloss: str,
     note = ""
     log_y = False
 
-    if column in ("rti", "lti"):
+    if column in ("clg_idx", "flr_idx"):
         # Bounded [0, 1] and zero-inflated: fixed domain, log counts.
         edges = np.linspace(0.0, 1.0, BINS + 1)
         lo, hi = 0.0, 1.0
@@ -235,7 +235,7 @@ def draw_panel(ax, values: np.ndarray, column: str, title: str, gloss: str,
         note = f"{at_zero:,} exactly 0 ({at_zero / values.size:.0%}) - log counts"
         if hidden:
             note += f" - {hidden:,} outside [0, 1]"
-    elif column in ("rti_sigma_dist", "lti_sigma_dist"):
+    elif column in ("clg_z", "flr_z"):
         # Six orders of magnitude either side of zero: symlog, nothing clipped.
         edges = symlog_edges(values, BINS, SYMLOG_LINTHRESH)
         lo, hi = float(values.min()), float(values.max())
@@ -254,7 +254,7 @@ def draw_panel(ax, values: np.ndarray, column: str, title: str, gloss: str,
     ax.hist(inside, bins=edges, color=BAR, edgecolor=BAR_EDGE,
             linewidth=0.25, zorder=2)
 
-    if column in ("rti_sigma_dist", "lti_sigma_dist"):
+    if column in ("clg_z", "flr_z"):
         ax.set_xscale("symlog", linthresh=SYMLOG_LINTHRESH)
     if log_y:
         ax.set_yscale("log")

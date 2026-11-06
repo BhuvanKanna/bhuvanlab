@@ -1,4 +1,4 @@
-gene,genename,y0,A,x0,w,sumsquarevalue,rti_sigma_dist,rti,lti_sigma_dist,lti,min,max,mean,std,skew,kurt,left,right,maxheight,rightheight,leftheight,n_obs,fit_success,hist,hist_max,r_squared
+gene,genename,y0,A,x0,w,sumsquarevalue,clg_z,clg_idx,flr_z,flr_idx,min,max,mean,std,skew,kurt,left,right,maxheight,rightheight,leftheight,n_obs,fit_success,hist,hist_max,r_squared
 ENSG00000290825.2,DDX11L16,,,,,,,,,,-0.982313217020108,-0.9605822206768032,,,,,,,,,,4,False,/AAAAAAAA/AAAAA/AAAAAAAAAAAAAAAAAAAAAAA/,1,
 ENSG00000223972.6,DDX11L1,,,,,,,,,,,,,,,,,,,,,0,False,,0,
 ENSG00000310526.1,WASH7P,0.1782321290473599,6898355843737.1875,6.863979436550668,1.0472629619204215,8.237186406621456,-7.586750641173582,1.0,10.480437921362611,0.0,-0.8970651127121874,1.2457877014250354,0.7141732609225931,0.6090936610323073,-1.7482859269213538,2.5607632641738345,-0.8970651127121874,1.2457877014250354,2.187833029989948,2.187833029989948,0.0,11,True,gAAAAAAAAAAAAAAAAAAAAAAAAg/AAgAAgAAggAg/,2,0.3121347468374568
