@@ -230,12 +230,14 @@ select:hover { border-color: var(--accent); }
   font: inherit; line-height: 1; padding: 2px 4px; opacity: .65; border-radius: 2px;
 }
 .chip button:hover { opacity: 1; background: rgba(0,0,0,.08); }
-#geneInput {
+#geneInput, #wormGeneInput {
   flex: 1 1 150px; min-width: 130px; border: 0; background: transparent;
   font-family: var(--sans); font-size: .9rem; color: var(--ink);
   padding: 6px 4px; outline: 0;
 }
-#geneInput::placeholder { color: var(--muted); }
+#geneInput::placeholder, #wormGeneInput::placeholder { color: var(--muted); }
+/* Worm chips name a transcript: gene name, then the transcript in muted type. */
+.chip .chip-sub { color: var(--muted); font-weight: 400; margin-left: .35em; }
 
 .suggest {
   position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
@@ -324,23 +326,7 @@ select:hover { border-color: var(--accent); }
 .setbtn.neg .pol { color: var(--ok); }
 .setbtn .n { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .74rem; }
 .setrow-note { color: var(--muted); font-size: .76rem; }
-/* The worm subsets are a choice, not an addition, so the active one stays lit. */
-.setbtn[aria-pressed="true"] {
-  border-color: var(--accent); background: var(--accent-wash); font-weight: 600;
-}
-#wormSetRow { margin: 0; padding: 10px 16px; border-bottom: 1px solid var(--rule-soft); }
-#wormSetWarn { margin: 8px 16px; }
-.wormlist {
-  display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end;
-  padding: 10px 16px; border-bottom: 1px solid var(--rule-soft);
-}
-.wormlist[hidden], #wormSetRow[hidden] { display: none; }
-.wormlist textarea {
-  flex: 1 1 320px; min-width: 0; font-family: var(--mono); font-size: .78rem;
-  color: var(--ink); background: var(--sunken); border: 1px solid var(--rule);
-  border-radius: var(--r); padding: 6px 9px; resize: vertical; outline: 0;
-}
-.wormlist textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+#wormSetRow[hidden] { display: none; }
 
 /* Unrecognized tokens from a pasted list. Rust ink plus a rule, so it reads as
    a caveat rather than a failure -- the recognized genes were still added. */
@@ -639,9 +625,6 @@ footer p { margin: 0 0 7px; max-width: 78ch; }
 }
 
 /* ---------- worm summary strip ---------- */
-/* The worm tab's column filters: the human filter widget, inset to line up
-   with the subset row and the stats strip. */
-.wormfilters { padding: 10px 16px 12px; margin: 0; }
 .wormstats {
   display: flex; flex-wrap: wrap; gap: 0 30px; margin: 0;
   padding: 14px 16px; border-bottom: 1px solid var(--rule-soft);
@@ -1142,45 +1125,55 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
        WormBase ids are not in genes.tsv, and a cross-tissue gene page has no
        meaning for a single-table organism. -->
   <div class="tabpanel" id="panelWorm" role="tabpanel" aria-labelledby="tabWorm" hidden>
+    <!-- Laid out like the v11 browser: a query panel (genes, subsets, column
+         filters) above the results. There is no Load button because the one
+         worm table is fetched whole when the tab opens, so every change
+         applies at once. -->
+    <section class="panel controls" aria-label="Worm query">
+      <div class="control-grid">
+        <div class="field gene-field">
+          <span class="field-label" id="wormGenesLabel">Genes <span class="opt">optional</span></span>
+          <div class="tokenbox" id="wormTokenbox">
+            <input id="wormGeneInput" type="text" autocomplete="off" spellcheck="false"
+                   role="combobox" aria-expanded="false" aria-autocomplete="list"
+                   aria-controls="wormSuggest" aria-labelledby="wormGenesLabel"
+                   placeholder="Leave empty for every gene — or aap-1, T12D8.3.1, WBGene00000001…">
+          </div>
+          <div class="suggest" id="wormSuggest" hidden role="listbox" aria-label="Worm gene matches"></div>
+          <div class="quick">
+            <button class="linkbtn" id="wormClearGenes" type="button" disabled>Clear genes</button>
+          </div>
+          <div class="setrow" id="wormSetRow" hidden>
+            <span class="setrow-label">Gene subsets</span>
+            <span class="setrow-btns" id="wormSetButtons"></span>
+            <span class="setrow-note">each adds to the genes already chosen</span>
+          </div>
+          <div class="genewarn" id="wormGeneWarn" hidden role="status" aria-live="polite"></div>
+        </div>
+
+        <div class="field filter-field">
+          <span class="field-label" id="wormFiltersLabel">Column filters</span>
+          <div class="filterlist" id="wormFilterList" role="group"
+               aria-labelledby="wormFiltersLabel"></div>
+          <div class="quick">
+            <button class="linkbtn" id="wormAddFilter" type="button">Add a filter</button>
+            <span class="sep">&middot;</span>
+            <button class="linkbtn" id="wormClearFilters" type="button" disabled>Clear filters</button>
+            <span class="sep">&middot;</span>
+            <span class="filternote" id="wormFilterNote"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="panel" aria-label="Worm fourparam table">
       <div class="statusbar">
         <span class="status-text" id="wormStatus">Worm table not loaded yet</span>
         <span class="spacer"></span>
-        <input id="wormFilter" class="minifilter" type="text" autocomplete="off"
-               spellcheck="false" placeholder="Filter genes — aap-1, WBGene00000001…"
-               aria-label="Filter worm genes">
         <button class="btn" id="wormCols" type="button" aria-pressed="false">All columns</button>
         <button class="btn" id="wormDownload" type="button" disabled>Download CSV</button>
       </div>
       <div class="progress" id="wormProgress" hidden><i></i></div>
-      <div class="setrow" id="wormSetRow" hidden>
-        <span class="setrow-label">Gene subsets</span>
-        <span class="setrow-btns" id="wormSetButtons"></span>
-        <button class="linkbtn" id="wormListToggle" type="button" aria-expanded="false"
-                aria-controls="wormListBox">Paste your own list…</button>
-        <span class="setrow-note">one subset at a time · the filter box narrows within it</span>
-      </div>
-      <div class="wormlist" id="wormListBox" hidden>
-        <textarea id="wormListInput" rows="3" spellcheck="false"
-                  placeholder="Transcript ids, WormBase ids or gene names — one per line, or separated by commas"
-                  aria-label="Worm gene list"></textarea>
-        <div class="wormlist-btns">
-          <button class="btn" id="wormListApply" type="button">Show these genes</button>
-        </div>
-      </div>
-      <div class="genewarn" id="wormSetWarn" hidden role="status" aria-live="polite"></div>
-      <div class="field filter-field wormfilters">
-        <span class="field-label" id="wormFiltersLabel">Column filters</span>
-        <div class="filterlist" id="wormFilterList" role="group"
-             aria-labelledby="wormFiltersLabel"></div>
-        <div class="quick">
-          <button class="linkbtn" id="wormAddFilter" type="button">Add a filter</button>
-          <span class="sep">&middot;</span>
-          <button class="linkbtn" id="wormClearFilters" type="button" disabled>Clear filters</button>
-          <span class="sep">&middot;</span>
-          <span class="filternote" id="wormFilterNote"></span>
-        </div>
-      </div>
       <dl class="wormstats" id="wormStats" hidden></dl>
       <div id="wormArea"></div>
       <div class="legend" id="wormLegend" hidden>
@@ -1189,7 +1182,7 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
         <span class="key"><span class="swatch d"></span> censored beyond the ceiling</span>
         <span class="key sep">Same fit, same columns, same two shape cells as the
           human tables — one <em>C. elegans</em> dataset rather than 54 tissues,
-          so there is nothing to select and the whole table loads at once.</span>
+          so the whole table loads at once and the gene box narrows it.</span>
       </div>
     </section>
   </div>
@@ -1616,7 +1609,7 @@ const GENES_URL    = "genes.tsv";
    `BUILD_ID` and version.json are both written by docs/stamp_version.py --
    run it after editing this file, or the two silently drift apart.
    ===================================================================== */
-const BUILD_ID = "3612d270b0d7";
+const BUILD_ID = "10c9dd43987f";
 const VERSION_URL = "version.json";
 const UPDATE_RECHECK_MS = 5 * 60 * 1000;
 
@@ -3345,8 +3338,8 @@ function resolveGeneTokens(text) {
   return { found, unknown, dupes };
 }
 
-function showGeneWarning(result, addedCount) {
-  const box = $("geneWarn");
+function showGeneWarning(result, addedCount, boxId = "geneWarn") {
+  const box = $(boxId);
   if (!box) return;
   const { unknown, dupes } = result;
   if (!unknown.length && !dupes.length) { box.hidden = true; box.innerHTML = ""; return; }
@@ -5085,7 +5078,13 @@ function renderPhenoPanel() {
    ===================================================================== */
 let wormTable = null;            // {header, colIdx, rows} once fetched
 let wormPending = null;          // in-flight fetch, so a double click fetches once
-let wormQuery = "";
+/* The gene box: row indices into wormTable.rows, in the order they were
+   picked. Empty means every gene, as on the v11 browser. */
+let wormSelected = [];
+let wormSuggestions = [], wormActiveSuggestion = -1;
+/* Upper-cased transcript id, WormBase id or gene name -> row indices. Built
+   once the table is in; a gene name or WormBase id maps to every isoform. */
+let wormIdIndex = null;
 let wormSortCol = null, wormSortDir = 1;
 let wormAllCols = false;
 
@@ -5166,21 +5165,17 @@ function wormStatCols(header, all) {
 }
 
 /* ---------------------------------------------------------------------
-   Gene subsets
+   Worm gene box
 
-   The worm tab's answer to the control-set buttons, with one difference that
-   matters: a subset *restricts* the table rather than adding chips, because
-   there is no selection here to add to -- the whole table is the view. So one
-   subset is active at a time, the filter box narrows within it, and the
-   summary strip, the sort and the CSV export all follow the subset.
+   The v11 browser's gene box over the worm table. One chip is one transcript
+   (one row). Typing suggests transcripts by gene name, transcript id or
+   WormBase id. A pasted or typed list resolves each token exactly and
+   case-insensitively: a transcript id adds that row, a gene name or WormBase id
+   adds every isoform. Unrecognized tokens are reported, never silently dropped.
 
-   Matching is exact and case-insensitive against any identifier column, unlike
-   the filter box's substring match: `unc-1` must not quietly pull in `unc-10`
-   through `unc-130` when the point is a roster. A gene name selects every
-   isoform carrying it; a transcript id selects exactly that row.
+   The gene-subset buttons work like the human control sets: a click is a
+   paste, so each adds to the genes already chosen.
    --------------------------------------------------------------------- */
-let wormSubset = null;           // {id, label, keys: Set<upper token>, tokens} or null
-
 function wormTokens(text) {
   return text.split("\n")
     .map((ln) => ln.split("#", 1)[0])            // published files carry comments
@@ -5190,34 +5185,172 @@ function wormTokens(text) {
     .filter(Boolean);
 }
 
-function setWormSubset(subset) {
-  wormSubset = subset;
-  for (const b of $("wormSetButtons").querySelectorAll(".setbtn")) {
-    b.setAttribute("aria-pressed", String(!!subset && b.dataset.set === subset.id));
+function buildWormIdIndex() {
+  const t = wormTable;
+  wormIdIndex = new Map();
+  const idx = WORM_ID_COLS.map((c) => t.colIdx[c]).filter((i) => i !== undefined);
+  t.rows.forEach((f, r) => {
+    for (const i of idx) {
+      const key = (f[i] || "").trim().toUpperCase();
+      if (!key) continue;
+      const list = wormIdIndex.get(key);
+      if (!list) wormIdIndex.set(key, [r]);
+      else if (list[list.length - 1] !== r) list.push(r);
+    }
+  });
+}
+
+function wormName(r) { return wormTable.rows[r][wormTable.colIdx.genename] || ""; }
+function wormTx(r) { return wormTable.rows[r][wormTable.colIdx.gene] || ""; }
+function wormWb(r) {
+  const i = wormTable.colIdx.wormbasegeneid;
+  return i === undefined ? "" : wormTable.rows[r][i] || "";
+}
+
+function renderWormChips() {
+  const box = $("wormTokenbox");
+  box.querySelectorAll(".chip").forEach((c) => c.remove());
+  const input = $("wormGeneInput");
+  for (const r of wormSelected) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    // The transcript id leads with a "w<number>_" strain-table prefix that is
+    // the same noise on every chip; the full id is in the tooltip.
+    const tx = wormTx(r).replace(/^w\d+_/, "");
+    chip.title = `${wormName(r)} · ${wormTx(r)} · ${wormWb(r)}`;
+    chip.innerHTML = `<span>${escapeHtml(wormName(r) || wormTx(r))}` +
+                     `<small class="chip-sub">${escapeHtml(tx)}</small></span>`;
+    const x = document.createElement("button");
+    x.type = "button";
+    x.setAttribute("aria-label", `Remove ${wormName(r)} ${wormTx(r)}`);
+    x.textContent = "×";
+    x.addEventListener("click", (e) => {
+      e.stopPropagation();
+      wormSelected = wormSelected.filter((g) => g !== r);
+      wormSelectionChanged();
+    });
+    chip.appendChild(x);
+    box.insertBefore(chip, input);
   }
-  reportWormSubset();
+  input.disabled = !wormTable;
+  input.placeholder = !wormTable ? "Loading the worm table…"
+    : wormSelected.length ? "Add another…"
+    : "Leave empty for every gene — or aap-1, T12D8.3.1, WBGene00000001…";
+  $("wormClearGenes").disabled = !wormSelected.length;
+}
+
+function wormSelectionChanged() {
+  renderWormChips();
   if (wormTable) renderWorm();
 }
 
-/* Say what a list did not match, the way the human gene box does, so a typo is
-   never mistaken for a gene that simply is not in the table. */
-function reportWormSubset() {
-  const box = $("wormSetWarn");
-  if (!wormSubset || !wormTable) { box.hidden = true; return; }
-  const t = wormTable;
-  const idx = WORM_ID_COLS.map((c) => t.colIdx[c]).filter((i) => i !== undefined);
-  const known = new Set();
-  for (const f of t.rows) for (const i of idx) if (f[i]) known.add(f[i].toUpperCase());
-  const missing = [...new Set(wormSubset.tokens)].filter((x) => !known.has(x.toUpperCase()));
-  if (!missing.length) { box.hidden = true; return; }
-  const shown = missing.slice(0, 12).map((x) => `<code>${escapeHtml(x)}</code>`).join(", ");
-  box.innerHTML = `<b>${missing.length.toLocaleString()} not in the worm table</b> · ` +
-    shown + (missing.length > 12 ? ` +${missing.length - 12} more` : "");
+function addWormRow(r) {
+  if (r == null || wormSelected.includes(r)) return;
+  wormSelected.push(r);
+  wormSelectionChanged();
+}
+
+function resolveWormTokens(text) {
+  const seen = new Set();
+  const found = [], unknown = [], dupes = [];
+  for (const tok of wormTokens(text)) {
+    const rows = wormIdIndex.get(tok.toUpperCase());
+    if (!rows) { unknown.push(tok); continue; }
+    const fresh = rows.filter((r) => !seen.has(r));
+    if (!fresh.length) { dupes.push(tok); continue; }
+    for (const r of fresh) { seen.add(r); found.push(r); }
+  }
+  return { found, unknown, dupes };
+}
+
+function addWormGeneList(text) {
+  const result = resolveWormTokens(text);
+  const before = wormSelected.length;
+  const have = new Set(wormSelected);
+  for (const r of result.found) if (!have.has(r)) { wormSelected.push(r); have.add(r); }
+  const added = wormSelected.length - before;
+  if (added) wormSelectionChanged();
+  showGeneWarning(result, added, "wormGeneWarn");
+}
+
+function clearWormGeneWarning() {
+  const box = $("wormGeneWarn");
+  box.hidden = true; box.innerHTML = "";
+}
+
+/* Exact matches first, then gene-name prefix, transcript-id prefix (with or
+   without its "w<number>_" prefix), WormBase-id prefix, then gene-name
+   substring once three characters are typed. */
+function searchWormGenes(query) {
+  const q = query.trim().toUpperCase();
+  if (!q || !wormTable) return [];
+  const chosen = new Set(wormSelected);
+  const exact = [], namePre = [], txPre = [], wbPre = [], nameIn = [];
+  const n = wormTable.rows.length;
+  for (let r = 0; r < n; r++) {
+    if (chosen.has(r)) continue;
+    const name = wormName(r).toUpperCase(), tx = wormTx(r).toUpperCase();
+    const txBare = tx.replace(/^W\d+_/, ""), wb = wormWb(r).toUpperCase();
+    if (name === q || tx === q || txBare === q || wb === q) { exact.push(r); continue; }
+    if (name.startsWith(q)) { if (namePre.length < 120) namePre.push(r); continue; }
+    if (tx.startsWith(q) || txBare.startsWith(q)) { if (txPre.length < 120) txPre.push(r); continue; }
+    if (wb.startsWith(q)) { if (wbPre.length < 120) wbPre.push(r); continue; }
+    if (q.length >= 3 && name.includes(q)) { if (nameIn.length < 120) nameIn.push(r); }
+  }
+  const byName = (a, b) => wormName(a).length - wormName(b).length ||
+                           (wormName(a) + wormTx(a)).localeCompare(wormName(b) + wormTx(b));
+  namePre.sort(byName); nameIn.sort(byName);
+  return exact.concat(namePre, txPre, wbPre, nameIn).slice(0, MAX_SUGGESTIONS);
+}
+
+function showWormSuggestions(list) {
+  wormSuggestions = list;
+  wormActiveSuggestion = list.length ? 0 : -1;
+  const box = $("wormSuggest"), input = $("wormGeneInput");
+  const q = input.value.trim().toUpperCase();
+  if (!q) { box.hidden = true; input.setAttribute("aria-expanded", "false"); return; }
+  if (!list.length) {
+    box.innerHTML = `<div class="s-none">No worm gene matches “${escapeHtml(input.value.trim())}”.</div>`;
+    box.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+    return;
+  }
+  const mark = (text) => {
+    const i = text.toUpperCase().indexOf(q);
+    if (i === -1) return escapeHtml(text);
+    return escapeHtml(text.slice(0, i)) +
+           '<span class="s-hit">' + escapeHtml(text.slice(i, i + q.length)) + "</span>" +
+           escapeHtml(text.slice(i + q.length));
+  };
+  box.innerHTML = "<ul>" + list.map((r, k) =>
+    `<li role="option" data-row="${r}" aria-selected="${k === wormActiveSuggestion}">
+       <span class="s-sym">${mark(wormName(r) || "—")}</span>
+       <span class="s-id">${mark(wormTx(r))} · ${mark(wormWb(r))}</span>
+     </li>`).join("") + "</ul>";
   box.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+  box.querySelectorAll("li[data-row]").forEach((li) => {
+    li.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      addWormRow(Number(li.dataset.row));
+      input.value = "";
+      showWormSuggestions([]);
+    });
+  });
+}
+
+function moveWormSuggestion(delta) {
+  if (!wormSuggestions.length) return;
+  wormActiveSuggestion = (wormActiveSuggestion + delta + wormSuggestions.length) %
+                         wormSuggestions.length;
+  $("wormSuggest").querySelectorAll("li").forEach((li, k) => {
+    const on = k === wormActiveSuggestion;
+    li.setAttribute("aria-selected", on);
+    if (on) li.scrollIntoView({ block: "nearest" });
+  });
 }
 
 async function loadWormSet(spec, btn) {
-  if (wormSubset && wormSubset.id === spec.id) { setWormSubset(null); return; }
   const label = btn.querySelector(".label");
   const original = label.textContent;
   btn.disabled = true;
@@ -5231,25 +5364,17 @@ async function loadWormSet(spec, btn) {
       text = await res.text();
       genesetCache.set(spec.id, text);
     }
-    const tokens = wormTokens(text);
-    setWormSubset({ id: spec.id, label: spec.label, tokens,
-                    keys: new Set(tokens.map((x) => x.toUpperCase())) });
+    if (!wormTable) await getWormTable();
+    addWormGeneList(text);
   } catch (err) {
-    const box = $("wormSetWarn");
+    const box = $("wormGeneWarn");
     box.innerHTML = `<b>Could not load ${escapeHtml(spec.label)}</b> · ` +
-      `${escapeHtml(String(err.message || err))}`;
+      `${escapeHtml(String(err.message || err))} · nothing was added.`;
     box.hidden = false;
   } finally {
     label.textContent = original;
     btn.disabled = false;
   }
-}
-
-function applyWormList() {
-  const tokens = wormTokens($("wormListInput").value);
-  if (!tokens.length) { setWormSubset(null); return; }
-  setWormSubset({ id: "__custom", label: "your list", tokens,
-                  keys: new Set(tokens.map((x) => x.toUpperCase())) });
 }
 
 function renderWormSetButtons() {
@@ -5261,44 +5386,20 @@ function renderWormSetButtons() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "setbtn";
-    btn.dataset.set = spec.id;
-    btn.setAttribute("aria-pressed", "false");
-    btn.title = `${spec.label} · ${spec.note} · ${spec.n_rows.toLocaleString()} ` +
-                `transcripts · click again to show every gene`;
+    btn.title = `${spec.label} · ${spec.note} · ${spec.n_rows.toLocaleString()} transcripts`;
     btn.innerHTML = `<span class="label">${escapeHtml(spec.label)}</span>` +
                     `<span class="n">${spec.n_rows.toLocaleString()}</span>`;
+    btn.setAttribute("aria-label", `Add the ${spec.label} subset, ${spec.n_rows} transcripts`);
     btn.addEventListener("click", () => loadWormSet(spec, btn));
     box.appendChild(btn);
   }
   row.hidden = false;
 }
 
-function wormSubsetRows() {
+/* The gene box's rows, or the whole table when it is empty. */
+function wormBaseRows() {
   const t = wormTable;
-  if (!wormSubset) return t.rows;
-  const idx = WORM_ID_COLS.map((c) => t.colIdx[c]).filter((i) => i !== undefined);
-  const keys = wormSubset.keys;
-  return t.rows.filter((f) => idx.some((i) => f[i] && keys.has(f[i].toUpperCase())));
-}
-
-/* Any token matching any identifier keeps the row, so a pasted list works the
-   way the gene box does -- and a bare substring still behaves the way a filter
-   box is expected to. Applied within the active subset, if there is one. */
-function wormMatches(query) {
-  const t = wormTable;
-  const base = wormSubsetRows();
-  if (!query.trim()) return base;
-  const tokens = query.toUpperCase().split(LIST_SEPARATORS)
-    .map((x) => x.trim()).filter(Boolean);
-  if (!tokens.length) return base;
-  const idx = WORM_ID_COLS.map((c) => t.colIdx[c]).filter((i) => i !== undefined);
-  return base.filter((f) => {
-    for (const i of idx) {
-      const v = (f[i] || "").toUpperCase();
-      for (const tok of tokens) if (v.includes(tok)) return true;
-    }
-    return false;
-  });
+  return wormSelected.length ? wormSelected.map((r) => t.rows[r]) : t.rows;
 }
 
 /* ---------------------------------------------------------------------
@@ -5337,7 +5438,7 @@ function wormFiltered(rows) {
   }));
 }
 
-function wormRows() { return wormFiltered(wormMatches(wormQuery)); }
+function wormRows() { return wormFiltered(wormBaseRows()); }
 
 function updateWormFilterNote(count) {
   const el = $("wormFilterNote");
@@ -5345,7 +5446,7 @@ function updateWormFilterNote(count) {
   const n = wormFilters.filter((f) => f.col && String(f.value).trim() !== "").length;
   if (!n) { el.textContent = ""; return; }
   if (!wormTable) { el.textContent = n + (n === 1 ? " filter" : " filters") + " set"; return; }
-  const base = wormMatches(wormQuery).length;
+  const base = wormBaseRows().length;
   const k = count === undefined ? wormRows().length : count;
   el.innerHTML = "<strong>" + k.toLocaleString() + "</strong> of <strong>" +
                  base.toLocaleString() + "</strong> genes match";
@@ -5438,25 +5539,15 @@ function renderWorm() {
   renderWormStats(rows);
   updateWormFilterNote(rows.length);
 
-  const inSubset = wormSubset ? ` in <strong>${escapeHtml(wormSubset.label)}</strong>` : "";
+  const inSel = wormSelected.length
+    ? ` of the <strong>${wormSelected.length.toLocaleString()}</strong> selected` : "";
   if (!rows.length) {
-    area.innerHTML = wormFilters.some((f) => String(f.value).trim() !== "")
-      ? `<div class="note"><h2>No genes match the filters</h2>
-          <p>No gene${inSubset} passes every column filter. Loosen or clear
-          them above.</p></div>`
-      : wormQuery.trim()
-      ? `<div class="note"><h2>No genes match</h2>
-          <p>Nothing in the worm table${inSubset} matches
-          “${escapeHtml(wormQuery)}”. Try a sequence name
-          (<code>Y110A7A.10.1</code>), a gene name (<code>aap-1</code>) or a
-          WormBase id.</p></div>`
-      : `<div class="note"><h2>No genes in this subset</h2>
-          <p>None of the ${wormSubset.tokens.length.toLocaleString()} tokens in
-          ${escapeHtml(wormSubset.label)} is a transcript id, WormBase id or gene
-          name in the worm table.</p></div>`;
+    area.innerHTML = `<div class="note"><h2>No genes match the filters</h2>
+          <p>No gene${inSel} passes every column filter. Loosen or clear
+          them above.</p></div>`;
     $("wormLegend").hidden = true;
     $("wormDownload").disabled = true;
-    setWormStatus(`<strong>0</strong> of ${t.rows.length.toLocaleString()} genes${inSubset}`);
+    setWormStatus(`<strong>0</strong> of ${wormBaseRows().length.toLocaleString()} genes`);
     return;
   }
 
@@ -5524,9 +5615,13 @@ function renderWorm() {
   $("wormLegend").hidden = false;
   $("wormDownload").disabled = false;
   const all = t.rows.length;
+  const base = wormBaseRows().length;
   setWormStatus(rows.length === all
     ? `<strong>${all.toLocaleString()}</strong> genes · one <em>C. elegans</em> table`
-    : `<strong>${rows.length.toLocaleString()}</strong> of ${all.toLocaleString()} genes${inSubset}`);
+    : rows.length === base
+      ? `<strong>${rows.length.toLocaleString()}</strong> selected of ${all.toLocaleString()} genes`
+      : `<strong>${rows.length.toLocaleString()}</strong> of ${base.toLocaleString()}` +
+        `${wormSelected.length ? " selected" : ""} genes match the filters`);
 }
 
 /* Every filtered row and every column of the source table -- the same contract
@@ -5538,7 +5633,7 @@ function downloadWormCsv() {
   // Headers renamed as in the human exports: `flr_idx` -> old_flr_idx, idk_flr_idx -> flr_idx.
   const lines = [wormTable.header.map(exportName).join(",")];
   for (const f of rows) lines.push(f.map(csvCell).join(","));
-  const tag = !wormSubset ? "" : wormSubset.id === "__custom" ? "custom_" : `${wormSubset.id}_`;
+  const tag = wormSelected.length ? "selected_" : "";
   saveCsv(lines, `worm_fourparam_${tag}${rows.length}genes_${stamp()}.csv`);
 }
 
@@ -5554,7 +5649,8 @@ async function openWormTab() {
     setWormStatus('<strong style="color:var(--ceiling)">Worm table failed to load</strong>');
     return;
   }
-  reportWormSubset();     // a subset picked while the table was loading
+  buildWormIdIndex();
+  renderWormChips();
   renderWorm();
 }
 
@@ -5779,10 +5875,6 @@ async function boot() {
   $("tabPeople").addEventListener("click", () => showTab("people"));
 
   // --- worm tab ---
-  $("wormFilter").addEventListener("input", (e) => {
-    wormQuery = e.target.value;
-    if (wormTable) renderWorm();
-  });
   $("wormCols").addEventListener("click", () => {
     wormAllCols = !wormAllCols;
     $("wormCols").setAttribute("aria-pressed", wormAllCols);
@@ -5790,16 +5882,54 @@ async function boot() {
   });
   $("wormDownload").addEventListener("click", downloadWormCsv);
   renderWormSetButtons();
-  $("wormListToggle").addEventListener("click", () => {
-    const box = $("wormListBox"), open = box.hidden;
-    box.hidden = !open;
-    $("wormListToggle").setAttribute("aria-expanded", String(open));
-    if (open) $("wormListInput").focus();
+  renderWormChips();
+
+  // The worm gene box mirrors the v11 one below: type-ahead, paste or Enter a
+  // list, Backspace removes the last chip.
+  $("wormTokenbox").addEventListener("click", () => $("wormGeneInput").focus());
+  let wormDebounce = null;
+  $("wormGeneInput").addEventListener("paste", (e) => {
+    const text = (e.clipboardData || window.clipboardData)?.getData("text") || "";
+    if (!looksLikeList(text) || !wormTable) return;
+    e.preventDefault();
+    addWormGeneList(text);
+    $("wormGeneInput").value = "";
+    showWormSuggestions([]);
   });
-  $("wormListApply").addEventListener("click", applyWormList);
-  $("wormListInput").addEventListener("keydown", (e) => {
-    // Enter is a newline in a list; Ctrl/Cmd+Enter applies it.
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); applyWormList(); }
+  $("wormGeneInput").addEventListener("input", () => {
+    clearTimeout(wormDebounce);
+    wormDebounce = setTimeout(() =>
+      showWormSuggestions(searchWormGenes($("wormGeneInput").value)), 90);
+  });
+  $("wormGeneInput").addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); moveWormSuggestion(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); moveWormSuggestion(-1); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      const raw = $("wormGeneInput").value;
+      if (!wormTable) return;
+      if (looksLikeList(raw)) {
+        addWormGeneList(raw);
+        $("wormGeneInput").value = "";
+        showWormSuggestions([]);
+      } else if (wormActiveSuggestion >= 0 && wormSuggestions[wormActiveSuggestion] !== undefined) {
+        addWormRow(wormSuggestions[wormActiveSuggestion]);
+        $("wormGeneInput").value = "";
+        showWormSuggestions([]);
+        clearWormGeneWarning();
+      }
+    } else if (e.key === "Escape") { showWormSuggestions([]); }
+    else if (e.key === "Backspace" && !$("wormGeneInput").value && wormSelected.length) {
+      wormSelected.pop(); wormSelectionChanged();
+    }
+  });
+  document.addEventListener("click", (e) => {
+    if (!$("wormSuggest").contains(e.target) && e.target !== $("wormGeneInput")) {
+      showWormSuggestions([]);
+    }
+  });
+  $("wormClearGenes").addEventListener("click", () => {
+    wormSelected = []; clearWormGeneWarning(); wormSelectionChanged();
   });
 
   // --- tissue box ---

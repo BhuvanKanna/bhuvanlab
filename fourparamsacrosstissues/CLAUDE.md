@@ -858,13 +858,17 @@ name with another, because isoforms of one gene carry it.
 **Gene subsets** (`genelists/worm_*.txt`, `manifest.worm.genesets`). The tab
 carries one button per curated subset — the 51 worm orthologs of human HSA21
 genes from the notebook's `genes_of_interest.json`, split by phenotype (mcOE
-any / dev / behavior, LOF any / dev / behavior, no phenotype) — plus a box to
-paste your own list. Unlike the human control sets these **restrict** the table
-rather than adding to a selection: one subset at a time, the filter box narrows
-within it, and the summary strip, sort and CSV export all follow it. Matching
-is exact and case-insensitive against `gene`, `wormbasegeneid` or `genename`
-(the filter box is substring; a roster must not turn `unc-1` into `unc-10`), so
-a gene name selects every isoform and a transcript id exactly one row. The
+any / dev / behavior, LOF any / dev / behavior, no phenotype). **The worm gene
+box works like the v11 one** (`wormSelected`, `renderWormChips`,
+`addWormGeneList`): type-ahead chips, a pasted or typed list, and subset
+buttons that each **add** to the genes already chosen, exactly like the human
+control sets. An empty box means every gene. One chip is one transcript (one
+row). Matching is exact and case-insensitive against `gene`,
+`wormbasegeneid` or `genename` (`wormIdIndex`), so a gene name or WormBase id
+adds every isoform and a transcript id exactly one row; unrecognized tokens
+are reported in `wormGeneWarn`. There is no Load button: the whole table is
+already fetched, so every change applies at once, and the column filters,
+summary strip, sort and CSV export all follow the selection. The
 published sets are transcript ids, because that is what the curated list chose.
 `build_gui_data.py` copies them into `docs/genelists/` and publishes each set's
 row count; to add one, drop a file in `genelists/` and add it to
