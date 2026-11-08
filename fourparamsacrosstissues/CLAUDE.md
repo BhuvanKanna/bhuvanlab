@@ -363,6 +363,21 @@ is the `make_diagrams.py` clg_idx panel once per rule on a shared y axis: the sh
 match, except the spike at clg_idx = 1 (24 genes at 40 bins, 33 at 18) nearly
 vanishes under Scott (3) and FD (1).
 
+**Sample size decides where binning matters (2026-11-08).**
+`..._ceiling_examples_by_binning_...png` shows three QC-passing genes with
+n_obs ≥ 75 whose 40-bin clg_idx is closest to 0.05, 0.25 and 0.55 (RPL21,
+TRPC1, LIAS, all n = 204) under every rule; their clg_idx moves by
+0.02–0.09. `..._ceiling_scatter_by_n_...png` plots 40-bin clg_idx against
+each rule for every gene, colored by n_obs band, and
+`..._ceiling_agreement_by_n_...csv` summarizes it per band. Ceilings almost
+only exist at high n: of fitted genes, 11,241 of 28,313 at n_obs 150–204
+have clg_idx > 0, against 169 / 3 / 5 in the 10–29 / 30–74 / 75–149 bands,
+because partially detected genes sit against the floor, making it the
+closer edge. In the 150–204 band every rule agrees (ρ 0.96–0.99 on ceiling
+genes, median |Δ| 0.006–0.013). In the 10–29 band clg_idx is noise: ρ ≈ 0
+and the 90th-percentile |Δ| is ~0.99, i.e. genes jump between 0 and 1. FD
+and Scott suppress most of those low-n ceilings rather than reproducing them.
+
 ## Extracting a gene set (`extract_genes.py`)
 
 Pulls the rows for a gene set out of all 108 tables into one tidy CSV, one row
