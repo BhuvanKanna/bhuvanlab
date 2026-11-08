@@ -605,6 +605,79 @@ footer p { margin: 0 0 7px; max-width: 78ch; }
   background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
+/* Data Flowchart: one stage per card down a spine, with what leaves or gets
+   labeled at that stage in a dashed branch box beside it. Bars are the share
+   of all 4,029,912 gene x tissue rows, so they shrink as the funnel narrows. */
+.flow { margin-top: 1.4rem; }
+.flow-band {
+  margin: 2.2rem 0 .9rem; padding-bottom: .35rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: .78rem; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted);
+}
+.flow-band:first-child { margin-top: 0; }
+.flow-band b { color: var(--accent); font-weight: 600; }
+.flow-step {
+  display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 18px; align-items: start; position: relative;
+}
+.flow-step + .flow-step { margin-top: 30px; }
+/* the arrow from the card above into this one */
+.flow-step + .flow-step::before {
+  content: ""; position: absolute; left: 34px; top: -30px; height: 30px;
+  border-left: 2px solid var(--accent);
+}
+.flow-step + .flow-step::after {
+  content: ""; position: absolute; left: 29px; top: -8px;
+  border: 6px solid transparent; border-top: 7px solid var(--accent);
+}
+.flow-card {
+  border: 1px solid var(--rule); border-left: 3px solid var(--accent);
+  border-radius: var(--r); background: var(--sunken);
+  padding: .85rem 1.05rem .7rem; line-height: 1.55;
+}
+.flow-card h4 {
+  margin: 0 0 .35rem; font-size: 1rem; display: flex; gap: .6rem;
+  align-items: baseline;
+}
+.flow-card h4 .n {
+  font-family: var(--mono); font-size: .78rem; color: var(--accent-ink);
+  background: var(--accent); border-radius: 3px; padding: .05rem .4rem;
+}
+.flow-card p { margin: 0 0 .5rem; font-size: .93rem; }
+.flow-card ol, .flow-card ul { margin: 0 0 .5rem; padding-left: 1.2rem; font-size: .93rem; }
+.flow-card li { margin-bottom: .3rem; }
+.flow-row {
+  display: block; margin: 0 0 .55rem; padding: .35rem .6rem;
+  background: var(--accent-wash); border-radius: 3px; font-size: .88rem;
+}
+.flow-row b { color: var(--accent); }
+.flow-file {
+  font-family: var(--mono); font-size: .78rem; color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.flow-side { display: grid; gap: 10px; }
+.flow-out {
+  border: 1px dashed var(--rule); border-radius: var(--r);
+  padding: .6rem .8rem; font-size: .86rem; line-height: 1.45;
+  background: var(--surface);
+}
+.flow-out.keep { border-style: solid; border-color: var(--accent); }
+.flow-out .lbl { font-weight: 600; color: var(--ink); }
+.flow-out .cnt {
+  font-family: var(--mono); font-size: .82rem; color: var(--muted);
+  display: block; margin-top: .15rem;
+}
+.flow-bar {
+  height: 6px; border-radius: 3px; margin-top: .4rem;
+  background: var(--rule-soft); overflow: hidden;
+}
+.flow-bar i { display: block; height: 100%; background: var(--muted); border-radius: 3px; }
+.flow-out.keep .flow-bar i { background: var(--accent); }
+@media (max-width: 760px) {
+  .flow-step { grid-template-columns: 1fr; gap: 10px; }
+}
+
 .people { list-style: none; padding-left: 0; margin-top: 1.4rem; }
 .people li {
   display: flex; gap: 1.1rem; align-items: flex-start; margin-bottom: 1.8rem;
@@ -975,6 +1048,8 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
               aria-controls="panelWorm">Worm data</button>
       <button type="button" id="tabGuide" role="tab" aria-selected="false"
               aria-controls="panelGuide">Column guide</button>
+      <button type="button" id="tabFlow" role="tab" aria-selected="false"
+              aria-controls="panelFlow">Data Flowchart</button>
       <button type="button" id="tabBackground" role="tab" aria-selected="false"
               aria-controls="panelBackground">Background</button>
       <button type="button" id="tabPeople" role="tab" aria-selected="false"
@@ -1377,6 +1452,321 @@ tbody tr.picked:hover td { background: var(--accent-wash); filter: brightness(.9
     </section>
   </div>
 
+  <!-- Counts are gene x tissue rows over all 54 excluded tables, measured
+       2026-11-08 from outputs/. They describe the published tables and are
+       hand-written, so re-measure them after any regeneration. -->
+  <div class="tabpanel prose" id="panelFlow" role="tabpanel"
+       aria-labelledby="tabFlow" hidden>
+    <section class="panel">
+      <h2>Data Flowchart</h2>
+      <p class="lede">What happens to the data, from GTEx's download to a row on
+        your screen: what one row means at each stage, what gets dropped, and
+        what gets labeled instead of dropped.</p>
+      <p>Counts on the right are <strong>gene × tissue rows across all 54
+        tissues</strong>: 74,628 genes × 54 tissues = 4,029,912. The bar under
+        each one is its share of that total.</p>
+
+      <div class="flow">
+
+        <div class="flow-band"><b>Build</b> · done once, offline, by the scripts in <code>fourparam/</code></div>
+
+        <div class="flow-step">
+          <div class="flow-card">
+            <h4><span class="n">1</span> Start: GTEx v11 expression, one file per tissue</h4>
+            <span class="flow-row"><b>One row =</b> one gene in one tissue. <b>One column =</b> one donor's sample of that tissue.</span>
+            <p>GTEx publishes RNA-seq expression in TPM (transcripts per million),
+              already split by tissue. Each gene is identified by its versioned
+              Ensembl id (<code>Name</code>, e.g. <code>ENSG00000142192.22</code>) and
+              its symbol (<code>Description</code>, e.g. <code>APP</code>).</p>
+            <ul>
+              <li><strong>54 tissues</strong>, each with the same <strong>74,628 genes</strong>.</li>
+              <li>Donors per tissue range from <strong>11</strong> (kidney medulla)
+                to <strong>818</strong> (skeletal muscle). 12 tissues have fewer than 200.</li>
+            </ul>
+            <span class="flow-file">gene_tpm_adult_gtex_v11_&lt;tissue&gt;.gct.gz · download_data.py</span>
+          </div>
+          <div class="flow-side">
+            <div class="flow-out keep"><span class="lbl">Every gene, every tissue</span>
+              <span class="cnt">4,029,912 gene × tissue rows</span>
+              <div class="flow-bar"><i style="width:100%"></i></div></div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-card">
+            <h4><span class="n">2</span> Log-transform every value</h4>
+            <span class="flow-row"><b>One row =</b> unchanged: one gene in one tissue, one value per donor.</span>
+            <p>Each donor's TPM becomes <code>log2(TPM + 1) − 1</code>. This
+              compresses the huge range of TPM so a gene's donors spread out
+              on a usable scale.</p>
+            <ul>
+              <li>TPM 0 → <strong>−1</strong> exactly. That is the floor; nothing
+                can go below it.</li>
+              <li>TPM 1 → 0, TPM 3 → 1, TPM 7 → 2.</li>
+            </ul>
+            <span class="flow-file">data/v11_log2_&lt;tissue&gt;.csv.gz · convert_gct_to_log2.py</span>
+          </div>
+          <div class="flow-side">
+            <div class="flow-out"><span class="lbl">Nothing dropped</span>
+              Every value is kept and transformed.</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-card">
+            <h4><span class="n">3</span> Take one gene in one tissue, and clean its values</h4>
+            <span class="flow-row"><b>Now working on:</b> a single list, one gene's values across that tissue's donors.</span>
+            <p>Every gene in every tissue is handled on its own. In order:</p>
+            <ol>
+              <li><strong>Drop missing values</strong> (NaN or infinite).</li>
+              <li><strong>Drop every donor at −1</strong>, i.e. TPM = 0. A zero means
+                the gene was not detected in that sample, and a pile of zeros
+                would drag the fit. This is the <em>excluded ≤ −1</em> filter, and
+                every table in this browser uses it.</li>
+              <li><strong>Count what's left.</strong> That count is <code>n_obs</code>,
+                the number of donors the gene was detected in.</li>
+            </ol>
+            <p>Genes are never deleted. A gene that fails a step stays in the
+              table with its numbers left blank.</p>
+            <span class="flow-file">generate_fourparam.py · the --threshold -1 run</span>
+          </div>
+          <div class="flow-side">
+            <div class="flow-out"><span class="lbl">Not detected in any donor</span>
+              <code>n_obs = 0</code>. No histogram and no fit; the row is kept.
+              <span class="cnt">287,431 rows · 7.1%</span>
+              <div class="flow-bar"><i style="width:7.13%"></i></div></div>
+            <div class="flow-out"><span class="lbl">Detected in 1–9 donors</span>
+              Too few to fit (<code>MIN_OBS = 10</code>). Histogram drawn, no fit:
+              <code>fit_success = False</code>.
+              <span class="cnt">676,853 rows · 16.8%</span>
+              <div class="flow-bar"><i style="width:16.80%"></i></div></div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-card">
+            <h4><span class="n">4</span> Bin the values into a 40-bar histogram</h4>
+            <span class="flow-row"><b>Bins =</b> 40 equal slices from that gene's lowest detected value to its highest.</span>
+            <p>Each bar counts how many donors fall in its slice. The bin edges
+              come from the gene's own <code>min</code> and <code>max</code>, so
+              every gene gets its own scale.</p>
+            <p>The histogram is saved for every gene detected in at least one
+              donor, whether or not the fit later works, so the browser can always
+              show the real distribution. It is stored as <code>hist</code>, a
+              40-character code (one character per bar), plus
+              <code>hist_max</code>, the exact count in the tallest bar.</p>
+            <span class="flow-file">bhuvanfitter.py · BINS = 40</span>
+          </div>
+          <div class="flow-side">
+            <div class="flow-out"><span class="lbl">The −1 floor and the ceiling</span>
+              <code>min</code> is the gene's floor and <code>max</code> its ceiling:
+              the lowest and highest detected values. Every truncation measure
+              below is about these two edges.</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-card">
+            <h4><span class="n">5</span> Fit a bell curve to the histogram</h4>
+            <span class="flow-row"><b>Fit:</b> <code>y = y0 + A·exp(−((x − x0)/w)²)</code>, through the 40 bar heights.</span>
+            <ul>
+              <li><code>x0</code> is the peak, <code>w</code> the width
+                (σ = w / √2), <code>A</code> the height and <code>y0</code> a
+                flat baseline.</li>
+              <li>Least-squares fit (scipy <code>curve_fit</code>, trust-region
+                method), at most 2,000 tries per gene.</li>
+            </ul>
+            <span class="flow-file">bhuvanfitter.py · BhuvanFitter.fit("fourparam")</span>
+          </div>
+          <div class="flow-side">
+            <div class="flow-out"><span class="lbl">Fit didn't converge</span>
+              <code>fit_success = False</code>, numbers blank, row kept.
+              <span class="cnt">27,011 rows · 0.7%</span>
+              <div class="flow-bar"><i style="width:0.67%"></i></div></div>
+            <div class="flow-out keep"><span class="lbl">Fit converged</span>
+              <code>fit_success = True</code>.
+              <span class="cnt">3,038,617 rows · 75.4%</span>
+              <div class="flow-bar"><i style="width:75.40%"></i></div></div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-card">
+            <h4><span class="n">6</span> Measure the curve against the floor and ceiling</h4>
+            <span class="flow-row"><b>One row =</b> now a summary: one gene in one tissue, described by ~25 numbers instead of hundreds of donor values.</span>
+            <ul>
+              <li><code>clg_idx</code>, the <strong>ceiling index</strong>: curve
+                height at the ceiling ÷ height at the peak, 0 to 1. Higher means
+                the ceiling cuts in closer to the peak.</li>
+              <li><code>flr_idx</code>, the <strong>floor index</strong>: the same
+                at the floor. Both subtract the curve's lowest point first, so for
+                almost every gene <strong>only one of the two is non-zero</strong>:
+                whichever edge sits closer to the peak.</li>
+              <li><code>clg_z</code> and <code>flr_z</code>: how many σ the
+                ceiling sits above the peak, and the floor below it. Lower means
+                more truncated.</li>
+              <li>Plain summaries of the detected values: <code>mean</code>,
+                <code>std</code>, <code>skew</code>, <code>kurt</code>.</li>
+              <li><code>r_squared</code>: how well the curve matches the 40 bars.</li>
+            </ul>
+            <span class="flow-file">bhuvanfitter.py · normality.r_squared</span>
+          </div>
+          <div class="flow-side">
+            <div class="flow-out"><span class="lbl">Ceiling is the closer edge</span>
+              <code>clg_idx &gt; 0</code>, 15.1% of fitted rows.
+              <span class="cnt">458,626 rows · 11.4%</span>
+              <div class="flow-bar"><i style="width:11.38%"></i></div></div>
+            <div class="flow-out"><span class="lbl">Floor is the closer edge</span>
+              <code>flr_idx &gt; 0</code>, 82.0% of fitted rows.
+              <span class="cnt">2,492,172 rows · 61.8%</span>
+              <div class="flow-bar"><i style="width:61.84%"></i></div></div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-card">
+            <h4><span class="n">7</span> Write one table per tissue</h4>
+            <span class="flow-row"><b>One row =</b> one gene in this tissue. Every table has all 74,628 genes, in the same order.</span>
+            <p>Rows that could not be fit are written too, labeled by
+              <code>fit_success</code> and <code>n_obs</code>, so nothing disappears
+              silently and every table lines up gene for gene.</p>
+            <span class="flow-file">outputs/v11_log2_&lt;tissue&gt;_fourparam_excluded_at_or_below_-1.csv</span>
+          </div>
+          <div class="flow-side">
+            <div class="flow-out keep"><span class="lbl">54 tables</span>
+              <span class="cnt">4,029,912 rows, nothing removed</span>
+              <div class="flow-bar"><i style="width:100%"></i></div></div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-card">
+            <h4><span class="n">8</span> Add labels from separate files, matched by gene</h4>
+            <span class="flow-row"><b>Nothing is refit.</b> Each file adds a column, joined to the table's rows by gene.</span>
+            <ul>
+              <li><strong>Distribution class</strong> (<code>qc/</code>): a cascade
+                of tests labels each gene <em>zero_inflated</em> (≥ 20% of donors
+                at or below −0.75, i.e. TPM ≤ 0.19), <em>multimodal</em>,
+                <em>right_truncated</em>, <em>right_skewed</em>, <em>non_normal</em>,
+                <em>normal</em> or <em>undetermined</em> (under 20 values).</li>
+              <li><strong><code>idk_flr_idx</code></strong>: the floor index, but
+                forced to 0 when the gene's floor is at or below −0.75, because
+                there the floor is the detection limit, not biology.</li>
+              <li><strong>Gene type</strong> from GENCODE v47:
+                protein-coding, lncRNA, pseudogene, small RNA and so on.</li>
+              <li><strong>Tail model</strong> (<code>new_clg_idx</code>,
+                <code>new_flr_idx</code>): skeletal muscle only so far.</li>
+            </ul>
+          </div>
+          <div class="flow-side">
+            <div class="flow-out"><span class="lbl">Floor at the detection limit</span>
+              Fitted rows whose floor is ≤ −0.75: <code>idk_flr_idx</code> reads 0.
+              <span class="cnt">2,211,036 rows · 54.9%</span>
+              <div class="flow-bar"><i style="width:54.87%"></i></div></div>
+          </div>
+        </div>
+
+        <div class="flow-band"><b>Publish</b> · reshaped so the browser can fetch only what it needs</div>
+
+        <div class="flow-step">
+          <div class="flow-card">
+            <h4><span class="n">9</span> Store the same rows two ways</h4>
+            <span class="flow-row"><b>Same numbers,</b> two orientations. Nothing is recalculated.</span>
+            <ul>
+              <li><strong>By tissue</strong> (<code>outputs/</code>): every gene,
+                one tissue, about 8 MB per file.</li>
+              <li><strong>By gene</strong> (<code>gene_major/</code>): 16 genes ×
+                all 54 tissues per file, about 220 KB. Genes are grouped
+                alphabetically by symbol, so a family like ALDH* lands in one or
+                two files.</li>
+              <li>Histograms get their own small files (<code>hist_major/</code>),
+                sorted the same way.</li>
+            </ul>
+            <span class="flow-file">build_gene_major.py · build_hist_major.py · build_gui_data.py</span>
+          </div>
+          <div class="flow-side">
+            <div class="flow-out"><span class="lbl">Fetched live from GitHub</span>
+              The page keeps no copy of the tables. It downloads them when you
+              press Load, so it always shows what is in the repository.</div>
+          </div>
+        </div>
+
+        <div class="flow-band"><b>Browse</b> · in this page, driven by your choices</div>
+
+        <div class="flow-step">
+          <div class="flow-card">
+            <h4><span class="n">10</span> Choose genes and tissues, then Load</h4>
+            <span class="flow-row"><b>One row on screen =</b> one gene in one tissue. Pick 3 genes and 5 tissues and you get 15 rows.</span>
+            <ul>
+              <li>Genes can be typed, pasted as a list, or added from a control
+                set. Symbols and Ensembl ids both work; the version suffix is
+                ignored.</li>
+              <li>The page fetches by tissue or by gene, whichever downloads less.</li>
+              <li>Extra columns (R², distribution class, <code>idk_flr_idx</code>,
+                gene type, donors excluded) are joined on here by gene.</li>
+            </ul>
+          </div>
+          <div class="flow-side">
+            <div class="flow-out"><span class="lbl">Failed fits are shown, not hidden</span>
+              A row with <code>fit_success = False</code> shows a "no fit" badge,
+              its real <code>n</code>, <code>min</code> and <code>max</code>, and
+              "—" for every fitted number.</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-card">
+            <h4><span class="n">11</span> Filter, sort and export</h4>
+            <span class="flow-row"><b>You decide</b> what to narrow down. The page applies no quality filter of its own.</span>
+            <ul>
+              <li><strong>Column filters</strong>: rules like
+                <code>clg_idx &gt; 0.2</code> or <code>fit is True</code>, plus
+                <em>Protein-coding only</em> / <em>Non-coding only</em>.</li>
+              <li><strong>Sort</strong> by clicking any column header.</li>
+              <li><strong>All columns</strong> adds the rest of the table's
+                columns to the default set.</li>
+              <li>Tick rows into the <strong>Working set</strong> to collect them
+                across separate queries, and <strong>Download CSV</strong> to
+                export what the filters left.</li>
+            </ul>
+          </div>
+          <div class="flow-side">
+            <div class="flow-out"><span class="lbl">No minimum donor count here</span>
+              A gene fit on 12 donors shows "ok" just like one fit on 800. Check
+              <code>n</code> before trusting a number.</div>
+          </div>
+        </div>
+
+        <div class="flow-band"><b>Analyze</b> · filters the analyses apply, not built into the tables or the page</div>
+
+        <div class="flow-step">
+          <div class="flow-card">
+            <h4><span class="n">12</span> Standard analysis filters</h4>
+            <span class="flow-row"><b>Applied when using a table,</b> so the tables themselves keep every gene.</span>
+            <ul>
+              <li><code>fit_success</code> is True, and <code>n_obs ≥ 30</code>:
+                fits on fewer donors are unstable from one refit to the next.</li>
+              <li>QC gates: the peak <code>x0</code> lies inside the observed
+                range; σ is between 5% and 100% of the data's span; fewer than
+                20% of donors sit at the floor.</li>
+              <li>Compare genes only against controls with matched expression
+                (<code>mean</code>), because both indices track how highly a gene
+                is expressed.</li>
+            </ul>
+          </div>
+          <div class="flow-side">
+            <div class="flow-out keep"><span class="lbl">Fitted, with n_obs ≥ 30</span>
+              Before the QC gates and expression matching.
+              <span class="cnt">2,492,397 rows · 61.8%</span>
+              <div class="flow-bar"><i style="width:61.85%"></i></div></div>
+          </div>
+        </div>
+
+      </div>
+      <p class="note">Counts measured on the published tables, November 2026.</p>
+    </section>
+  </div>
+
   <div class="tabpanel prose" id="panelBackground" role="tabpanel"
        aria-labelledby="tabBackground" hidden>
     <section class="panel">
@@ -1609,7 +1999,7 @@ const GENES_URL    = "genes.tsv";
    `BUILD_ID` and version.json are both written by docs/stamp_version.py --
    run it after editing this file, or the two silently drift apart.
    ===================================================================== */
-const BUILD_ID = "10c9dd43987f";
+const BUILD_ID = "1cbffd054c2d";
 const VERSION_URL = "version.json";
 const UPDATE_RECHECK_MS = 5 * 60 * 1000;
 
@@ -5775,9 +6165,11 @@ function readHash() {
    ===================================================================== */
 function showTab(which) {
   const tabs = { select: "panelSelect", working: "panelWorking", worm: "panelWorm",
-                 guide: "panelGuide", background: "panelBackground", people: "panelPeople" };
+                 guide: "panelGuide", flow: "panelFlow", background: "panelBackground",
+                 people: "panelPeople" };
   const buttons = { select: "tabSelect", working: "tabWorking", worm: "tabWorm",
-                    guide: "tabGuide", background: "tabBackground", people: "tabPeople" };
+                    guide: "tabGuide", flow: "tabFlow", background: "tabBackground",
+                    people: "tabPeople" };
   if (!tabs[which]) which = "select";
 
   for (const [id, panel] of Object.entries(tabs)) {
@@ -5871,6 +6263,7 @@ async function boot() {
   $("tabWorking").addEventListener("click", () => showTab("working"));
   $("tabWorm").addEventListener("click", () => showTab("worm"));
   $("tabGuide").addEventListener("click", () => showTab("guide"));
+  $("tabFlow").addEventListener("click", () => showTab("flow"));
   $("tabBackground").addEventListener("click", () => showTab("background"));
   $("tabPeople").addEventListener("click", () => showTab("people"));
 

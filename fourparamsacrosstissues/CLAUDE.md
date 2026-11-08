@@ -1127,6 +1127,15 @@ byte-identical to `extract_genes.py`.
   colour too. The block has to be repeated for all three theme states, and sits
   after the theme blocks so equal-specificity selectors go the worm's way.
 
+### Data Flowchart tab (`#panelFlow`)
+
+A static prose tab walking the pipeline from the GTEx download to a row on
+screen: what one row means at each stage, what is dropped, and what is labeled
+instead. Its row counts (n_obs = 0, 1–9, fit failed, fitted, clg/flr_idx > 0,
+floor ≤ −0.75, fitted with n_obs ≥ 30) are **hand-written**, measured on
+2026-11-08 over all 54 excluded tables. Re-measure them after any regeneration;
+nothing updates them automatically.
+
 ### Gene type: protein-coding vs non-coding (`docs/genetype/`, `build_gene_type.py`)
 
 ```bash
