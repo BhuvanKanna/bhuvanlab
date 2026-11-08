@@ -393,6 +393,10 @@ many of the tissue's donors the gene was **not** detected in:
 | 3–5 | 0.8% | 3.1% | 0.4% |
 | over 10% | 0.6% | 0.7% | 0.5% |
 
+`frac_of_fitted_genes` in the CSV is each group's share of the tissue's fitted
+genes: fully detected genes are 34.4% (spinal cord), 34.8% (cerebellar) and
+24.0% (muscle); genes missing from more than 10% of donors are 53–66%.
+
 **The gate is complete detection, not an absolute n_obs or a percentage.**
 In absolute terms the jump sits at each tissue's own donor count (150–204 in
 spinal cord, 204–300 in cerebellar, 500–818 in muscle). A gene undetected in
