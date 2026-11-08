@@ -1,0 +1,22 @@
+tissue,donors,undetected_donors,fitted_genes,frac_clg_idx_gt0,frac_min_le_minus_0_75
+brain_spinal_cord_cervical_c-1,204,0,18405,0.6065,0.2737
+brain_spinal_cord_cervical_c-1,204,1,1113,0.0494,0.9712
+brain_spinal_cord_cervical_c-1,204,2,662,0.0227,0.9909
+brain_spinal_cord_cervical_c-1,204,3-5,1190,0.0076,0.9975
+brain_spinal_cord_cervical_c-1,204,6-10,1310,0.0031,0.9969
+brain_spinal_cord_cervical_c-1,204,11 to 10%,1757,0.0023,0.9949
+brain_spinal_cord_cervical_c-1,204,over 10%,29024,0.0061,0.9724
+brain_cerebellar_hemisphere,277,0,19606,0.6924,0.2312
+brain_cerebellar_hemisphere,277,1,1174,0.1244,0.9463
+brain_cerebellar_hemisphere,277,2,657,0.07,0.9787
+brain_cerebellar_hemisphere,277,3-5,1276,0.0313,0.9882
+brain_cerebellar_hemisphere,277,6-10,1297,0.02,0.9877
+brain_cerebellar_hemisphere,277,11 to 10%,2460,0.0028,0.9886
+brain_cerebellar_hemisphere,277,over 10%,29816,0.007,0.9574
+muscle_skeletal,818,0,14720,0.1863,0.2407
+muscle_skeletal,818,1,759,0.0158,0.9578
+muscle_skeletal,818,2,452,0.0088,0.9934
+muscle_skeletal,818,3-5,756,0.004,0.996
+muscle_skeletal,818,6-10,740,0.0,0.9959
+muscle_skeletal,818,11 to 10%,3689,0.0005,0.9967
+muscle_skeletal,818,over 10%,40119,0.0052,0.9841

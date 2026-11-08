@@ -378,6 +378,35 @@ genes, median |Δ| 0.006–0.013). In the 10–29 band clg_idx is noise: ρ ≈ 
 and the 90th-percentile |Δ| is ~0.99, i.e. genes jump between 0 and 1. FD
 and Scott suppress most of those low-n ceilings rather than reproducing them.
 
+## A ceiling needs every donor detected (`results/detection_gate/`, 2026-11-08)
+
+Checked on the published 40-bin excluded tables for spinal cord (204 donors),
+cerebellar hemisphere (277; v11 has 277 samples, not the 696 sometimes quoted)
+and skeletal muscle (818). Share of fitted genes with `clg_idx > 0`, by how
+many of the tissue's donors the gene was **not** detected in:
+
+| undetected donors | spinal cord | cerebellar hemisphere | muscle |
+|---|---|---|---|
+| 0 | 60.7% | 69.2% | 18.6% |
+| 1 | 4.9% | 12.4% | 1.6% |
+| 2 | 2.3% | 7.0% | 0.9% |
+| 3–5 | 0.8% | 3.1% | 0.4% |
+| over 10% | 0.6% | 0.7% | 0.5% |
+
+**The gate is complete detection, not an absolute n_obs or a percentage.**
+In absolute terms the jump sits at each tissue's own donor count (150–204 in
+spinal cord, 204–300 in cerebellar, 500–818 in muscle). A gene undetected in
+even one donor almost always has its floor at the detection limit:
+`min <= -0.75` in 95–100% of them, against 23–27% of fully detected genes, and
+then the floor is the closer edge, so `clg_idx` is 0. **For a gene with any
+undetected donor, `clg_idx = 0` means "not measurable", not "no ceiling".**
+It is the ceiling-side counterpart of the `idk_flr_idx` floor rule.
+
+Among fully detected genes the share also falls with cohort size (61–69% in
+the brain tissues vs 19% in muscle), consistent with a larger cohort reaching
+further into the upper tail, so the observed max sits farther from the peak.
+Do not compare raw `clg_idx` across tissues of different size.
+
 ## Extracting a gene set (`extract_genes.py`)
 
 Pulls the rows for a gene set out of all 108 tables into one tidy CSV, one row
