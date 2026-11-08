@@ -368,7 +368,7 @@ vanishes under Scott (3) and FD (1).
 n_obs ≥ 75 whose 40-bin clg_idx is closest to 0.05, 0.25 and 0.55 (RPL21,
 TRPC1, LIAS, all n = 204) under every rule; their clg_idx moves by
 0.02–0.09. `..._ceiling_scatter_by_n_...png` plots 40-bin clg_idx against
-each rule for every gene, colored by n_obs band, and
+each rule for every gene, one panel per rule × n_obs band, and
 `..._ceiling_agreement_by_n_...csv` summarizes it per band. Ceilings almost
 only exist at high n: of fitted genes, 11,241 of 28,313 at n_obs 150–204
 have clg_idx > 0, against 169 / 3 / 5 in the 10–29 / 30–74 / 75–149 bands,
